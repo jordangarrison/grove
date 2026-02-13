@@ -1309,9 +1309,12 @@ impl GroveApp {
     }
 
     fn scroll_preview(&mut self, delta: i32) {
+        let viewport_height = self
+            .preview_output_dimensions()
+            .map_or(1, |(_, height)| usize::from(height));
         let old_offset = self.preview.offset;
         let old_auto_scroll = self.preview.auto_scroll;
-        let changed = self.preview.scroll(delta, Instant::now());
+        let changed = self.preview.scroll(delta, Instant::now(), viewport_height);
         if changed {
             let offset = u64::try_from(self.preview.offset).unwrap_or(u64::MAX);
             self.event_log.log(
@@ -3671,7 +3674,7 @@ mod tests {
     fn preview_scroll_emits_scrolled_and_autoscroll_events() {
         let (mut app, _commands, _captures, _cursor_captures, events) =
             fixture_app_with_tmux_and_events(WorkspaceStatus::Idle, Vec::new(), Vec::new());
-        app.preview.lines = (1..=30).map(|value| value.to_string()).collect();
+        app.preview.lines = (1..=120).map(|value| value.to_string()).collect();
         app.preview.offset = 0;
         app.preview.auto_scroll = true;
 
@@ -4999,7 +5002,7 @@ mod tests {
     #[test]
     fn mouse_scroll_in_preview_scrolls_output() {
         let mut app = fixture_app();
-        app.preview.lines = (1..=30).map(|value| value.to_string()).collect();
+        app.preview.lines = (1..=120).map(|value| value.to_string()).collect();
         app.preview.offset = 0;
         app.preview.auto_scroll = true;
 
@@ -5126,6 +5129,8 @@ mod tests {
     #[test]
     fn preview_mode_keys_scroll_and_jump_to_bottom() {
         let mut app = fixture_app();
+        app.preview.lines = (1..=120).map(|value| value.to_string()).collect();
+        app.preview.render_lines = app.preview.lines.clone();
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
@@ -5145,6 +5150,34 @@ mod tests {
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('G')).with_kind(KeyEventKind::Press)),
         );
+        assert_eq!(app.preview.offset, 0);
+        assert!(app.preview.auto_scroll);
+    }
+
+    #[test]
+    fn preview_mode_scroll_keys_noop_when_content_fits_viewport() {
+        let mut app = fixture_app();
+        app.preview.lines = (1..=4).map(|value| value.to_string()).collect();
+        app.preview.render_lines = app.preview.lines.clone();
+        app.preview.offset = 0;
+        app.preview.auto_scroll = true;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Resize {
+                width: 100,
+                height: 40,
+            },
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('k')).with_kind(KeyEventKind::Press)),
+        );
+
         assert_eq!(app.preview.offset, 0);
         assert!(app.preview.auto_scroll);
     }

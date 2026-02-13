@@ -96,7 +96,30 @@ impl PreviewState {
         }
     }
 
-    pub fn scroll(&mut self, delta: i32, now: Instant) -> bool {
+    fn max_scroll_offset_for(total_lines: usize, height: usize) -> usize {
+        if height == 0 {
+            return 0;
+        }
+
+        total_lines.saturating_sub(height)
+    }
+
+    pub fn max_scroll_offset(&self, height: usize) -> usize {
+        Self::max_scroll_offset_for(self.lines.len(), height)
+    }
+
+    pub fn scroll(&mut self, delta: i32, now: Instant, viewport_height: usize) -> bool {
+        if delta == 0 {
+            return false;
+        }
+
+        let max_offset = self.max_scroll_offset(viewport_height);
+        if max_offset == 0 {
+            self.offset = 0;
+            self.auto_scroll = true;
+            return false;
+        }
+
         if let Some(last_scroll_time) = self.last_scroll_time {
             let since_last = now.saturating_duration_since(last_scroll_time);
             if since_last < Duration::from_millis(SCROLL_DEBOUNCE_MS) {
@@ -120,16 +143,26 @@ impl PreviewState {
         self.last_scroll_time = Some(now);
 
         if delta < 0 {
-            self.auto_scroll = false;
-            self.offset = self
+            let next_offset = self
                 .offset
                 .saturating_add(delta.unsigned_abs() as usize)
-                .min(self.lines.len());
+                .min(max_offset);
+            if next_offset == self.offset {
+                return false;
+            }
+
+            self.auto_scroll = false;
+            self.offset = next_offset;
             return true;
         }
 
         if delta > 0 {
-            self.offset = self.offset.saturating_sub(delta as usize);
+            let next_offset = self.offset.saturating_sub(delta as usize);
+            if next_offset == self.offset {
+                return false;
+            }
+
+            self.offset = next_offset;
             if self.offset == 0 {
                 self.auto_scroll = true;
             }
@@ -153,7 +186,9 @@ impl PreviewState {
             return Vec::new();
         }
 
-        let end = self.lines.len().saturating_sub(self.offset);
+        let max_offset = self.max_scroll_offset(height);
+        let clamped_offset = self.offset.min(max_offset);
+        let end = self.lines.len().saturating_sub(clamped_offset);
         let start = end.saturating_sub(height);
         self.lines[start..end].to_vec()
     }
@@ -163,7 +198,9 @@ impl PreviewState {
             return Vec::new();
         }
 
-        let end = self.render_lines.len().saturating_sub(self.offset);
+        let max_offset = Self::max_scroll_offset_for(self.render_lines.len(), height);
+        let clamped_offset = self.offset.min(max_offset);
+        let end = self.render_lines.len().saturating_sub(clamped_offset);
         let start = end.saturating_sub(height);
         self.render_lines[start..end].to_vec()
     }
@@ -247,15 +284,15 @@ mod tests {
         ];
 
         let base = Instant::now();
-        assert!(state.scroll(-2, base));
+        assert!(state.scroll(-2, base, 2));
         assert!(!state.auto_scroll);
         assert_eq!(state.offset, 2);
 
-        assert!(state.scroll(1, base + Duration::from_millis(200)));
+        assert!(state.scroll(1, base + Duration::from_millis(200), 2));
         assert!(!state.auto_scroll);
         assert_eq!(state.offset, 1);
 
-        assert!(state.scroll(1, base + Duration::from_millis(400)));
+        assert!(state.scroll(1, base + Duration::from_millis(400), 2));
         assert!(state.auto_scroll);
         assert_eq!(state.offset, 0);
     }
@@ -265,8 +302,8 @@ mod tests {
         let mut state = PreviewState::new();
         state.lines = vec!["1".to_string(), "2".to_string()];
 
-        assert!(state.scroll(-10, Instant::now()));
-        assert_eq!(state.offset, 2);
+        assert!(state.scroll(-10, Instant::now(), 1));
+        assert_eq!(state.offset, 1);
     }
 
     #[test]
@@ -289,15 +326,26 @@ mod tests {
     #[test]
     fn scroll_burst_guard_drops_rapid_bursts() {
         let mut state = PreviewState::new();
+        state.lines = (1..=20).map(|value| value.to_string()).collect();
         let base = Instant::now();
 
-        assert!(state.scroll(-1, base));
-        assert!(!state.scroll(-1, base + Duration::from_millis(1)));
-        assert!(!state.scroll(-1, base + Duration::from_millis(2)));
-        assert!(!state.scroll(-1, base + Duration::from_millis(3)));
-        assert!(!state.scroll(-1, base + Duration::from_millis(4)));
-        assert!(state.scroll(-1, base + Duration::from_millis(50)));
-        assert!(state.scroll(-1, base + Duration::from_millis(130)));
+        assert!(state.scroll(-1, base, 5));
+        assert!(!state.scroll(-1, base + Duration::from_millis(1), 5));
+        assert!(!state.scroll(-1, base + Duration::from_millis(2), 5));
+        assert!(!state.scroll(-1, base + Duration::from_millis(3), 5));
+        assert!(!state.scroll(-1, base + Duration::from_millis(4), 5));
+        assert!(state.scroll(-1, base + Duration::from_millis(50), 5));
+        assert!(state.scroll(-1, base + Duration::from_millis(130), 5));
+    }
+
+    #[test]
+    fn scroll_is_noop_when_content_fits_viewport() {
+        let mut state = PreviewState::new();
+        state.lines = vec!["1".to_string(), "2".to_string()];
+
+        assert!(!state.scroll(-1, Instant::now(), 4));
+        assert_eq!(state.offset, 0);
+        assert!(state.auto_scroll);
     }
 
     #[test]
