@@ -309,3 +309,13 @@ Exit criteria:
 - 2026-02-13: Expanded `flake.nix` dev shell dependencies so project tooling is
   available directly in `nix develop` (Rust toolchain, `git`, `tmux`,
   `gnumake`, `pkg-config`, `openssl`, and core shell utils).
+- 2026-02-13: Phase 1 domain skeleton implemented.
+  Changes: added explicit domain model types and invariants in
+  `src/domain.rs`, reducer-driven app state with selection/focus/mode
+  transitions in `src/state.rs`, adapter interfaces plus placeholder
+  git/tmux/system bootstrap wiring in `src/adapters.rs`, and replaced the
+  hello TUI frame with a Grove shell placeholder layout in `src/tui.rs`
+  (list, preview, status bar scaffolding with key-driven navigation).
+  Status: Phase 1 TDD targets are green locally (red-green cycle executed for
+  reducer and adapter behaviors, tests passing).
+  Next: Phase 2 read-only worktree discovery and deterministic list ordering.

@@ -1,3 +1,6 @@
+pub mod adapters;
+pub mod domain;
+pub mod state;
 pub mod tui;
 
 pub fn hello_message(app_name: &str) -> String {
