@@ -349,3 +349,40 @@ Exit criteria:
   tests (`cargo test workspace_lifecycle`).
   Next: Phase 4 agent lifecycle + tmux reconciliation and runtime status
   detection.
+- 2026-02-13: Implemented Phase 4-8 core logic slices with tests (backend/model
+  first, no full TUI event-loop wiring yet).
+  Changes:
+  - Phase 4: added `src/agent_runtime.rs` (tmux session naming, launch/stop
+    plans, skip-permissions command handling, waiting/status detection,
+    reconciliation, poll interval policy, capture hash/change detection with
+    mouse fragment stripping).
+  - Phase 4 discovery wiring: updated `src/adapters.rs` to discover
+    marker-managed workspaces (`.grove-agent`/`.grove-base`), include
+    unsupported-marker handling, reconcile against live tmux sessions, and
+    surface orphaned sessions in bootstrap state.
+  - Domain expansion: updated `src/domain.rs` statuses/icons to include
+    `Active/Thinking/Waiting/Done/Error/Unsupported` and added workspace
+    metadata (`base_branch`, `is_orphaned`, `supported_agent`).
+  - Phase 5: added `src/preview.rs` (auto-scroll pause/resume, scroll burst
+    guards, cleaned capture updates, flash message expiry).
+  - Phase 6: added `src/interactive.rs` (interactive state machine, key mapping
+    to tmux `send-keys`, double-escape exit window, paste wrapping, cursor
+    overlay, mouse-fragment guards).
+  - Phase 7: added `src/mouse.rs` (hit-testing, divider ratio clamp/drag,
+    modal input blocking, ratio serialization helpers).
+  - Phase 8: added `src/hardening.rs` (missing-worktree detection/prune signal,
+    deleted-cwd recovery helper, orphaned session cleanup candidates, poll
+    generation helpers).
+  - Added cross-module startup reconciliation coverage in
+    `tests/startup_reconciliation.rs`.
+  - Updated `src/tui.rs` bootstrap to use live tmux session adapter, extended
+    status hints, and rendered orphan marker text.
+  Status: all touched checks pass locally (`cargo clippy --all-targets
+  --all-features -- -D warnings`, `cargo test --lib`,
+  `cargo test --test startup_reconciliation`).
+  Next:
+  - Wire Phase 5-7 runtime behaviors into the actual FrankenTUI update/view
+    loop (interactive entry/exit, preview rendering pipeline, mouse events,
+    modal dialogs).
+  - Add end-to-end tests around command execution sequencing in the real app
+    layer, not only module-level logic.

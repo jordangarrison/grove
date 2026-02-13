@@ -19,7 +19,13 @@ impl AgentType {
 pub enum WorkspaceStatus {
     Main,
     Idle,
+    Active,
+    Thinking,
+    Waiting,
+    Done,
+    Error,
     Unknown,
+    Unsupported,
 }
 
 impl WorkspaceStatus {
@@ -27,7 +33,13 @@ impl WorkspaceStatus {
         match self {
             Self::Main => "◉",
             Self::Idle => "○",
+            Self::Active => "●",
+            Self::Thinking => "◐",
+            Self::Waiting => "⧗",
+            Self::Done => "✓",
+            Self::Error => "✗",
             Self::Unknown => "?",
+            Self::Unsupported => "!",
         }
     }
 }
@@ -37,10 +49,13 @@ pub struct Workspace {
     pub name: String,
     pub path: PathBuf,
     pub branch: String,
+    pub base_branch: Option<String>,
     pub last_activity_unix_secs: Option<i64>,
     pub agent: AgentType,
     pub status: WorkspaceStatus,
     pub is_main: bool,
+    pub is_orphaned: bool,
+    pub supported_agent: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,11 +93,29 @@ impl Workspace {
             name,
             path,
             branch,
+            base_branch: None,
             last_activity_unix_secs,
             agent,
             status,
             is_main,
+            is_orphaned: false,
+            supported_agent: true,
         })
+    }
+
+    pub fn with_base_branch(mut self, base_branch: Option<String>) -> Self {
+        self.base_branch = base_branch;
+        self
+    }
+
+    pub fn with_supported_agent(mut self, supported_agent: bool) -> Self {
+        self.supported_agent = supported_agent;
+        self
+    }
+
+    pub fn with_orphaned(mut self, is_orphaned: bool) -> Self {
+        self.is_orphaned = is_orphaned;
+        self
     }
 }
 
@@ -159,10 +192,26 @@ mod tests {
             WorkspaceStatus::Unknown,
             false,
         )
-        .expect("workspace should be valid");
+        .expect("workspace should be valid")
+        .with_base_branch(Some("main".to_string()))
+        .with_orphaned(true)
+        .with_supported_agent(false);
 
         assert_eq!(workspace.agent.label(), "Codex");
         assert_eq!(workspace.status.icon(), "?");
         assert_eq!(workspace.path, PathBuf::from("/repos/grove-feature-x"));
+        assert_eq!(workspace.base_branch.as_deref(), Some("main"));
+        assert!(workspace.is_orphaned);
+        assert!(!workspace.supported_agent);
+    }
+
+    #[test]
+    fn status_icons_cover_phase_four_plus_states() {
+        assert_eq!(WorkspaceStatus::Active.icon(), "●");
+        assert_eq!(WorkspaceStatus::Thinking.icon(), "◐");
+        assert_eq!(WorkspaceStatus::Waiting.icon(), "⧗");
+        assert_eq!(WorkspaceStatus::Done.icon(), "✓");
+        assert_eq!(WorkspaceStatus::Error.icon(), "✗");
+        assert_eq!(WorkspaceStatus::Unsupported.icon(), "!");
     }
 }

@@ -1,5 +1,10 @@
 pub mod adapters;
+pub mod agent_runtime;
 pub mod domain;
+pub mod hardening;
+pub mod interactive;
+pub mod mouse;
+pub mod preview;
 pub mod state;
 pub mod tui;
 pub mod workspace_lifecycle;

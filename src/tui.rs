@@ -6,7 +6,7 @@ use ftui::widgets::paragraph::Paragraph;
 use ftui::{App, Cmd, Model, ScreenMode};
 
 use crate::adapters::{
-    BootstrapData, CommandGitAdapter, CommandSystemAdapter, DiscoveryState, PlaceholderTmuxAdapter,
+    BootstrapData, CommandGitAdapter, CommandSystemAdapter, CommandTmuxAdapter, DiscoveryState,
     bootstrap_data,
 };
 use crate::state::{Action, AppState, PaneFocus, UiMode, reduce};
@@ -82,7 +82,7 @@ impl GroveApp {
     fn new() -> Self {
         let bootstrap = bootstrap_data(
             &CommandGitAdapter,
-            &PlaceholderTmuxAdapter,
+            &CommandTmuxAdapter,
             &CommandSystemAdapter,
         );
         Self::from_bootstrap(bootstrap)
@@ -118,6 +118,12 @@ impl GroveApp {
         {
             Some(crate::domain::WorkspaceStatus::Main) => "main worktree",
             Some(crate::domain::WorkspaceStatus::Idle) => "idle",
+            Some(crate::domain::WorkspaceStatus::Active) => "active",
+            Some(crate::domain::WorkspaceStatus::Thinking) => "thinking",
+            Some(crate::domain::WorkspaceStatus::Waiting) => "waiting",
+            Some(crate::domain::WorkspaceStatus::Done) => "done",
+            Some(crate::domain::WorkspaceStatus::Error) => "error",
+            Some(crate::domain::WorkspaceStatus::Unsupported) => "unsupported",
             Some(crate::domain::WorkspaceStatus::Unknown) => "unknown",
             None => "none",
         }
@@ -165,12 +171,17 @@ impl GroveApp {
                         " "
                     };
                     lines.push(format!(
-                        "{} {} {} | {} | {}",
+                        "{} {} {} | {} | {}{}",
                         selected,
                         workspace.status.icon(),
                         workspace.name,
                         workspace.branch,
-                        workspace.path.display()
+                        workspace.path.display(),
+                        if workspace.is_orphaned {
+                            " | session ended"
+                        } else {
+                            ""
+                        }
                     ));
                 }
             }
@@ -264,6 +275,7 @@ mod tests {
                 .expect("workspace should be valid"),
             ],
             discovery_state: DiscoveryState::Ready,
+            orphaned_sessions: Vec::new(),
         })
     }
 
@@ -321,6 +333,7 @@ mod tests {
             repo_name: "grove".to_string(),
             workspaces: Vec::new(),
             discovery_state: DiscoveryState::Error("fatal: not a git repository".to_string()),
+            orphaned_sessions: Vec::new(),
         });
         let lines = app.shell_lines();
         let content = lines.join("\n");

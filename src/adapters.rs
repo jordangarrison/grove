@@ -3,14 +3,18 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::agent_runtime::reconcile_with_sessions;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
+use crate::workspace_lifecycle::{WorkspaceMarkerError, read_workspace_markers};
+
+const TMUX_SESSION_PREFIX: &str = "grove-ws-";
 
 pub trait GitAdapter {
     fn list_workspaces(&self) -> Result<Vec<Workspace>, GitAdapterError>;
 }
 
 pub trait TmuxAdapter {
-    fn running_workspaces(&self) -> HashSet<String>;
+    fn running_sessions(&self) -> HashSet<String>;
 }
 
 pub trait SystemAdapter {
@@ -46,11 +50,12 @@ pub struct BootstrapData {
     pub repo_name: String,
     pub workspaces: Vec<Workspace>,
     pub discovery_state: DiscoveryState,
+    pub orphaned_sessions: Vec<String>,
 }
 
 pub fn bootstrap_data(
     git: &impl GitAdapter,
-    _tmux: &impl TmuxAdapter,
+    tmux: &impl TmuxAdapter,
     system: &impl SystemAdapter,
 ) -> BootstrapData {
     let repo_name = system.repo_name();
@@ -60,16 +65,25 @@ pub fn bootstrap_data(
             repo_name,
             workspaces,
             discovery_state: DiscoveryState::Empty,
+            orphaned_sessions: Vec::new(),
         },
-        Ok(workspaces) => BootstrapData {
-            repo_name,
-            workspaces,
-            discovery_state: DiscoveryState::Ready,
-        },
+        Ok(workspaces) => {
+            let running_sessions = tmux.running_sessions();
+            let reconciled =
+                reconcile_with_sessions(&workspaces, &running_sessions, &HashSet::new());
+
+            BootstrapData {
+                repo_name,
+                workspaces: reconciled.workspaces,
+                discovery_state: DiscoveryState::Ready,
+                orphaned_sessions: reconciled.orphaned_sessions,
+            }
+        }
         Err(error) => BootstrapData {
             repo_name,
             workspaces: Vec::new(),
             discovery_state: DiscoveryState::Error(error.message()),
+            orphaned_sessions: Vec::new(),
         },
     }
 }
@@ -129,10 +143,35 @@ impl GitAdapter for CommandGitAdapter {
     }
 }
 
+pub struct CommandTmuxAdapter;
+
+impl TmuxAdapter for CommandTmuxAdapter {
+    fn running_sessions(&self) -> HashSet<String> {
+        let output = Command::new("tmux")
+            .args(["list-sessions", "-F", "#{session_name}"])
+            .output();
+
+        match output {
+            Ok(output) if output.status.success() => {
+                let stdout = String::from_utf8(output.stdout);
+                match stdout {
+                    Ok(content) => content
+                        .lines()
+                        .filter(|name| name.starts_with(TMUX_SESSION_PREFIX))
+                        .map(ToOwned::to_owned)
+                        .collect(),
+                    Err(_) => HashSet::new(),
+                }
+            }
+            _ => HashSet::new(),
+        }
+    }
+}
+
 pub struct PlaceholderTmuxAdapter;
 
 impl TmuxAdapter for PlaceholderTmuxAdapter {
-    fn running_workspaces(&self) -> HashSet<String> {
+    fn running_sessions(&self) -> HashSet<String> {
         HashSet::new()
     }
 }
@@ -170,6 +209,13 @@ struct ParsedWorktree {
     path: PathBuf,
     branch: Option<String>,
     is_detached: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MarkerMetadata {
+    agent: AgentType,
+    base_branch: Option<String>,
+    supported_agent: bool,
 }
 
 fn parse_worktree_porcelain(input: &str) -> Result<Vec<ParsedWorktree>, GitAdapterError> {
@@ -323,6 +369,28 @@ fn workspace_sort(left: &Workspace, right: &Workspace) -> Ordering {
     left.name.cmp(&right.name)
 }
 
+fn marker_metadata(path: &Path) -> Result<Option<MarkerMetadata>, GitAdapterError> {
+    match read_workspace_markers(path) {
+        Ok(markers) => Ok(Some(MarkerMetadata {
+            agent: markers.agent,
+            base_branch: Some(markers.base_branch),
+            supported_agent: true,
+        })),
+        Err(WorkspaceMarkerError::MissingAgentMarker) => Ok(None),
+        Err(WorkspaceMarkerError::MissingBaseMarker)
+        | Err(WorkspaceMarkerError::InvalidAgentMarker(_))
+        | Err(WorkspaceMarkerError::EmptyBaseBranch) => Ok(Some(MarkerMetadata {
+            agent: AgentType::Claude,
+            base_branch: None,
+            supported_agent: false,
+        })),
+        Err(WorkspaceMarkerError::Io(error)) => Err(GitAdapterError::ParseError(format!(
+            "failed reading workspace markers in '{}': {error}",
+            path.display()
+        ))),
+    }
+}
+
 fn build_workspaces(
     parsed_worktrees: &[ParsedWorktree],
     repo_root: &Path,
@@ -342,13 +410,33 @@ fn build_workspaces(
             .as_ref()
             .and_then(|branch_name| activity_by_branch.get(branch_name).copied());
 
+        let metadata = if is_main {
+            Some(MarkerMetadata {
+                agent: AgentType::Claude,
+                base_branch: None,
+                supported_agent: true,
+            })
+        } else {
+            marker_metadata(&entry.path)?
+        };
+
+        let Some(metadata) = metadata else {
+            continue;
+        };
+
+        let status = if metadata.supported_agent {
+            workspace_status(is_main, &entry.branch, entry.is_detached)
+        } else {
+            WorkspaceStatus::Unsupported
+        };
+
         let workspace = Workspace::try_new(
             workspace_name_from_path(&entry.path, repo_name, is_main),
             entry.path.clone(),
             branch,
             last_activity_unix_secs,
-            AgentType::Claude,
-            workspace_status(is_main, &entry.branch, entry.is_detached),
+            metadata.agent,
+            status,
             is_main,
         )
         .map_err(|error| {
@@ -356,7 +444,10 @@ fn build_workspaces(
                 "worktree '{}' failed validation: {error:?}",
                 entry.path.display()
             ))
-        })?;
+        })?
+        .with_base_branch(metadata.base_branch)
+        .with_supported_agent(metadata.supported_agent);
+
         workspaces.push(workspace);
     }
 
@@ -368,7 +459,9 @@ fn build_workspaces(
 #[cfg(test)]
 mod tests {
     use std::collections::{HashMap, HashSet};
+    use std::fs;
     use std::path::{Path, PathBuf};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use super::{
         BootstrapData, DiscoveryState, GitAdapter, GitAdapterError, SystemAdapter, TmuxAdapter,
@@ -378,11 +471,39 @@ mod tests {
 
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
-    struct FakeTmuxAdapter;
+    #[derive(Debug)]
+    struct TestDir {
+        path: PathBuf,
+    }
+
+    impl TestDir {
+        fn new(label: &str) -> Self {
+            let timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or(Duration::from_secs(0))
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "grove-adapter-{label}-{}-{timestamp}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&path).expect("test dir should exist");
+            Self { path }
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    struct FakeTmuxAdapter {
+        running: HashSet<String>,
+    }
 
     impl TmuxAdapter for FakeTmuxAdapter {
-        fn running_workspaces(&self) -> HashSet<String> {
-            HashSet::new()
+        fn running_sessions(&self) -> HashSet<String> {
+            self.running.clone()
         }
     }
 
@@ -482,40 +603,44 @@ mod tests {
     }
 
     #[test]
-    fn build_workspaces_pins_main_and_sorts_remaining_by_recent_activity() {
-        let parsed = parse_worktree_porcelain(
-            "worktree /repos/grove\nHEAD 1\nbranch refs/heads/main\n\nworktree /repos/grove-older\nHEAD 2\nbranch refs/heads/older\n\nworktree /repos/grove-newer\nHEAD 3\nbranch refs/heads/newer\n\nworktree /repos/grove-detached\nHEAD 4\ndetached\n",
-        )
+    fn build_workspaces_includes_main_and_only_marker_managed_worktrees() {
+        let temp = TestDir::new("build");
+        let main_root = temp.path.join("grove");
+        let managed = temp.path.join("grove-feature-a");
+        let unmanaged = temp.path.join("grove-unmanaged");
+
+        fs::create_dir_all(&main_root).expect("main should exist");
+        fs::create_dir_all(&managed).expect("managed should exist");
+        fs::create_dir_all(&unmanaged).expect("unmanaged should exist");
+
+        fs::write(managed.join(".grove-agent"), "codex\n").expect("agent marker should exist");
+        fs::write(managed.join(".grove-base"), "main\n").expect("base marker should exist");
+
+        let parsed = parse_worktree_porcelain(&format!(
+            "worktree {}\nHEAD 1\nbranch refs/heads/main\n\nworktree {}\nHEAD 2\nbranch refs/heads/feature-a\n\nworktree {}\nHEAD 3\nbranch refs/heads/unmanaged\n",
+            main_root.display(),
+            managed.display(),
+            unmanaged.display(),
+        ))
         .expect("porcelain should parse");
 
         let activity_by_branch = HashMap::from([
             ("main".to_string(), 1_700_000_400),
-            ("newer".to_string(), 1_700_000_300),
-            ("older".to_string(), 1_700_000_100),
+            ("feature-a".to_string(), 1_700_000_300),
+            ("unmanaged".to_string(), 1_700_000_100),
         ]);
 
-        let workspaces = build_workspaces(
-            &parsed,
-            Path::new("/repos/grove"),
-            "grove",
-            &activity_by_branch,
-        )
-        .expect("workspace build should succeed");
+        let workspaces =
+            build_workspaces(&parsed, Path::new(&main_root), "grove", &activity_by_branch)
+                .expect("workspace build should succeed");
 
-        assert_eq!(workspaces.len(), 4);
+        assert_eq!(workspaces.len(), 2);
         assert_eq!(workspaces[0].name, "grove");
         assert_eq!(workspaces[0].status, WorkspaceStatus::Main);
 
-        assert_eq!(workspaces[1].name, "newer");
-        assert_eq!(workspaces[1].status, WorkspaceStatus::Idle);
-        assert_eq!(workspaces[1].branch, "newer");
-
-        assert_eq!(workspaces[2].name, "older");
-        assert_eq!(workspaces[2].status, WorkspaceStatus::Idle);
-
-        assert_eq!(workspaces[3].name, "detached");
-        assert_eq!(workspaces[3].status, WorkspaceStatus::Unknown);
-        assert_eq!(workspaces[3].branch, "(detached)");
+        assert_eq!(workspaces[1].name, "feature-a");
+        assert_eq!(workspaces[1].agent, AgentType::Codex);
+        assert_eq!(workspaces[1].base_branch.as_deref(), Some("main"));
     }
 
     #[test]
@@ -529,23 +654,41 @@ mod tests {
 
     #[test]
     fn bootstrap_data_reports_ready_for_successful_discovery() {
-        let data: BootstrapData =
-            bootstrap_data(&FakeGitSuccess, &FakeTmuxAdapter, &FakeSystemAdapter);
+        let data: BootstrapData = bootstrap_data(
+            &FakeGitSuccess,
+            &FakeTmuxAdapter {
+                running: HashSet::from(["grove-ws-feature-a".to_string()]),
+            },
+            &FakeSystemAdapter,
+        );
 
         assert_eq!(data.repo_name, "grove");
         assert_eq!(data.workspaces.len(), 2);
         assert_eq!(data.discovery_state, DiscoveryState::Ready);
+        assert_eq!(data.workspaces[1].status, WorkspaceStatus::Active);
     }
 
     #[test]
     fn bootstrap_data_reports_empty_state() {
-        let data = bootstrap_data(&FakeGitEmpty, &FakeTmuxAdapter, &FakeSystemAdapter);
+        let data = bootstrap_data(
+            &FakeGitEmpty,
+            &FakeTmuxAdapter {
+                running: HashSet::new(),
+            },
+            &FakeSystemAdapter,
+        );
         assert_eq!(data.discovery_state, DiscoveryState::Empty);
     }
 
     #[test]
     fn bootstrap_data_reports_error_state() {
-        let data = bootstrap_data(&FakeGitError, &FakeTmuxAdapter, &FakeSystemAdapter);
+        let data = bootstrap_data(
+            &FakeGitError,
+            &FakeTmuxAdapter {
+                running: HashSet::new(),
+            },
+            &FakeSystemAdapter,
+        );
 
         match data.discovery_state {
             DiscoveryState::Error(message) => {
