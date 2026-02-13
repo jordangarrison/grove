@@ -2,6 +2,7 @@ pub mod adapters;
 pub mod domain;
 pub mod state;
 pub mod tui;
+pub mod workspace_lifecycle;
 
 pub fn hello_message(app_name: &str) -> String {
     format!("Hello from {app_name}.")

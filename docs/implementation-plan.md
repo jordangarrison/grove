@@ -25,6 +25,7 @@ This doc defines how to build it incrementally, with frequent validation.
 5. Full unit test suite passes
 6. Manual TUI milestone checklist passes
 7. No known P0/P1 defects left open for that phase scope
+8. Commit phase work (pre-commit checks must pass: fmt, clippy, tests)
 
 ## Test Strategy By Phase
 
@@ -280,6 +281,8 @@ Exit criteria:
 - Target one phase per PR when possible
 - If a phase is large, split into `phase-xa`/`phase-xb`, each with its own
   TDD cycles and manual milestone
+- Commit at the end of each phase (or sub-phase) so work is checkpointed;
+  pre-commit hooks (fmt, clippy, tests) must pass before the commit lands
 - Never merge a phase without both gates (TDD + manual) complete
 
 ## Maintenance Notes
@@ -333,3 +336,16 @@ Exit criteria:
   sorting, empty/error states, and shell rendering assertions all passing).
   Next: Phase 3 workspace lifecycle (create/delete/setup, marker files,
   `.gitignore`, `.env*` copy, `.grove-setup.sh` execution).
+- 2026-02-13: Phase 3 workspace lifecycle backend implemented.
+  Changes: added `src/workspace_lifecycle.rs` with strict workspace create
+  request validation (slug workspace names, separate existing-branch mode),
+  git command sequencing for create/delete flows (including delete fallback to
+  force), marker file write/read validation (`.grove-agent`, `.grove-base`),
+  idempotent `.gitignore` entry management for Grove markers/scripts,
+  `.env*` copy-on-create behavior, and `.grove-setup.sh` execution via
+  injected runner with non-blocking warning path on setup failure.
+  Added focused unit tests for all Phase 3 TDD targets listed above.
+  Status: Phase 3 backend lifecycle behaviors are green locally via targeted
+  tests (`cargo test workspace_lifecycle`).
+  Next: Phase 4 agent lifecycle + tmux reconciliation and runtime status
+  detection.
