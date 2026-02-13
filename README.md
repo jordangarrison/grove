@@ -29,4 +29,7 @@ GROVE_FLICKER_CODEX_CMD='codex' scripts/check-codex-flicker.sh
 # continuous frame+event debug record (writes .grove/debug-record-<app-start>-<pid>.jsonl)
 cargo run -- --debug-record
 tail -f .grove/debug-record-*.jsonl
+
+# filter input-lag telemetry (seq-linked input -> tmux send -> preview update)
+rg '"event":"input"|"event":"preview_update"|"event":"preview_poll"' .grove/debug-record-*.jsonl
 ```

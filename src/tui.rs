@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::hash_map::DefaultHasher;
+use std::collections::{VecDeque, hash_map::DefaultHasher};
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -63,6 +63,7 @@ const HIT_ID_STATUS: u32 = 5;
 const HIT_ID_WORKSPACE_ROW: u32 = 6;
 const HIT_ID_CREATE_DIALOG: u32 = 7;
 const HIT_ID_LAUNCH_DIALOG: u32 = 8;
+const MAX_PENDING_INPUT_TRACES: usize = 256;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum HitRegion {
@@ -201,6 +202,20 @@ struct TransitionSnapshot {
     focus: PaneFocus,
     mode: UiMode,
     interactive_session: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct InputTraceContext {
+    seq: u64,
+    received_at: Instant,
+}
+
+#[derive(Debug, Clone)]
+struct PendingInteractiveInput {
+    seq: u64,
+    session: String,
+    received_at: Instant,
+    forwarded_at: Instant,
 }
 
 struct CommandTmuxInput;
@@ -692,8 +707,11 @@ struct GroveApp {
     event_log: Box<dyn EventLogger>,
     last_hit_grid: RefCell<Option<HitGrid>>,
     next_tick_due_at: Option<Instant>,
+    next_tick_interval_ms: Option<u64>,
     debug_record_start_ts: Option<u64>,
     frame_render_seq: RefCell<u64>,
+    input_seq_counter: u64,
+    pending_interactive_inputs: VecDeque<PendingInteractiveInput>,
 }
 
 impl GroveApp {
@@ -757,8 +775,11 @@ impl GroveApp {
             event_log,
             last_hit_grid: RefCell::new(None),
             next_tick_due_at: None,
+            next_tick_interval_ms: None,
             debug_record_start_ts,
             frame_render_seq: RefCell::new(0),
+            input_seq_counter: 1,
+            pending_interactive_inputs: VecDeque::new(),
         };
         app.refresh_preview_summary();
         app
@@ -831,7 +852,7 @@ impl GroveApp {
         }
     }
 
-    fn emit_transition_events(&self, before: &TransitionSnapshot) {
+    fn emit_transition_events(&mut self, before: &TransitionSnapshot) {
         let after = self.capture_transition_snapshot();
         if after.selected_index != before.selected_index {
             let selection_index = u64::try_from(after.selected_index).unwrap_or(u64::MAX);
@@ -870,6 +891,22 @@ impl GroveApp {
                     LogEvent::new("mode_change", "interactive_exited")
                         .with_data("session", Value::from(session.clone())),
                 );
+                let pending_before = self.pending_interactive_inputs.len();
+                self.clear_pending_inputs_for_session(session);
+                let pending_after = self.pending_interactive_inputs.len();
+                if pending_before != pending_after {
+                    self.event_log.log(
+                        LogEvent::new("input", "pending_inputs_cleared")
+                            .with_data("session", Value::from(session.clone()))
+                            .with_data(
+                                "cleared",
+                                Value::from(
+                                    u64::try_from(pending_before.saturating_sub(pending_after))
+                                        .unwrap_or(u64::MAX),
+                                ),
+                            ),
+                    );
+                }
             }
             _ => {}
         }
@@ -897,14 +934,23 @@ impl GroveApp {
     }
 
     fn execute_tmux_command(&mut self, command: &[String]) -> std::io::Result<()> {
+        let started_at = Instant::now();
         self.event_log.log(
             LogEvent::new("tmux_cmd", "execute")
                 .with_data("command", Value::from(command.join(" "))),
         );
         let result = self.tmux_input.execute(command);
+        let duration_ms =
+            Self::duration_millis(Instant::now().saturating_duration_since(started_at));
+        let mut completion_event = LogEvent::new("tmux_cmd", "completed")
+            .with_data("command", Value::from(command.join(" ")))
+            .with_data("duration_ms", Value::from(duration_ms))
+            .with_data("ok", Value::from(result.is_ok()));
         if let Err(error) = &result {
+            completion_event = completion_event.with_data("error", Value::from(error.to_string()));
             self.log_tmux_error(error.to_string());
         }
+        self.event_log.log(completion_event);
         result
     }
 
@@ -916,6 +962,146 @@ impl GroveApp {
                 .with_data("is_error", Value::from(is_error)),
         );
         self.flash = Some(new_flash_message(message, is_error, Instant::now()));
+    }
+
+    fn duration_millis(duration: Duration) -> u64 {
+        u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+    }
+
+    fn msg_kind(msg: &Msg) -> &'static str {
+        match msg {
+            Msg::Tick => "tick",
+            Msg::Key(_) => "key",
+            Msg::Mouse(_) => "mouse",
+            Msg::Paste(_) => "paste",
+            Msg::Resize { .. } => "resize",
+            Msg::Noop => "noop",
+        }
+    }
+
+    fn next_input_seq(&mut self) -> u64 {
+        let seq = self.input_seq_counter;
+        self.input_seq_counter = self.input_seq_counter.saturating_add(1);
+        seq
+    }
+
+    fn log_input_event_with_fields(
+        &self,
+        kind: &str,
+        seq: u64,
+        fields: impl IntoIterator<Item = (String, Value)>,
+    ) {
+        self.event_log.log(
+            LogEvent::new("input", kind)
+                .with_data("seq", Value::from(seq))
+                .with_data_fields(fields),
+        );
+    }
+
+    fn interactive_action_kind(action: &InteractiveAction) -> &'static str {
+        match action {
+            InteractiveAction::SendNamed(_) => "send_named",
+            InteractiveAction::SendLiteral(_) => "send_literal",
+            InteractiveAction::ExitInteractive => "exit_interactive",
+            InteractiveAction::CopySelection => "copy_selection",
+            InteractiveAction::PasteClipboard => "paste_clipboard",
+            InteractiveAction::Noop => "noop",
+        }
+    }
+
+    fn interactive_key_kind(key: &InteractiveKey) -> &'static str {
+        match key {
+            InteractiveKey::Enter => "enter",
+            InteractiveKey::Tab => "tab",
+            InteractiveKey::Backspace => "backspace",
+            InteractiveKey::Delete => "delete",
+            InteractiveKey::Up => "up",
+            InteractiveKey::Down => "down",
+            InteractiveKey::Left => "left",
+            InteractiveKey::Right => "right",
+            InteractiveKey::Home => "home",
+            InteractiveKey::End => "end",
+            InteractiveKey::PageUp => "page_up",
+            InteractiveKey::PageDown => "page_down",
+            InteractiveKey::Escape => "escape",
+            InteractiveKey::CtrlBackslash => "ctrl_backslash",
+            InteractiveKey::Ctrl(_) => "ctrl",
+            InteractiveKey::Function(_) => "function",
+            InteractiveKey::Char(_) => "char",
+            InteractiveKey::AltC => "alt_c",
+            InteractiveKey::AltV => "alt_v",
+        }
+    }
+
+    fn track_pending_interactive_input(
+        &mut self,
+        trace_context: InputTraceContext,
+        target_session: &str,
+        forwarded_at: Instant,
+    ) {
+        self.pending_interactive_inputs
+            .push_back(PendingInteractiveInput {
+                seq: trace_context.seq,
+                session: target_session.to_string(),
+                received_at: trace_context.received_at,
+                forwarded_at,
+            });
+
+        if self.pending_interactive_inputs.len() <= MAX_PENDING_INPUT_TRACES {
+            return;
+        }
+
+        if let Some(dropped) = self.pending_interactive_inputs.pop_front() {
+            self.log_input_event_with_fields(
+                "pending_input_dropped",
+                dropped.seq,
+                vec![
+                    ("session".to_string(), Value::from(dropped.session)),
+                    (
+                        "queue_depth".to_string(),
+                        Value::from(
+                            u64::try_from(self.pending_interactive_inputs.len())
+                                .unwrap_or(u64::MAX),
+                        ),
+                    ),
+                ],
+            );
+        }
+    }
+
+    fn clear_pending_inputs_for_session(&mut self, target_session: &str) {
+        self.pending_interactive_inputs
+            .retain(|input| input.session != target_session);
+    }
+
+    fn drain_pending_inputs_for_session(
+        &mut self,
+        target_session: &str,
+    ) -> Vec<PendingInteractiveInput> {
+        let mut retained = VecDeque::new();
+        let mut drained = Vec::new();
+
+        while let Some(input) = self.pending_interactive_inputs.pop_front() {
+            if input.session == target_session {
+                drained.push(input);
+            } else {
+                retained.push_back(input);
+            }
+        }
+
+        self.pending_interactive_inputs = retained;
+        drained
+    }
+
+    fn pending_input_depth(&self) -> u64 {
+        u64::try_from(self.pending_interactive_inputs.len()).unwrap_or(u64::MAX)
+    }
+
+    fn oldest_pending_input_age_ms(&self, now: Instant) -> u64 {
+        self.pending_interactive_inputs
+            .front()
+            .map(|trace| Self::duration_millis(now.saturating_duration_since(trace.received_at)))
+            .unwrap_or(0)
     }
 
     fn frame_lines_hash(lines: &[String]) -> u64 {
@@ -976,6 +1162,13 @@ impl GroveApp {
             .as_ref()
             .map(|state| state.target_session.clone())
             .unwrap_or_default();
+        let pending_input_depth = self.pending_input_depth();
+        let oldest_pending_input_seq = self
+            .pending_interactive_inputs
+            .front()
+            .map(|trace| trace.seq)
+            .unwrap_or(0);
+        let oldest_pending_input_age_ms = self.oldest_pending_input_age_ms(Instant::now());
 
         self.event_log.log(
             LogEvent::new("frame", "rendered")
@@ -983,7 +1176,10 @@ impl GroveApp {
                 .with_data("app_start_ts", Value::from(app_start_ts))
                 .with_data("width", Value::from(frame.buffer.width()))
                 .with_data("height", Value::from(frame.buffer.height()))
-                .with_data("line_count", Value::from(u64::try_from(lines.len()).unwrap_or(u64::MAX)))
+                .with_data(
+                    "line_count",
+                    Value::from(u64::try_from(lines.len()).unwrap_or(u64::MAX)),
+                )
                 .with_data(
                     "non_empty_line_count",
                     Value::from(u64::try_from(non_empty_line_count).unwrap_or(u64::MAX)),
@@ -1001,6 +1197,15 @@ impl GroveApp {
                 )
                 .with_data("preview_auto_scroll", Value::from(self.preview.auto_scroll))
                 .with_data("output_changing", Value::from(self.output_changing))
+                .with_data("pending_input_depth", Value::from(pending_input_depth))
+                .with_data(
+                    "oldest_pending_input_seq",
+                    Value::from(oldest_pending_input_seq),
+                )
+                .with_data(
+                    "oldest_pending_input_age_ms",
+                    Value::from(oldest_pending_input_age_ms),
+                )
                 .with_data(
                     "frame_lines",
                     Value::Array(lines.into_iter().map(Value::from).collect()),
@@ -1154,22 +1359,67 @@ impl GroveApp {
     }
 
     fn poll_interactive_cursor(&mut self, target_session: &str) {
-        let Ok(raw_metadata) = self.tmux_input.capture_cursor_metadata(target_session) else {
-            return;
+        let started_at = Instant::now();
+        let raw_metadata = match self.tmux_input.capture_cursor_metadata(target_session) {
+            Ok(raw_metadata) => raw_metadata,
+            Err(error) => {
+                self.event_log.log(
+                    LogEvent::new("preview_poll", "cursor_capture_failed")
+                        .with_data("session", Value::from(target_session.to_string()))
+                        .with_data(
+                            "duration_ms",
+                            Value::from(Self::duration_millis(
+                                Instant::now().saturating_duration_since(started_at),
+                            )),
+                        )
+                        .with_data("error", Value::from(error.to_string())),
+                );
+                return;
+            }
         };
-        let Some(metadata) = parse_cursor_metadata(&raw_metadata) else {
-            return;
+        let capture_duration_ms =
+            Self::duration_millis(Instant::now().saturating_duration_since(started_at));
+        let parse_started_at = Instant::now();
+        let metadata = match parse_cursor_metadata(&raw_metadata) {
+            Some(metadata) => metadata,
+            None => {
+                self.event_log.log(
+                    LogEvent::new("preview_poll", "cursor_parse_failed")
+                        .with_data("session", Value::from(target_session.to_string()))
+                        .with_data("capture_ms", Value::from(capture_duration_ms))
+                        .with_data(
+                            "parse_ms",
+                            Value::from(Self::duration_millis(
+                                Instant::now().saturating_duration_since(parse_started_at),
+                            )),
+                        )
+                        .with_data("raw_metadata", Value::from(raw_metadata)),
+                );
+                return;
+            }
         };
         let Some(state) = self.interactive.as_mut() else {
             return;
         };
 
-        state.update_cursor(
+        let changed = state.update_cursor(
             metadata.cursor_row,
             metadata.cursor_col,
             metadata.cursor_visible,
             metadata.pane_height,
             metadata.pane_width,
+        );
+        let parse_duration_ms =
+            Self::duration_millis(Instant::now().saturating_duration_since(parse_started_at));
+        self.event_log.log(
+            LogEvent::new("preview_poll", "cursor_capture_completed")
+                .with_data("session", Value::from(target_session.to_string()))
+                .with_data("capture_ms", Value::from(capture_duration_ms))
+                .with_data("parse_ms", Value::from(parse_duration_ms))
+                .with_data("changed", Value::from(changed))
+                .with_data("cursor_visible", Value::from(metadata.cursor_visible))
+                .with_data("cursor_row", Value::from(metadata.cursor_row))
+                .with_data("cursor_col", Value::from(metadata.cursor_col)),
         );
     }
 
@@ -1220,27 +1470,167 @@ impl GroveApp {
             return;
         };
 
+        let capture_started_at = Instant::now();
         match self
             .tmux_input
             .capture_output(&session_name, 600, include_escape_sequences)
         {
             Ok(output) => {
+                let after_capture = Instant::now();
+                let capture_duration_ms = Self::duration_millis(
+                    after_capture.saturating_duration_since(capture_started_at),
+                );
+                let apply_started_at = Instant::now();
                 let update = self.preview.apply_capture(&output);
+                let apply_capture_ms = Self::duration_millis(
+                    Instant::now().saturating_duration_since(apply_started_at),
+                );
                 self.output_changing = update.changed_cleaned;
                 self.last_tmux_error = None;
+                self.event_log.log(
+                    LogEvent::new("preview_poll", "capture_completed")
+                        .with_data("session", Value::from(session_name.clone()))
+                        .with_data("capture_ms", Value::from(capture_duration_ms))
+                        .with_data("apply_capture_ms", Value::from(apply_capture_ms))
+                        .with_data(
+                            "total_ms",
+                            Value::from(Self::duration_millis(
+                                Instant::now().saturating_duration_since(capture_started_at),
+                            )),
+                        )
+                        .with_data(
+                            "output_bytes",
+                            Value::from(u64::try_from(output.len()).unwrap_or(u64::MAX)),
+                        )
+                        .with_data("changed", Value::from(update.changed_cleaned))
+                        .with_data(
+                            "include_escape_sequences",
+                            Value::from(include_escape_sequences),
+                        ),
+                );
                 if update.changed_cleaned {
                     let line_count = u64::try_from(self.preview.lines.len()).unwrap_or(u64::MAX);
-                    self.event_log.log(
-                        LogEvent::new("preview_update", "output_changed")
-                            .with_data("line_count", Value::from(line_count))
-                            .with_data("session", Value::from(session_name.clone())),
-                    );
+                    let now = Instant::now();
+                    let mut output_event = LogEvent::new("preview_update", "output_changed")
+                        .with_data("line_count", Value::from(line_count))
+                        .with_data("session", Value::from(session_name.clone()));
+                    let consumed_inputs = self.drain_pending_inputs_for_session(&session_name);
+                    if let Some(first_input) = consumed_inputs.first() {
+                        let last_index = consumed_inputs.len().saturating_sub(1);
+                        let last_input = &consumed_inputs[last_index];
+                        let oldest_input_to_preview_ms = Self::duration_millis(
+                            now.saturating_duration_since(first_input.received_at),
+                        );
+                        let newest_input_to_preview_ms = Self::duration_millis(
+                            now.saturating_duration_since(last_input.received_at),
+                        );
+                        let oldest_tmux_to_preview_ms = Self::duration_millis(
+                            now.saturating_duration_since(first_input.forwarded_at),
+                        );
+                        let newest_tmux_to_preview_ms = Self::duration_millis(
+                            now.saturating_duration_since(last_input.forwarded_at),
+                        );
+                        let consumed_count =
+                            u64::try_from(consumed_inputs.len()).unwrap_or(u64::MAX);
+                        let consumed_seq_first = first_input.seq;
+                        let consumed_seq_last = last_input.seq;
+
+                        output_event = output_event
+                            .with_data("input_seq", Value::from(consumed_seq_first))
+                            .with_data(
+                                "input_to_preview_ms",
+                                Value::from(oldest_input_to_preview_ms),
+                            )
+                            .with_data("tmux_to_preview_ms", Value::from(oldest_tmux_to_preview_ms))
+                            .with_data("consumed_input_count", Value::from(consumed_count))
+                            .with_data("consumed_input_seq_first", Value::from(consumed_seq_first))
+                            .with_data("consumed_input_seq_last", Value::from(consumed_seq_last))
+                            .with_data(
+                                "newest_input_to_preview_ms",
+                                Value::from(newest_input_to_preview_ms),
+                            )
+                            .with_data(
+                                "newest_tmux_to_preview_ms",
+                                Value::from(newest_tmux_to_preview_ms),
+                            );
+
+                        self.log_input_event_with_fields(
+                            "interactive_input_to_preview",
+                            consumed_seq_first,
+                            vec![
+                                ("session".to_string(), Value::from(session_name.clone())),
+                                (
+                                    "input_to_preview_ms".to_string(),
+                                    Value::from(oldest_input_to_preview_ms),
+                                ),
+                                (
+                                    "tmux_to_preview_ms".to_string(),
+                                    Value::from(oldest_tmux_to_preview_ms),
+                                ),
+                                (
+                                    "newest_input_to_preview_ms".to_string(),
+                                    Value::from(newest_input_to_preview_ms),
+                                ),
+                                (
+                                    "newest_tmux_to_preview_ms".to_string(),
+                                    Value::from(newest_tmux_to_preview_ms),
+                                ),
+                                (
+                                    "consumed_input_count".to_string(),
+                                    Value::from(consumed_count),
+                                ),
+                                (
+                                    "consumed_input_seq_first".to_string(),
+                                    Value::from(consumed_seq_first),
+                                ),
+                                (
+                                    "consumed_input_seq_last".to_string(),
+                                    Value::from(consumed_seq_last),
+                                ),
+                                (
+                                    "queue_depth".to_string(),
+                                    Value::from(self.pending_input_depth()),
+                                ),
+                            ],
+                        );
+                        if consumed_inputs.len() > 1 {
+                            self.log_input_event_with_fields(
+                                "interactive_inputs_coalesced",
+                                consumed_seq_first,
+                                vec![
+                                    ("session".to_string(), Value::from(session_name.clone())),
+                                    (
+                                        "consumed_input_count".to_string(),
+                                        Value::from(consumed_count),
+                                    ),
+                                    (
+                                        "consumed_input_seq_last".to_string(),
+                                        Value::from(consumed_seq_last),
+                                    ),
+                                ],
+                            );
+                        }
+                    }
+                    self.event_log.log(output_event);
                 }
             }
             Err(error) => {
+                let capture_duration_ms = Self::duration_millis(
+                    Instant::now().saturating_duration_since(capture_started_at),
+                );
                 self.output_changing = false;
                 let message = error.to_string();
                 self.last_tmux_error = Some(message.clone());
+                self.event_log.log(
+                    LogEvent::new("preview_poll", "capture_failed")
+                        .with_data("session", Value::from(session_name))
+                        .with_data("capture_ms", Value::from(capture_duration_ms))
+                        .with_data(
+                            "include_escape_sequences",
+                            Value::from(include_escape_sequences),
+                        )
+                        .with_data("error", Value::from(message.clone())),
+                );
                 self.log_tmux_error(message);
                 self.refresh_preview_summary();
             }
@@ -1931,19 +2321,99 @@ impl GroveApp {
         }
     }
 
-    fn send_interactive_action(&mut self, action: &InteractiveAction, target_session: &str) {
+    fn send_interactive_action(
+        &mut self,
+        action: &InteractiveAction,
+        target_session: &str,
+        trace_context: Option<InputTraceContext>,
+    ) {
         let Some(command) = tmux_send_keys_command(target_session, action) else {
+            if let Some(trace_context) = trace_context {
+                self.log_input_event_with_fields(
+                    "interactive_action_unmapped",
+                    trace_context.seq,
+                    vec![
+                        (
+                            "action".to_string(),
+                            Value::from(Self::interactive_action_kind(action)),
+                        ),
+                        (
+                            "session".to_string(),
+                            Value::from(target_session.to_string()),
+                        ),
+                    ],
+                );
+            }
             return;
         };
 
+        let send_started_at = Instant::now();
         match self.execute_tmux_command(&command) {
             Ok(()) => {
                 self.last_tmux_error = None;
+                if let Some(trace_context) = trace_context {
+                    let forwarded_at = Instant::now();
+                    let send_duration_ms = Self::duration_millis(
+                        forwarded_at.saturating_duration_since(send_started_at),
+                    );
+                    self.track_pending_interactive_input(
+                        trace_context,
+                        target_session,
+                        forwarded_at,
+                    );
+
+                    let mut fields = vec![
+                        (
+                            "session".to_string(),
+                            Value::from(target_session.to_string()),
+                        ),
+                        (
+                            "action".to_string(),
+                            Value::from(Self::interactive_action_kind(action)),
+                        ),
+                        ("tmux_send_ms".to_string(), Value::from(send_duration_ms)),
+                        (
+                            "queue_depth".to_string(),
+                            Value::from(
+                                u64::try_from(self.pending_interactive_inputs.len())
+                                    .unwrap_or(u64::MAX),
+                            ),
+                        ),
+                    ];
+                    if let InteractiveAction::SendLiteral(text) = action {
+                        fields.push((
+                            "literal_chars".to_string(),
+                            Value::from(u64::try_from(text.chars().count()).unwrap_or(u64::MAX)),
+                        ));
+                    }
+                    self.log_input_event_with_fields(
+                        "interactive_forwarded",
+                        trace_context.seq,
+                        fields,
+                    );
+                }
             }
             Err(error) => {
                 let message = error.to_string();
                 self.last_tmux_error = Some(message.clone());
                 self.log_tmux_error(message);
+                if let Some(trace_context) = trace_context {
+                    self.log_input_event_with_fields(
+                        "interactive_forward_failed",
+                        trace_context.seq,
+                        vec![
+                            (
+                                "session".to_string(),
+                                Value::from(target_session.to_string()),
+                            ),
+                            (
+                                "action".to_string(),
+                                Value::from(Self::interactive_action_kind(action)),
+                            ),
+                            ("error".to_string(), Value::from(error.to_string())),
+                        ],
+                    );
+                }
             }
         }
     }
@@ -1962,29 +2432,79 @@ impl GroveApp {
         }
     }
 
-    fn paste_cached_text(&mut self, target_session: &str, bracketed_paste: bool) {
+    fn paste_cached_text(
+        &mut self,
+        target_session: &str,
+        bracketed_paste: bool,
+        trace_context: Option<InputTraceContext>,
+    ) {
         let Some(text) = self.copied_text.clone() else {
             self.last_tmux_error = Some("no copied text in session".to_string());
+            if let Some(trace_context) = trace_context {
+                self.log_input_event_with_fields(
+                    "paste_cache_missing",
+                    trace_context.seq,
+                    vec![(
+                        "session".to_string(),
+                        Value::from(target_session.to_string()),
+                    )],
+                );
+            }
             return;
         };
 
         let payload = encode_paste_payload(&text, bracketed_paste);
-        self.send_interactive_action(&InteractiveAction::SendLiteral(payload), target_session);
+        self.send_interactive_action(
+            &InteractiveAction::SendLiteral(payload),
+            target_session,
+            trace_context,
+        );
     }
 
     fn handle_interactive_key(&mut self, key_event: KeyEvent) {
         let now = Instant::now();
+        let input_seq = self.next_input_seq();
         if let KeyCode::Char(character) = key_event.code
             && key_event.modifiers.is_empty()
             && let Some(state) = self.interactive.as_mut()
             && state.should_drop_split_mouse_fragment(character, now)
         {
+            self.log_input_event_with_fields(
+                "interactive_key_dropped_mouse_fragment",
+                input_seq,
+                vec![
+                    ("code".to_string(), Value::from("char")),
+                    ("modifiers".to_string(), Value::from("none")),
+                ],
+            );
             return;
         }
 
         let Some(interactive_key) = Self::map_interactive_key(key_event) else {
+            self.log_input_event_with_fields(
+                "interactive_key_unmapped",
+                input_seq,
+                vec![(
+                    "code".to_string(),
+                    Value::from(format!("{:?}", key_event.code)),
+                )],
+            );
             return;
         };
+        self.log_input_event_with_fields(
+            "interactive_key_received",
+            input_seq,
+            vec![
+                (
+                    "key".to_string(),
+                    Value::from(Self::interactive_key_kind(&interactive_key)),
+                ),
+                (
+                    "repeat".to_string(),
+                    Value::from(matches!(key_event.kind, KeyEventKind::Repeat)),
+                ),
+            ],
+        );
 
         let (action, target_session, bracketed_paste) = {
             let Some(state) = self.interactive.as_mut() else {
@@ -1995,6 +2515,21 @@ impl GroveApp {
             let bracketed_paste = state.bracketed_paste;
             (action, session, bracketed_paste)
         };
+        self.log_input_event_with_fields(
+            "interactive_action_selected",
+            input_seq,
+            vec![
+                (
+                    "action".to_string(),
+                    Value::from(Self::interactive_action_kind(&action)),
+                ),
+                ("session".to_string(), Value::from(target_session.clone())),
+            ],
+        );
+        let trace_context = InputTraceContext {
+            seq: input_seq,
+            received_at: now,
+        };
 
         match action {
             InteractiveAction::ExitInteractive => {
@@ -2004,17 +2539,19 @@ impl GroveApp {
             }
             InteractiveAction::CopySelection => self.copy_interactive_capture(&target_session),
             InteractiveAction::PasteClipboard => {
-                self.paste_cached_text(&target_session, bracketed_paste)
+                self.paste_cached_text(&target_session, bracketed_paste, Some(trace_context))
             }
             InteractiveAction::Noop
             | InteractiveAction::SendNamed(_)
             | InteractiveAction::SendLiteral(_) => {
-                self.send_interactive_action(&action, &target_session);
+                self.send_interactive_action(&action, &target_session, Some(trace_context));
             }
         }
     }
 
     fn handle_paste_event(&mut self, paste_event: PasteEvent) {
+        let input_seq = self.next_input_seq();
+        let received_at = Instant::now();
         let (target_session, bracketed) = {
             let Some(state) = self.interactive.as_mut() else {
                 return;
@@ -2022,9 +2559,30 @@ impl GroveApp {
             state.bracketed_paste = paste_event.bracketed;
             (state.target_session.clone(), state.bracketed_paste)
         };
+        self.log_input_event_with_fields(
+            "interactive_paste_received",
+            input_seq,
+            vec![
+                (
+                    "chars".to_string(),
+                    Value::from(
+                        u64::try_from(paste_event.text.chars().count()).unwrap_or(u64::MAX),
+                    ),
+                ),
+                ("bracketed".to_string(), Value::from(paste_event.bracketed)),
+                ("session".to_string(), Value::from(target_session.clone())),
+            ],
+        );
 
         let payload = encode_paste_payload(&paste_event.text, bracketed || paste_event.bracketed);
-        self.send_interactive_action(&InteractiveAction::SendLiteral(payload), &target_session);
+        self.send_interactive_action(
+            &InteractiveAction::SendLiteral(payload),
+            &target_session,
+            Some(InputTraceContext {
+                seq: input_seq,
+                received_at,
+            }),
+        );
     }
 
     fn handle_non_interactive_key(&mut self, key_event: KeyEvent) {
@@ -2399,8 +2957,20 @@ impl GroveApp {
     }
 
     fn schedule_next_tick(&mut self) -> Cmd<Msg> {
+        let scheduled_at = Instant::now();
         let interval = self.next_poll_interval();
-        self.next_tick_due_at = Some(Instant::now() + interval);
+        let interval_ms = Self::duration_millis(interval);
+        self.next_tick_due_at = Some(scheduled_at + interval);
+        self.next_tick_interval_ms = Some(interval_ms);
+        self.event_log.log(
+            LogEvent::new("tick", "scheduled")
+                .with_data("interval_ms", Value::from(interval_ms))
+                .with_data("pending_depth", Value::from(self.pending_input_depth()))
+                .with_data(
+                    "oldest_pending_age_ms",
+                    Value::from(self.oldest_pending_input_age_ms(scheduled_at)),
+                ),
+        );
         Cmd::tick(interval)
     }
 
@@ -2842,16 +3412,56 @@ impl Model for GroveApp {
     }
 
     fn update(&mut self, msg: Msg) -> Cmd<Self::Message> {
+        let update_started_at = Instant::now();
+        let msg_kind = Self::msg_kind(&msg);
         let before = self.capture_transition_snapshot();
         let cmd = match msg {
             Msg::Tick => {
                 let now = Instant::now();
+                let pending_before = self.pending_input_depth();
+                let oldest_pending_before_ms = self.oldest_pending_input_age_ms(now);
+                let late_by_ms = self
+                    .next_tick_due_at
+                    .map(|due_at| Self::duration_millis(now.saturating_duration_since(due_at)))
+                    .unwrap_or(0);
+                let early_by_ms = self
+                    .next_tick_due_at
+                    .map(|due_at| Self::duration_millis(due_at.saturating_duration_since(now)))
+                    .unwrap_or(0);
                 let _ = clear_expired_flash_message(&mut self.flash, Instant::now());
                 if !self.tick_is_due(now) {
+                    self.event_log.log(
+                        LogEvent::new("tick", "skipped")
+                            .with_data("reason", Value::from("not_due"))
+                            .with_data(
+                                "interval_ms",
+                                Value::from(self.next_tick_interval_ms.unwrap_or(0)),
+                            )
+                            .with_data("late_by_ms", Value::from(late_by_ms))
+                            .with_data("early_by_ms", Value::from(early_by_ms))
+                            .with_data("pending_depth", Value::from(pending_before))
+                            .with_data(
+                                "oldest_pending_age_ms",
+                                Value::from(oldest_pending_before_ms),
+                            ),
+                    );
                     Cmd::None
                 } else {
                     self.next_tick_due_at = None;
+                    self.next_tick_interval_ms = None;
                     self.poll_preview();
+                    let pending_after = self.pending_input_depth();
+                    self.event_log.log(
+                        LogEvent::new("tick", "processed")
+                            .with_data("late_by_ms", Value::from(late_by_ms))
+                            .with_data("early_by_ms", Value::from(early_by_ms))
+                            .with_data("pending_before", Value::from(pending_before))
+                            .with_data("pending_after", Value::from(pending_after))
+                            .with_data(
+                                "drained_count",
+                                Value::from(pending_before.saturating_sub(pending_after)),
+                            ),
+                    );
                     self.schedule_next_tick()
                 }
             }
@@ -2888,10 +3498,22 @@ impl Model for GroveApp {
             Msg::Noop => Cmd::None,
         };
         self.emit_transition_events(&before);
+        self.event_log.log(
+            LogEvent::new("update_timing", "message_handled")
+                .with_data("msg_kind", Value::from(msg_kind))
+                .with_data(
+                    "update_ms",
+                    Value::from(Self::duration_millis(
+                        Instant::now().saturating_duration_since(update_started_at),
+                    )),
+                )
+                .with_data("pending_depth", Value::from(self.pending_input_depth())),
+        );
         cmd
     }
 
     fn view(&self, frame: &mut Frame) {
+        let view_started_at = Instant::now();
         frame.enable_hit_testing();
         let area = Rect::from_size(frame.buffer.width(), frame.buffer.height());
         let layout = Self::view_layout_for_size(
@@ -2907,8 +3529,34 @@ impl Model for GroveApp {
         self.render_status_line(frame, layout.status);
         self.render_create_dialog_overlay(frame, area);
         self.render_launch_dialog_overlay(frame, area);
+        let draw_completed_at = Instant::now();
         self.last_hit_grid.replace(frame.hit_grid.clone());
+        let frame_log_started_at = Instant::now();
         self.log_frame_render(frame);
+        let view_completed_at = Instant::now();
+        self.event_log.log(
+            LogEvent::new("frame", "timing")
+                .with_data(
+                    "draw_ms",
+                    Value::from(Self::duration_millis(
+                        draw_completed_at.saturating_duration_since(view_started_at),
+                    )),
+                )
+                .with_data(
+                    "frame_log_ms",
+                    Value::from(Self::duration_millis(
+                        view_completed_at.saturating_duration_since(frame_log_started_at),
+                    )),
+                )
+                .with_data(
+                    "view_ms",
+                    Value::from(Self::duration_millis(
+                        view_completed_at.saturating_duration_since(view_started_at),
+                    )),
+                )
+                .with_data("degradation", Value::from(frame.degradation.as_str()))
+                .with_data("pending_depth", Value::from(self.pending_input_depth())),
+        );
     }
 }
 
@@ -2936,7 +3584,8 @@ fn run_with_logger(
 
     if let Some(app_start_ts) = debug_record_start_ts {
         event_log.log(
-            LogEvent::new("debug_record", "started").with_data("app_start_ts", Value::from(app_start_ts)),
+            LogEvent::new("debug_record", "started")
+                .with_data("app_start_ts", Value::from(app_start_ts)),
         );
     }
 
@@ -3158,6 +3807,13 @@ mod tests {
             return Vec::new();
         };
         events.clone()
+    }
+
+    fn clear_recorded_events(events: &RecordedEvents) {
+        let Ok(mut events) = events.lock() else {
+            return;
+        };
+        events.clear();
     }
 
     fn assert_kind_subsequence(actual: &[String], expected: &[&str]) {
@@ -4714,6 +5370,220 @@ mod tests {
     }
 
     #[test]
+    fn interactive_input_latency_correlates_forwarded_key_with_preview_update() {
+        let (mut app, _commands, _captures, _cursor_captures, events) =
+            fixture_app_with_tmux_and_events(
+                WorkspaceStatus::Active,
+                vec![
+                    Ok("initial-preview".to_string()),
+                    Ok("initial-preview\nx".to_string()),
+                ],
+                vec![Ok("1 0 0 120 40".to_string())],
+            );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+        clear_recorded_events(&events);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+        );
+        force_tick_due(&mut app);
+        ftui::Model::update(&mut app, Msg::Tick);
+
+        let recorded = recorded_events(&events);
+        let forwarded = recorded
+            .iter()
+            .find(|event| event.event == "input" && event.kind == "interactive_forwarded")
+            .expect("forwarded input event should be logged");
+        let seq = forwarded
+            .data
+            .get("seq")
+            .and_then(Value::as_u64)
+            .expect("forwarded input should include seq");
+
+        let latency = recorded
+            .iter()
+            .find(|event| event.event == "input" && event.kind == "interactive_input_to_preview")
+            .expect("input latency event should be logged");
+        assert_eq!(latency.data.get("seq").and_then(Value::as_u64), Some(seq));
+        assert!(
+            latency
+                .data
+                .get("input_to_preview_ms")
+                .and_then(Value::as_u64)
+                .is_some()
+        );
+        assert!(
+            latency
+                .data
+                .get("tmux_to_preview_ms")
+                .and_then(Value::as_u64)
+                .is_some()
+        );
+
+        let output_changed = recorded
+            .iter()
+            .find(|event| event.event == "preview_update" && event.kind == "output_changed")
+            .expect("preview update event should be logged");
+        assert_eq!(
+            output_changed.data.get("input_seq").and_then(Value::as_u64),
+            Some(seq)
+        );
+    }
+
+    #[test]
+    fn preview_update_logs_coalesced_input_range() {
+        let (mut app, _commands, _captures, _cursor_captures, events) =
+            fixture_app_with_tmux_and_events(
+                WorkspaceStatus::Active,
+                vec![
+                    Ok("initial-preview".to_string()),
+                    Ok("initial-preview\nab".to_string()),
+                ],
+                vec![Ok("1 0 0 120 40".to_string())],
+            );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+        clear_recorded_events(&events);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('a')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('b')).with_kind(KeyEventKind::Press)),
+        );
+        force_tick_due(&mut app);
+        ftui::Model::update(&mut app, Msg::Tick);
+
+        let recorded = recorded_events(&events);
+        let output_changed = recorded
+            .iter()
+            .find(|event| event.event == "preview_update" && event.kind == "output_changed")
+            .expect("preview update event should be logged");
+        assert_eq!(
+            output_changed
+                .data
+                .get("consumed_input_count")
+                .and_then(Value::as_u64),
+            Some(2)
+        );
+        assert_eq!(
+            output_changed
+                .data
+                .get("consumed_input_seq_first")
+                .and_then(Value::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            output_changed
+                .data
+                .get("consumed_input_seq_last")
+                .and_then(Value::as_u64),
+            Some(2)
+        );
+
+        let coalesced = recorded
+            .iter()
+            .find(|event| event.event == "input" && event.kind == "interactive_inputs_coalesced")
+            .expect("coalesced input event should be logged");
+        assert_eq!(
+            coalesced
+                .data
+                .get("consumed_input_count")
+                .and_then(Value::as_u64),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn tick_logs_skip_reason_when_not_due() {
+        let (mut app, _commands, _captures, _cursor_captures, events) =
+            fixture_app_with_tmux_and_events(WorkspaceStatus::Active, Vec::new(), Vec::new());
+        clear_recorded_events(&events);
+
+        app.next_tick_due_at = Some(Instant::now() + Duration::from_secs(10));
+        app.next_tick_interval_ms = Some(10_000);
+        ftui::Model::update(&mut app, Msg::Tick);
+
+        let recorded = recorded_events(&events);
+        let skipped = recorded
+            .iter()
+            .find(|event| event.event == "tick" && event.kind == "skipped")
+            .expect("tick skip event should be logged");
+        assert_eq!(
+            skipped.data.get("reason").and_then(Value::as_str),
+            Some("not_due")
+        );
+        assert_eq!(
+            skipped.data.get("interval_ms").and_then(Value::as_u64),
+            Some(10_000)
+        );
+    }
+
+    #[test]
+    fn interactive_exit_clears_pending_input_traces() {
+        let (mut app, _commands, _captures, _cursor_captures, events) =
+            fixture_app_with_tmux_and_events(WorkspaceStatus::Active, Vec::new(), Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+        clear_recorded_events(&events);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('\\'))
+                    .with_modifiers(Modifiers::CTRL)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+
+        let recorded = recorded_events(&events);
+        let cleared = recorded
+            .iter()
+            .find(|event| event.event == "input" && event.kind == "pending_inputs_cleared")
+            .expect("pending traces should be cleared when interactive exits");
+        assert_eq!(
+            cleared.data.get("session").and_then(Value::as_str),
+            Some("grove-ws-feature-a")
+        );
+        assert!(
+            cleared
+                .data
+                .get("cleared")
+                .and_then(Value::as_u64)
+                .is_some_and(|value| value > 0)
+        );
+    }
+
+    #[test]
     fn codex_live_preview_capture_keeps_tmux_escape_output() {
         let (mut app, _commands, _captures, _cursor_captures, calls) =
             fixture_app_with_tmux_and_calls(
@@ -5313,16 +6183,15 @@ mod tests {
         }));
         assert!(frame_event.data.get("frame_hash").is_some());
         assert_eq!(
-            frame_event
-                .data
-                .get("degradation")
-                .and_then(Value::as_str),
+            frame_event.data.get("degradation").and_then(Value::as_str),
             Some("Full")
         );
-        assert!(frame_event
-            .data
-            .get("non_empty_line_count")
-            .and_then(Value::as_u64)
-            .is_some_and(|count| count > 0));
+        assert!(
+            frame_event
+                .data
+                .get("non_empty_line_count")
+                .and_then(Value::as_u64)
+                .is_some_and(|count| count > 0)
+        );
     }
 }
