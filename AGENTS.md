@@ -1,19 +1,64 @@
 # Grove
 
-Planning and design docs for the Grove project.
+A minimal workspace manager for AI coding agents. Rust + FrankenTUI.
 
 ## Main Instruction
 
 - Always update `docs/implementation-plan.md` after work is done, before final handoff.
 - Keep the update concrete: what changed, current status, and next steps.
 
+## Reference Codebases
+
+The `.reference/` directory contains two codebases you should consult
+heavily:
+
+- `.reference/frankentui/` -- the TUI framework Grove is built on (Elm/MVU
+  architecture, widgets, layout, subscriptions, hit testing, rendering)
+- `.reference/sidecar/` -- the Go application Grove is a simplified port of
+  (tmux integration, interactive mode, polling, status detection, worktree
+  management, mouse handling, modal dialogs, pane resize)
+
+**Use these before inventing anything.** Grove is largely a subset of
+sidecar rewritten in Rust on FrankenTUI. Most architectural decisions
+(especially around terminal management, tmux session lifecycle, adaptive
+polling, cursor overlay, key forwarding, output capture) should match
+sidecar's proven patterns. When you're unsure how to implement something,
+read the corresponding sidecar code first. When you're unsure how to use
+an ftui API, read the FrankenTUI source and examples.
+
+Specific mapping:
+
+| Grove concern | Sidecar reference |
+|---|---|
+| Tmux sessions, capture, send-keys | `internal/tty/` |
+| Interactive mode, key forwarding | `internal/tty/model.go`, `keymap.go` |
+| Polling, output buffer, change detection | `internal/tty/output_buffer.go` |
+| Mouse hit testing, drag-to-resize | `internal/mouse/` |
+| Modal dialogs | `internal/modal/` |
+| Workspace list, status icons | `internal/plugins/workspace/` |
+| Agent status detection | `internal/plugins/workspace/agent.go` |
+| Worktree operations | `internal/app/git.go` |
+
+| Grove concern | FrankenTUI reference |
+|---|---|
+| Model/Update/View pattern | `ftui-runtime/src/program.rs` |
+| Subscriptions (polling ticks) | `ftui-runtime/src/subscription.rs` |
+| Layout (Flex, Constraint) | `ftui-layout/src/` |
+| Hit regions (mouse) | `ftui-render/src/frame.rs` (HitGrid) |
+| Widgets (TextInput, Block) | `ftui-widgets/src/` |
+| Styling (colors, attrs) | `ftui-style/src/` |
+| Buffer/Cell rendering | `ftui-render/src/buffer.rs`, `cell.rs` |
+
 ## Project Structure
 
 ```text
+PRD.md                    -- full product requirements + technical implementation
 docs/
-  PRD.md
   implementation-plan.md
   adr/
+.reference/
+  frankentui/             -- TUI framework (Rust, Elm architecture)
+  sidecar/                -- reference app (Go, Bubble Tea)
 ```
 
 ## Workflow

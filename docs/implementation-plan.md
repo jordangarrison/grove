@@ -3,6 +3,32 @@
 This document turns the PRD into a phased execution plan with explicit
 quality gates.
 
+## Update 2026-02-13, Remove Codex `--no-alt-screen` Default
+
+What changed:
+- Removed Codex default `--no-alt-screen` from launch command construction.
+  Defaults now match PRD command mapping:
+  - normal: `codex`
+  - unsafe: `codex --dangerously-bypass-approvals-and-sandbox`
+  (`src/agent_runtime.rs`).
+- Updated runtime and TUI launch-flow tests to assert new Codex command values
+  (`src/agent_runtime.rs`, `src/tui.rs`).
+- Updated README harness example to run with `codex` command override
+  (`README.md`).
+
+Current status:
+- A/B harness runs against real Codex (`codex` vs `codex --no-alt-screen`)
+  showed equivalent stability in this environment (no style/plain oscillation
+  detected in either mode).
+- We no longer carry Codex-specific launch flags that appear redundant given the
+  current rendering/input fixes.
+
+Next steps:
+- Keep watching for regressions in real usage.
+- If edge terminals show flicker with default `codex`, use
+  `GROVE_CODEX_CMD='codex --no-alt-screen'` as immediate runtime override while
+  diagnosing.
+
 ## Update 2026-02-13, Restore Codex ANSI Styling In Preview
 
 What changed:

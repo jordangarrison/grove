@@ -2512,7 +2512,7 @@ mod tests {
                     "send-keys".to_string(),
                     "-t".to_string(),
                     "grove-ws-feature-a".to_string(),
-                    "codex --no-alt-screen".to_string(),
+                    "codex".to_string(),
                     "Enter".to_string(),
                 ],
             ]
@@ -2554,7 +2554,7 @@ mod tests {
                 "send-keys".to_string(),
                 "-t".to_string(),
                 "grove-ws-feature-a".to_string(),
-                "codex --dangerously-bypass-approvals-and-sandbox --no-alt-screen".to_string(),
+                "codex --dangerously-bypass-approvals-and-sandbox".to_string(),
                 "Enter".to_string(),
             ])
         );
@@ -2635,7 +2635,7 @@ mod tests {
                 "send-keys".to_string(),
                 "-t".to_string(),
                 "grove-ws-feature-a".to_string(),
-                "codex --dangerously-bypass-approvals-and-sandbox --no-alt-screen".to_string(),
+                "codex --dangerously-bypass-approvals-and-sandbox".to_string(),
                 "Enter".to_string(),
             ])
         );

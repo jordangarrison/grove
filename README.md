@@ -24,5 +24,5 @@ make ci
 scripts/check-codex-flicker.sh
 
 # run harness against real codex instead of fake emitter
-GROVE_FLICKER_CODEX_CMD='codex --no-alt-screen' scripts/check-codex-flicker.sh
+GROVE_FLICKER_CODEX_CMD='codex' scripts/check-codex-flicker.sh
 ```

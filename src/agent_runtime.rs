@@ -214,10 +214,8 @@ fn default_agent_command(agent: AgentType, skip_permissions: bool) -> String {
     match (agent, skip_permissions) {
         (AgentType::Claude, true) => "claude --dangerously-skip-permissions".to_string(),
         (AgentType::Claude, false) => "claude".to_string(),
-        (AgentType::Codex, true) => {
-            "codex --dangerously-bypass-approvals-and-sandbox --no-alt-screen".to_string()
-        }
-        (AgentType::Codex, false) => "codex --no-alt-screen".to_string(),
+        (AgentType::Codex, true) => "codex --dangerously-bypass-approvals-and-sandbox".to_string(),
+        (AgentType::Codex, false) => "codex".to_string(),
     }
 }
 
@@ -649,14 +647,11 @@ mod tests {
     }
 
     #[test]
-    fn codex_launch_command_always_disables_alt_screen() {
-        assert_eq!(
-            default_agent_command(AgentType::Codex, false),
-            "codex --no-alt-screen"
-        );
+    fn codex_launch_command_matches_prd_flags() {
+        assert_eq!(default_agent_command(AgentType::Codex, false), "codex");
         assert_eq!(
             default_agent_command(AgentType::Codex, true),
-            "codex --dangerously-bypass-approvals-and-sandbox --no-alt-screen"
+            "codex --dangerously-bypass-approvals-and-sandbox"
         );
     }
 
