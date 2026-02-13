@@ -3,6 +3,94 @@
 This document turns the PRD into a phased execution plan with explicit
 quality gates.
 
+## Update 2026-02-13, Codex Alternate-Screen Launch Fix
+
+What changed:
+- Updated Codex launch command construction to always include
+  `--no-alt-screen`, in both normal and unsafe launch modes
+  (`src/agent_runtime.rs`).
+- Added a focused unit test for Codex command composition so future refactors
+  cannot drop the flag (`src/agent_runtime.rs`).
+- Updated TUI launch-flow assertions to match the new Codex launch command in
+  start/default and unsafe-toggle paths (`src/tui.rs`).
+
+Current status:
+- Grove now starts Codex in inline mode in tmux-backed interactive preview,
+  reducing alternate-screen rendering corruption in split-pane usage.
+- Focused tests covering changed launch paths are green.
+
+Next steps:
+- Manual validation in the user environment: start Codex from Grove and confirm
+  stable rendering in preview + interactive modes.
+
+## Update 2026-02-13, Preview Rendering Stability
+
+What changed:
+- Fixed preview capture sanitization to strip ANSI control sequences before
+  line splitting (`src/agent_runtime.rs`), not just mouse fragments.
+- Kept mouse-fragment cleanup for bracketed fragments that may appear without
+  escape bytes.
+- Replaced interactive cursor overlay ANSI inversion with plain ASCII cursor
+  marker insertion (`|`) to avoid raw escape text in the preview
+  (`src/interactive.rs`).
+- Updated and added tests covering ANSI stripping and cursor overlay rendering
+  behavior (`src/agent_runtime.rs`, `src/interactive.rs`, `src/tui.rs`).
+
+Current status:
+- Manual UI regression reported (raw `[31m` style artifacts in preview) is
+  addressed at the sanitizer and overlay layers.
+- Focused test set for changed behavior is green.
+
+Next steps:
+- Re-run manual interactive preview check with real agent output (colored + mouse
+  events) to validate no control-sequence leakage.
+- If visual cursor emphasis needs improvement later, move to styled widget spans
+  instead of ANSI inline escapes.
+
+## Update 2026-02-13, ANSI Color Fidelity + Ctrl+Backslash Exit
+
+What changed:
+- Added dual capture outputs:
+  - `cleaned_output` for diffing/scroll logic (plain text).
+  - `render_output` that preserves SGR color sequences while stripping other
+    control traffic (`src/agent_runtime.rs`).
+- Added preview `render_lines` storage and viewport slicing so rendering can use
+  color-capable lines while behavior logic uses plain lines (`src/preview.rs`).
+- Implemented ANSI SGR parser to styled `ftui::text::Line` spans and switched
+  preview pane rendering to styled `Text` instead of joined raw strings
+  (`src/tui.rs`).
+- Added ANSI-safe cursor marker insertion for interactive mode so marker render
+  does not corrupt SGR streams (`src/interactive.rs`, `src/tui.rs`).
+- Fixed interactive exit mapping to accept control-character form of
+  `Ctrl+\` (`\u{1c}`) in addition to modifier+`\` form (`src/tui.rs`).
+
+Current status:
+- Preview now renders colors/styles from agent output instead of showing raw ANSI.
+- `Ctrl+\` interactive exit works for both common terminal encodings.
+- Targeted regression tests for parser, cursor overlay, capture change, and key
+  mapping are green.
+
+Next steps:
+- Manual validation in your terminal profile for:
+  - truecolor sequences (`38;2;r;g;b`)
+  - 256-color sequences (`38;5;n`)
+  - `Ctrl+\` on both local and remote tmux clients.
+
+## Update 2026-02-13, Interactive Exit Simplification
+
+What changed:
+- Removed `Ctrl+\` interactive exit path from key model/state handling.
+- Interactive exit is now single-path: double `Esc`.
+- Updated interactive status hints to remove `Ctrl+\` mention.
+- Updated interactive flow test to exit via double `Esc`.
+
+Current status:
+- Interactive mode behavior is simpler, fewer terminal-specific edge cases.
+- Existing `Esc Esc` exit behavior remains unchanged.
+
+Next steps:
+- Manual check: enter interactive mode, press `Esc Esc`, confirm immediate exit.
+
 ## Why Separate From PRD
 
 `PRD.md` defines what to build (product + technical requirements).

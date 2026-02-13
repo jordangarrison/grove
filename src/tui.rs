@@ -9,6 +9,7 @@ use ftui::core::event::{
 use ftui::core::geometry::Rect;
 use ftui::layout::{Constraint, Flex};
 use ftui::render::frame::Frame;
+use ftui::text::{Line as FtLine, Span as FtSpan, Text as FtText};
 use ftui::widgets::Widget;
 use ftui::widgets::block::Block;
 use ftui::widgets::borders::Borders;
@@ -23,9 +24,11 @@ use crate::agent_runtime::{
     LaunchRequest, build_launch_plan, poll_interval, session_name_for_workspace, stop_plan,
 };
 use crate::domain::{AgentType, WorkspaceStatus};
+#[cfg(test)]
+use crate::interactive::render_cursor_overlay;
 use crate::interactive::{
     InteractiveAction, InteractiveKey, InteractiveState, encode_paste_payload,
-    render_cursor_overlay, tmux_send_keys_command,
+    render_cursor_overlay_ansi, tmux_send_keys_command,
 };
 use crate::mouse::{
     clamp_sidebar_ratio, parse_sidebar_ratio, ratio_from_drag, serialize_sidebar_ratio,
@@ -207,6 +210,274 @@ fn parse_cursor_metadata(raw: &str) -> Option<CursorMetadata> {
         pane_width,
         pane_height,
     })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct AnsiStyleState {
+    fg: Option<PackedRgba>,
+    bg: Option<PackedRgba>,
+    bold: bool,
+    dim: bool,
+    italic: bool,
+    underline: bool,
+    blink: bool,
+    reverse: bool,
+    strikethrough: bool,
+}
+
+impl AnsiStyleState {
+    fn into_style(self) -> Option<Style> {
+        let mut style = Style::new();
+
+        if let Some(fg) = self.fg {
+            style = style.fg(fg);
+        }
+        if let Some(bg) = self.bg {
+            style = style.bg(bg);
+        }
+        if self.bold {
+            style = style.bold();
+        }
+        if self.dim {
+            style = style.dim();
+        }
+        if self.italic {
+            style = style.italic();
+        }
+        if self.underline {
+            style = style.underline();
+        }
+        if self.blink {
+            style = style.blink();
+        }
+        if self.reverse {
+            style = style.reverse();
+        }
+        if self.strikethrough {
+            style = style.strikethrough();
+        }
+
+        if style == Style::new() {
+            return None;
+        }
+
+        Some(style)
+    }
+}
+
+fn ansi_16_color(index: u8) -> PackedRgba {
+    match index {
+        0 => PackedRgba::rgb(0, 0, 0),
+        1 => PackedRgba::rgb(205, 49, 49),
+        2 => PackedRgba::rgb(13, 188, 121),
+        3 => PackedRgba::rgb(229, 229, 16),
+        4 => PackedRgba::rgb(36, 114, 200),
+        5 => PackedRgba::rgb(188, 63, 188),
+        6 => PackedRgba::rgb(17, 168, 205),
+        7 => PackedRgba::rgb(229, 229, 229),
+        8 => PackedRgba::rgb(102, 102, 102),
+        9 => PackedRgba::rgb(241, 76, 76),
+        10 => PackedRgba::rgb(35, 209, 139),
+        11 => PackedRgba::rgb(245, 245, 67),
+        12 => PackedRgba::rgb(59, 142, 234),
+        13 => PackedRgba::rgb(214, 112, 214),
+        14 => PackedRgba::rgb(41, 184, 219),
+        _ => PackedRgba::rgb(255, 255, 255),
+    }
+}
+
+fn ansi_256_color(index: u8) -> PackedRgba {
+    if index < 16 {
+        return ansi_16_color(index);
+    }
+
+    if index <= 231 {
+        let value = usize::from(index - 16);
+        let r = value / 36;
+        let g = (value % 36) / 6;
+        let b = value % 6;
+        let table = [0u8, 95, 135, 175, 215, 255];
+        return PackedRgba::rgb(table[r], table[g], table[b]);
+    }
+
+    let gray = 8u8.saturating_add((index - 232).saturating_mul(10));
+    PackedRgba::rgb(gray, gray, gray)
+}
+
+fn parse_sgr_extended_color(params: &[i32], start: usize) -> Option<(PackedRgba, usize)> {
+    let mode = *params.get(start)?;
+    match mode {
+        5 => {
+            let value = *params.get(start.saturating_add(1))?;
+            let palette = u8::try_from(value).ok()?;
+            Some((ansi_256_color(palette), 2))
+        }
+        2 => {
+            let r = u8::try_from(*params.get(start.saturating_add(1))?).ok()?;
+            let g = u8::try_from(*params.get(start.saturating_add(2))?).ok()?;
+            let b = u8::try_from(*params.get(start.saturating_add(3))?).ok()?;
+            Some((PackedRgba::rgb(r, g, b), 4))
+        }
+        _ => None,
+    }
+}
+
+fn apply_sgr_codes(raw_params: &str, state: &mut AnsiStyleState) {
+    let params: Vec<i32> = if raw_params.is_empty() {
+        vec![0]
+    } else {
+        raw_params
+            .split(';')
+            .map(|value| {
+                if value.is_empty() {
+                    0
+                } else {
+                    value.parse::<i32>().unwrap_or(-1)
+                }
+            })
+            .collect()
+    };
+
+    let mut index = 0usize;
+    while index < params.len() {
+        match params[index] {
+            0 => *state = AnsiStyleState::default(),
+            1 => state.bold = true,
+            2 => state.dim = true,
+            3 => state.italic = true,
+            4 => state.underline = true,
+            5 => state.blink = true,
+            7 => state.reverse = true,
+            9 => state.strikethrough = true,
+            22 => {
+                state.bold = false;
+                state.dim = false;
+            }
+            23 => state.italic = false,
+            24 => state.underline = false,
+            25 => state.blink = false,
+            27 => state.reverse = false,
+            29 => state.strikethrough = false,
+            30..=37 => {
+                if let Ok(code) = u8::try_from(params[index] - 30) {
+                    state.fg = Some(ansi_16_color(code));
+                }
+            }
+            90..=97 => {
+                if let Ok(code) = u8::try_from(params[index] - 90) {
+                    state.fg = Some(ansi_16_color(code.saturating_add(8)));
+                }
+            }
+            40..=47 => {
+                if let Ok(code) = u8::try_from(params[index] - 40) {
+                    state.bg = Some(ansi_16_color(code));
+                }
+            }
+            100..=107 => {
+                if let Ok(code) = u8::try_from(params[index] - 100) {
+                    state.bg = Some(ansi_16_color(code.saturating_add(8)));
+                }
+            }
+            38 => {
+                if let Some((color, consumed)) =
+                    parse_sgr_extended_color(&params, index.saturating_add(1))
+                {
+                    state.fg = Some(color);
+                    index = index.saturating_add(consumed);
+                }
+            }
+            48 => {
+                if let Some((color, consumed)) =
+                    parse_sgr_extended_color(&params, index.saturating_add(1))
+                {
+                    state.bg = Some(color);
+                    index = index.saturating_add(consumed);
+                }
+            }
+            39 => state.fg = None,
+            49 => state.bg = None,
+            _ => {}
+        }
+
+        index = index.saturating_add(1);
+    }
+}
+
+fn ansi_line_to_styled_line(line: &str) -> FtLine {
+    let mut spans: Vec<FtSpan<'static>> = Vec::new();
+    let mut buffer = String::new();
+    let mut state = AnsiStyleState::default();
+    let mut chars = line.chars().peekable();
+
+    let flush = |buffer: &mut String, spans: &mut Vec<FtSpan<'static>>, state: AnsiStyleState| {
+        if buffer.is_empty() {
+            return;
+        }
+        let content = std::mem::take(buffer);
+        if let Some(style) = state.into_style() {
+            spans.push(FtSpan::styled(content, style));
+        } else {
+            spans.push(FtSpan::raw(content));
+        }
+    };
+
+    while let Some(character) = chars.next() {
+        if character != '\u{1b}' {
+            buffer.push(character);
+            continue;
+        }
+
+        let Some(next) = chars.next() else {
+            break;
+        };
+
+        match next {
+            '[' => {
+                let mut params = String::new();
+                let mut final_char: Option<char> = None;
+                while let Some(value) = chars.next() {
+                    if ('\u{40}'..='\u{7e}').contains(&value) {
+                        final_char = Some(value);
+                        break;
+                    }
+                    params.push(value);
+                }
+                if final_char == Some('m') {
+                    flush(&mut buffer, &mut spans, state);
+                    apply_sgr_codes(&params, &mut state);
+                }
+            }
+            ']' => {
+                while let Some(value) = chars.next() {
+                    if value == '\u{7}' {
+                        break;
+                    }
+                    if value == '\u{1b}' && chars.next_if_eq(&'\\').is_some() {
+                        break;
+                    }
+                }
+            }
+            'P' | 'X' | '^' | '_' => {
+                while let Some(value) = chars.next() {
+                    if value == '\u{1b}' && chars.next_if_eq(&'\\').is_some() {
+                        break;
+                    }
+                }
+            }
+            '(' | ')' | '*' | '+' | '-' | '.' | '/' | '#' => {
+                let _ = chars.next();
+            }
+            _ => {}
+        }
+    }
+
+    flush(&mut buffer, &mut spans, state);
+
+    if spans.is_empty() {
+        return FtLine::raw("");
+    }
+
+    FtLine::from_spans(spans)
 }
 
 fn default_sidebar_ratio_path() -> PathBuf {
@@ -401,7 +672,7 @@ impl GroveApp {
                 if self.interactive.is_some() {
                     if let Some(message) = &self.last_tmux_error {
                         return format!(
-                            "Status: -- INSERT -- [Esc Esc]exit [Ctrl+\\]exit | unsafe={} | tmux error: {message}",
+                            "Status: -- INSERT -- [Esc Esc]exit | unsafe={} | tmux error: {message}",
                             if self.launch_skip_permissions {
                                 "on"
                             } else {
@@ -410,7 +681,7 @@ impl GroveApp {
                         );
                     }
                     return format!(
-                        "Status: -- INSERT -- [Esc Esc]exit [Ctrl+\\]exit | unsafe={}",
+                        "Status: -- INSERT -- [Esc Esc]exit | unsafe={}",
                         if self.launch_skip_permissions {
                             "on"
                         } else {
@@ -1025,9 +1296,6 @@ impl GroveApp {
             KeyCode::Escape => Some(InteractiveKey::Escape),
             KeyCode::F(index) => Some(InteractiveKey::Function(index)),
             KeyCode::Char(character) => {
-                if ctrl && character == '\\' {
-                    return Some(InteractiveKey::CtrlBackslash);
-                }
                 if alt && matches!(character, 'c' | 'C') {
                     return Some(InteractiveKey::AltC);
                 }
@@ -1245,47 +1513,81 @@ impl GroveApp {
         HitRegion::Outside
     }
 
-    fn apply_interactive_cursor_overlay(
-        &self,
-        visible_lines: &mut [String],
-        preview_height: usize,
-    ) {
+    fn interactive_cursor_target(&self, preview_height: usize) -> Option<(usize, usize, bool)> {
         let Some(interactive) = self.interactive.as_ref() else {
-            return;
+            return None;
         };
         if self.preview.lines.is_empty() {
-            return;
+            return None;
         }
 
         let pane_height = usize::from(interactive.pane_height.max(1));
         let cursor_row = usize::from(interactive.cursor_row);
         if cursor_row >= pane_height {
-            return;
+            return None;
         }
 
         let preview_len = self.preview.lines.len();
         let pane_start = preview_len.saturating_sub(pane_height);
         let cursor_line = pane_start.saturating_add(cursor_row);
         if cursor_line >= preview_len {
-            return;
+            return None;
         }
 
         let end = preview_len.saturating_sub(self.preview.offset);
         let start = end.saturating_sub(preview_height);
         if cursor_line < start || cursor_line >= end {
-            return;
+            return None;
         }
 
         let visible_index = cursor_line - start;
+        Some((
+            visible_index,
+            usize::from(interactive.cursor_col),
+            interactive.cursor_visible,
+        ))
+    }
+
+    #[cfg(test)]
+    fn apply_interactive_cursor_overlay(
+        &self,
+        visible_lines: &mut [String],
+        preview_height: usize,
+    ) {
+        let Some((visible_index, cursor_col, cursor_visible)) =
+            self.interactive_cursor_target(preview_height)
+        else {
+            return;
+        };
+
         let Some(line) = visible_lines.get_mut(visible_index) else {
             return;
         };
 
-        *line = render_cursor_overlay(
-            line,
-            usize::from(interactive.cursor_col),
-            interactive.cursor_visible,
-        );
+        *line = render_cursor_overlay(line, cursor_col, cursor_visible);
+    }
+
+    fn apply_interactive_cursor_overlay_render(
+        &self,
+        plain_visible_lines: &[String],
+        render_visible_lines: &mut [String],
+        preview_height: usize,
+    ) {
+        let Some((visible_index, cursor_col, cursor_visible)) =
+            self.interactive_cursor_target(preview_height)
+        else {
+            return;
+        };
+
+        let Some(plain_line) = plain_visible_lines.get(visible_index) else {
+            return;
+        };
+        let Some(render_line) = render_visible_lines.get_mut(visible_index) else {
+            return;
+        };
+
+        *render_line =
+            render_cursor_overlay_ansi(render_line, plain_line, cursor_col, cursor_visible);
     }
 
     fn select_workspace_by_mouse(&mut self, y: u16) {
@@ -1552,21 +1854,37 @@ impl GroveApp {
             })
             .unwrap_or_else(|| "none".to_string());
 
-        let mut lines = vec![format!("Selected: {selected_workspace}"), String::new()];
-        let metadata_rows = lines.len();
+        let metadata_rows = 2usize;
         let preview_height = usize::from(inner.height)
             .saturating_sub(metadata_rows)
             .max(1);
 
-        let mut visible_lines = self.preview.visible_lines(preview_height);
-        self.apply_interactive_cursor_overlay(&mut visible_lines, preview_height);
-        if visible_lines.is_empty() {
-            lines.push("(no preview output)".to_string());
+        let visible_plain_lines = self.preview.visible_lines(preview_height);
+        let mut visible_render_lines = self.preview.visible_render_lines(preview_height);
+        if visible_render_lines.is_empty() && !visible_plain_lines.is_empty() {
+            visible_render_lines = visible_plain_lines.clone();
+        }
+        self.apply_interactive_cursor_overlay_render(
+            &visible_plain_lines,
+            &mut visible_render_lines,
+            preview_height,
+        );
+
+        let mut text_lines = vec![
+            FtLine::raw(format!("Selected: {selected_workspace}")),
+            FtLine::raw(""),
+        ];
+        if visible_render_lines.is_empty() {
+            text_lines.push(FtLine::raw("(no preview output)"));
         } else {
-            lines.extend(visible_lines);
+            text_lines.extend(
+                visible_render_lines
+                    .iter()
+                    .map(|line| ansi_line_to_styled_line(line)),
+            );
         }
 
-        Paragraph::new(lines.join("\n")).render(inner, frame);
+        Paragraph::new(FtText::from_lines(text_lines)).render(inner, frame);
     }
 
     fn render_status_line(&self, frame: &mut Frame, area: Rect) {
@@ -1662,6 +1980,7 @@ impl GroveApp {
         Paragraph::new(body).render(inner, frame);
     }
 
+    #[cfg(test)]
     fn shell_lines(&self, preview_height: usize) -> Vec<String> {
         let mut lines = vec![
             format!("Grove Shell | Repo: {}", self.repo_name),
@@ -1830,7 +2149,9 @@ pub fn run() -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{GroveApp, Msg, TmuxInput, parse_cursor_metadata};
+    use super::{
+        GroveApp, Msg, TmuxInput, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
+    };
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
     use ftui::Cmd;
@@ -2149,7 +2470,7 @@ mod tests {
                     "send-keys".to_string(),
                     "-t".to_string(),
                     "grove-ws-feature-a".to_string(),
-                    "codex".to_string(),
+                    "codex --no-alt-screen".to_string(),
                     "Enter".to_string(),
                 ],
             ]
@@ -2191,7 +2512,7 @@ mod tests {
                 "send-keys".to_string(),
                 "-t".to_string(),
                 "grove-ws-feature-a".to_string(),
-                "codex --dangerously-bypass-approvals-and-sandbox".to_string(),
+                "codex --dangerously-bypass-approvals-and-sandbox --no-alt-screen".to_string(),
                 "Enter".to_string(),
             ])
         );
@@ -2272,7 +2593,7 @@ mod tests {
                 "send-keys".to_string(),
                 "-t".to_string(),
                 "grove-ws-feature-a".to_string(),
-                "codex --dangerously-bypass-approvals-and-sandbox".to_string(),
+                "codex --dangerously-bypass-approvals-and-sandbox --no-alt-screen".to_string(),
                 "Enter".to_string(),
             ])
         );
@@ -2658,11 +2979,11 @@ mod tests {
         );
         ftui::Model::update(
             &mut app,
-            Msg::Key(
-                KeyEvent::new(KeyCode::Char('\\'))
-                    .with_modifiers(Modifiers::CTRL)
-                    .with_kind(KeyEventKind::Press),
-            ),
+            Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
         );
 
         assert_eq!(
@@ -2673,6 +2994,7 @@ mod tests {
                 "exec:tmux send-keys -l -t grove-ws-feature-a x".to_string(),
                 "capture:grove-ws-feature-a:200".to_string(),
                 "exec:tmux send-keys -l -t grove-ws-feature-a copied-text".to_string(),
+                "exec:tmux send-keys -t grove-ws-feature-a Escape".to_string(),
             ]
         );
         assert!(app.interactive.is_none());
@@ -2717,6 +3039,18 @@ mod tests {
     }
 
     #[test]
+    fn ansi_line_parser_preserves_text_and_styles() {
+        let line = ansi_line_to_styled_line("a\u{1b}[31mb\u{1b}[0mc");
+        assert_eq!(line.to_plain_text(), "abc");
+        assert_eq!(line.spans().len(), 3);
+        assert_eq!(line.spans()[1].as_str(), "b");
+        assert_eq!(
+            line.spans()[1].style.and_then(|style| style.fg),
+            Some(ansi_16_color(1))
+        );
+    }
+
+    #[test]
     fn tick_polls_cursor_metadata_and_renders_overlay() {
         let sidebar_ratio_path = unique_sidebar_ratio_path("cursor-overlay");
         let (mut app, _commands, _captures, _cursor_captures) =
@@ -2749,7 +3083,7 @@ mod tests {
             )),
             Some((1, 1, 3))
         );
-        assert!(rendered.contains("\u{1b}[7m"), "{rendered}");
+        assert!(rendered.contains("s|econd"), "{rendered}");
     }
 
     #[test]

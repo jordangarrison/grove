@@ -69,6 +69,7 @@ pub struct CaptureChange {
     pub changed_raw: bool,
     pub changed_cleaned: bool,
     pub cleaned_output: String,
+    pub render_output: String,
 }
 
 pub fn sanitize_workspace_name(name: &str) -> String {
@@ -205,8 +206,10 @@ pub fn build_agent_command(agent: AgentType, skip_permissions: bool) -> String {
     match (agent, skip_permissions) {
         (AgentType::Claude, true) => "claude --dangerously-skip-permissions".to_string(),
         (AgentType::Claude, false) => "claude".to_string(),
-        (AgentType::Codex, true) => "codex --dangerously-bypass-approvals-and-sandbox".to_string(),
-        (AgentType::Codex, false) => "codex".to_string(),
+        (AgentType::Codex, true) => {
+            "codex --dangerously-bypass-approvals-and-sandbox --no-alt-screen".to_string()
+        }
+        (AgentType::Codex, false) => "codex --no-alt-screen".to_string(),
     }
 }
 
@@ -377,7 +380,8 @@ pub fn poll_interval(
 }
 
 pub fn evaluate_capture_change(previous: Option<&OutputDigest>, raw_output: &str) -> CaptureChange {
-    let cleaned_output = strip_mouse_fragments(raw_output);
+    let render_output = strip_non_sgr_control_sequences(raw_output);
+    let cleaned_output = strip_mouse_fragments(&strip_sgr_sequences(&render_output));
     let digest = OutputDigest {
         raw_hash: content_hash(raw_output),
         raw_len: raw_output.len(),
@@ -390,6 +394,7 @@ pub fn evaluate_capture_change(previous: Option<&OutputDigest>, raw_output: &str
             changed_raw: true,
             changed_cleaned: true,
             cleaned_output,
+            render_output,
         },
         Some(previous_digest) => CaptureChange {
             changed_raw: previous_digest.raw_hash != digest.raw_hash
@@ -397,21 +402,123 @@ pub fn evaluate_capture_change(previous: Option<&OutputDigest>, raw_output: &str
             changed_cleaned: previous_digest.cleaned_hash != digest.cleaned_hash,
             digest,
             cleaned_output,
+            render_output,
         },
     }
 }
 
 pub fn strip_mouse_fragments(input: &str) -> String {
     let mut cleaned = input
-        .replace("\u{1b}[?1000h", "")
-        .replace("\u{1b}[?1000l", "")
-        .replace("\u{1b}[?1006h", "")
-        .replace("\u{1b}[?1006l", "");
+        .replace("[?1000h", "")
+        .replace("[?1000l", "")
+        .replace("[?1006h", "")
+        .replace("[?1006l", "");
 
-    cleaned = strip_sequence(&cleaned, "\u{1b}[<", &["M", "m"]);
     cleaned = strip_sequence(&cleaned, "[<", &["M", "m"]);
 
     cleaned
+}
+
+fn strip_non_sgr_control_sequences(input: &str) -> String {
+    let mut cleaned = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+
+    while let Some(character) = chars.next() {
+        if character != '\u{1b}' {
+            cleaned.push(character);
+            continue;
+        }
+
+        let Some(next) = chars.next() else {
+            break;
+        };
+
+        match next {
+            '[' => {
+                let mut csi = String::from("\u{1b}[");
+                if let Some(final_char) = consume_csi_sequence(&mut chars, &mut csi)
+                    && final_char == 'm'
+                {
+                    cleaned.push_str(&csi);
+                }
+            }
+            ']' => consume_osc_sequence(&mut chars),
+            'P' | 'X' | '^' | '_' => consume_st_sequence(&mut chars),
+            '(' | ')' | '*' | '+' | '-' | '.' | '/' | '#' => {
+                let _ = chars.next();
+            }
+            _ => {}
+        }
+    }
+
+    cleaned
+}
+
+fn strip_sgr_sequences(input: &str) -> String {
+    let mut cleaned = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+
+    while let Some(character) = chars.next() {
+        if character == '\u{1b}' {
+            if chars.next_if_eq(&'[').is_some() {
+                let mut did_end = false;
+                while let Some(value) = chars.next() {
+                    if ('\u{40}'..='\u{7e}').contains(&value) {
+                        did_end = true;
+                        break;
+                    }
+                }
+                if did_end {
+                    continue;
+                }
+            }
+            continue;
+        }
+
+        cleaned.push(character);
+    }
+
+    cleaned
+}
+
+fn consume_csi_sequence<I>(chars: &mut std::iter::Peekable<I>, buffer: &mut String) -> Option<char>
+where
+    I: Iterator<Item = char>,
+{
+    while let Some(character) = chars.next() {
+        buffer.push(character);
+        if ('\u{40}'..='\u{7e}').contains(&character) {
+            return Some(character);
+        }
+    }
+
+    None
+}
+
+fn consume_osc_sequence<I>(chars: &mut std::iter::Peekable<I>)
+where
+    I: Iterator<Item = char>,
+{
+    while let Some(character) = chars.next() {
+        if character == '\u{7}' {
+            return;
+        }
+
+        if character == '\u{1b}' && chars.next_if_eq(&'\\').is_some() {
+            return;
+        }
+    }
+}
+
+fn consume_st_sequence<I>(chars: &mut std::iter::Peekable<I>)
+where
+    I: Iterator<Item = char>,
+{
+    while let Some(character) = chars.next() {
+        if character == '\u{1b}' && chars.next_if_eq(&'\\').is_some() {
+            return;
+        }
+    }
 }
 
 fn strip_sequence(input: &str, prefix: &str, suffixes: &[&str]) -> String {
@@ -466,9 +573,9 @@ mod tests {
     use std::time::Duration;
 
     use super::{
-        CaptureChange, LaunchRequest, SessionActivity, build_launch_plan, detect_status,
-        detect_waiting_prompt, evaluate_capture_change, poll_interval, reconcile_with_sessions,
-        sanitize_workspace_name, session_name_for_workspace, stop_plan,
+        CaptureChange, LaunchRequest, SessionActivity, build_agent_command, build_launch_plan,
+        detect_status, detect_waiting_prompt, evaluate_capture_change, poll_interval,
+        reconcile_with_sessions, sanitize_workspace_name, session_name_for_workspace, stop_plan,
     };
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
@@ -504,6 +611,18 @@ mod tests {
             "grove-ws-feature-auth-v2"
         );
         assert_eq!(sanitize_workspace_name("///"), "workspace");
+    }
+
+    #[test]
+    fn codex_launch_command_always_disables_alt_screen() {
+        assert_eq!(
+            build_agent_command(AgentType::Codex, false),
+            "codex --no-alt-screen"
+        );
+        assert_eq!(
+            build_agent_command(AgentType::Codex, true),
+            "codex --dangerously-bypass-approvals-and-sandbox --no-alt-screen"
+        );
     }
 
     #[test]
@@ -718,5 +837,12 @@ mod tests {
         let change: CaptureChange = evaluate_capture_change(None, "one");
         assert!(change.changed_raw);
         assert!(change.changed_cleaned);
+    }
+
+    #[test]
+    fn capture_change_strips_ansi_control_sequences() {
+        let raw = "A\u{1b}[31mB\u{1b}[39m C\u{1b}]0;title\u{7}\n";
+        let change = evaluate_capture_change(None, raw);
+        assert_eq!(change.cleaned_output, "AB C\n");
     }
 }
