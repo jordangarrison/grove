@@ -319,3 +319,17 @@ Exit criteria:
   Status: Phase 1 TDD targets are green locally (red-green cycle executed for
   reducer and adapter behaviors, tests passing).
   Next: Phase 2 read-only worktree discovery and deterministic list ordering.
+- 2026-02-13: Phase 2 read-only worktree discovery + list UI implemented.
+  Changes: replaced placeholder worktree bootstrap with git-backed discovery
+  in `src/adapters.rs` (`git worktree list --porcelain` parser, branch
+  activity extraction, main-pinned recent-activity sorting, detached/unknown
+  handling, and explicit empty/error discovery states), expanded workspace
+  domain shape in `src/domain.rs` to include `path` and
+  `last_activity_unix_secs`, updated state fixtures in `src/state.rs`, and
+  updated `src/tui.rs` list rendering to show status icon/name/branch/path
+  rows plus context-sensitive list-mode status hints and discovery error/empty
+  messaging.
+  Status: Phase 2 TDD targets are green locally (parsing, normalization,
+  sorting, empty/error states, and shell rendering assertions all passing).
+  Next: Phase 3 workspace lifecycle (create/delete/setup, marker files,
+  `.gitignore`, `.env*` copy, `.grove-setup.sh` execution).

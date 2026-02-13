@@ -80,12 +80,15 @@ pub fn reduce(state: &mut AppState, action: Action) {
 mod tests {
     use super::{Action, AppState, PaneFocus, UiMode, reduce};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
+    use std::path::PathBuf;
 
     fn fixture_state() -> AppState {
         AppState::new(vec![
             Workspace::try_new(
                 "grove".to_string(),
+                PathBuf::from("/repos/grove"),
                 "main".to_string(),
+                Some(1_700_000_300),
                 AgentType::Claude,
                 WorkspaceStatus::Main,
                 true,
@@ -93,7 +96,9 @@ mod tests {
             .expect("main workspace should be valid"),
             Workspace::try_new(
                 "feature-a".to_string(),
+                PathBuf::from("/repos/grove-feature-a"),
                 "feature-a".to_string(),
+                Some(1_700_000_200),
                 AgentType::Codex,
                 WorkspaceStatus::Idle,
                 false,
@@ -101,7 +106,9 @@ mod tests {
             .expect("workspace should be valid"),
             Workspace::try_new(
                 "feature-b".to_string(),
+                PathBuf::from("/repos/grove-feature-b"),
                 "feature-b".to_string(),
+                Some(1_700_000_100),
                 AgentType::Claude,
                 WorkspaceStatus::Unknown,
                 false,
