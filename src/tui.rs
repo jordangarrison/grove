@@ -11,7 +11,9 @@ use ftui::core::event::{
 };
 use ftui::core::geometry::Rect;
 use ftui::layout::{Constraint, Flex};
+use ftui::render::budget::FrameBudgetConfig;
 use ftui::render::frame::{Frame, HitGrid, HitId, HitRegion as FrameHitRegion};
+use ftui::runtime::WidgetRefreshConfig;
 use ftui::text::{Line as FtLine, Span as FtSpan, Text as FtText};
 use ftui::widgets::Widget;
 use ftui::widgets::block::Block;
@@ -922,14 +924,29 @@ impl GroveApp {
         hasher.finish()
     }
 
-    fn frame_buffer_lines(frame: &Frame) -> Vec<String> {
+    fn frame_buffer_lines(frame: &mut Frame) -> Vec<String> {
         let height = frame.buffer.height();
         let mut lines = Vec::with_capacity(usize::from(height));
         for y in 0..height {
             let mut row = String::with_capacity(usize::from(frame.buffer.width()));
-            for cell in frame.buffer.row_cells(y) {
-                let value = cell.content.as_char().unwrap_or(' ');
-                row.push(value);
+            for x in 0..frame.buffer.width() {
+                let Some(cell) = frame.buffer.get(x, y).copied() else {
+                    continue;
+                };
+                if cell.is_continuation() {
+                    continue;
+                }
+                if let Some(value) = cell.content.as_char() {
+                    row.push(value);
+                    continue;
+                }
+                if let Some(grapheme_id) = cell.content.grapheme_id()
+                    && let Some(grapheme) = frame.pool.get(grapheme_id)
+                {
+                    row.push_str(grapheme);
+                    continue;
+                }
+                row.push(' ');
             }
             lines.push(row.trim_end_matches(' ').to_string());
         }
@@ -937,13 +954,14 @@ impl GroveApp {
         lines
     }
 
-    fn log_frame_render(&self, frame: &Frame) {
+    fn log_frame_render(&self, frame: &mut Frame) {
         let Some(app_start_ts) = self.debug_record_start_ts else {
             return;
         };
 
         let lines = Self::frame_buffer_lines(frame);
         let frame_hash = Self::frame_lines_hash(&lines);
+        let non_empty_line_count = lines.iter().filter(|line| !line.is_empty()).count();
         let mut seq = self.frame_render_seq.borrow_mut();
         *seq = seq.saturating_add(1);
         let seq_value = *seq;
@@ -966,7 +984,12 @@ impl GroveApp {
                 .with_data("width", Value::from(frame.buffer.width()))
                 .with_data("height", Value::from(frame.buffer.height()))
                 .with_data("line_count", Value::from(u64::try_from(lines.len()).unwrap_or(u64::MAX)))
+                .with_data(
+                    "non_empty_line_count",
+                    Value::from(u64::try_from(non_empty_line_count).unwrap_or(u64::MAX)),
+                )
                 .with_data("frame_hash", Value::from(frame_hash))
+                .with_data("degradation", Value::from(frame.degradation.as_str()))
                 .with_data("mode", Value::from(self.mode_label()))
                 .with_data("focus", Value::from(self.focus_label()))
                 .with_data("selected_workspace", Value::from(selected_workspace))
@@ -2926,6 +2949,11 @@ fn run_with_logger(
     App::new(app)
         .screen_mode(ScreenMode::AltScreen)
         .with_mouse()
+        .with_budget(FrameBudgetConfig::strict(Duration::from_millis(250)))
+        .with_widget_refresh(WidgetRefreshConfig {
+            enabled: false,
+            ..WidgetRefreshConfig::default()
+        })
         .run()
 }
 
@@ -5264,7 +5292,7 @@ mod tests {
             Box::new(event_log),
             Some(1_771_023_000_123),
         );
-        app.preview.lines = vec!["render-check".to_string()];
+        app.preview.lines = vec!["render-check 🧪".to_string()];
         app.preview.render_lines = app.preview.lines.clone();
 
         with_rendered_frame(&app, 80, 24, |_frame| {});
@@ -5281,8 +5309,20 @@ mod tests {
             .expect("frame_lines should be array");
         assert!(lines.iter().any(|line| {
             line.as_str()
-                .is_some_and(|text| text.contains("render-check"))
+                .is_some_and(|text| text.contains("render-check 🧪"))
         }));
         assert!(frame_event.data.get("frame_hash").is_some());
+        assert_eq!(
+            frame_event
+                .data
+                .get("degradation")
+                .and_then(Value::as_str),
+            Some("Full")
+        );
+        assert!(frame_event
+            .data
+            .get("non_empty_line_count")
+            .and_then(Value::as_u64)
+            .is_some_and(|count| count > 0));
     }
 }
