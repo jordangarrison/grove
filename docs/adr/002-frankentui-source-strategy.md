@@ -5,8 +5,8 @@
 
 ## Context
 
-`docs/implementation-plan.md` Phase 0 requires a reproducible FrankenTUI source
-strategy, with no developer-local relative paths.
+Phase 0 requires a reproducible FrankenTUI source strategy, with no
+developer-local relative paths.
 
 ## Decision
 

@@ -2,11 +2,6 @@
 
 A minimal workspace manager for AI coding agents. Rust + FrankenTUI.
 
-## Main Instruction
-
-- Always update `docs/implementation-plan.md` after work is done, before final handoff.
-- Keep the update concrete: what changed, current status, and next steps.
-
 ## Reference Codebases
 
 The `.reference/` directory contains two codebases you should consult
@@ -52,9 +47,8 @@ Specific mapping:
 ## Project Structure
 
 ```text
-PRD.md                    -- full product requirements + technical implementation
+docs/PRD.md               -- full product requirements + technical implementation
 docs/
-  implementation-plan.md
   adr/
 .reference/
   frankentui/             -- TUI framework (Rust, Elm architecture)
@@ -64,9 +58,6 @@ docs/
 ## Workflow
 
 ```bash
-# Review current plan
-cat docs/implementation-plan.md
-
-# Edit docs
-$EDITOR docs/implementation-plan.md
+# Review product requirements
+cat docs/PRD.md
 ```

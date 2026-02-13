@@ -2606,8 +2606,8 @@ scope for this PRD.
 
 ## Implementation Planning
 
-`PRD.md` stays the product + technical spec. Execution sequencing lives in
-`docs/implementation-plan.md`.
+`PRD.md` stays the product + technical spec. Execution sequencing should be
+tracked in project tasks and PR descriptions.
 
 Planning constraints:
 
