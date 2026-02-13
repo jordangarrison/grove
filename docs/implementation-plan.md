@@ -288,3 +288,13 @@ Exit criteria:
   completed work, before handoff.
 - 2026-02-13: Added lowercase `claude.md` symlink to `AGENTS.md` for tool
   compatibility.
+- 2026-02-13: Phase 0 implemented.
+  Changes: Rust crate bootstrap (`Cargo.toml`, `src/lib.rs`, `src/main.rs`),
+  baseline unit/integration tests (`tests/` with fixtures/support), CI
+  workflow for `fmt`/`clippy`/`test`, `Makefile` command wiring, Nix
+  `devShells.default` (`flake.nix`, `flake.lock`), and FrankenTUI source
+  strategy ADR (`docs/adr/002-frankentui-source-strategy.md`).
+  Status: Phase 0 exit criteria met locally (tests green, lint/format green,
+  clean-clone tooling defined).
+  Next: Phase 0.5, add minimal FrankenTUI app boot/quit lifecycle in
+  alt-screen mode.
