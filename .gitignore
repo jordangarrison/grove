@@ -5,3 +5,4 @@
 .grove-base
 .grove-start.sh
 .grove-setup.sh
+.grove-debug-snapshot.json

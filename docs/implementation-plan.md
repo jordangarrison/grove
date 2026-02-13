@@ -3,6 +3,40 @@
 This document turns the PRD into a phased execution plan with explicit
 quality gates.
 
+## Update 2026-02-13, Debug Snapshot Hotkey (Ctrl+D)
+
+What changed:
+- Added `CaptureRecord` struct and ring buffer (`VecDeque`, capacity 10) to
+  `PreviewState` in `src/preview.rs`. Each `apply_capture()` call pushes a
+  record with timestamp, raw/cleaned/render output, digest, and change flags.
+- Added `write_debug_snapshot()` method to `GroveApp` in `src/tui.rs` that
+  serializes all internal state (workspace, mode, focus, viewport, sidebar
+  ratio, interactive cursor, preview state, recent captures, current lines,
+  last tmux error) to `.grove-debug-snapshot.json` as pretty-printed JSON.
+- Wired `Ctrl+D` hotkey in `handle_key()` before dialog/interactive/quit
+  routing so it fires in all modes (normal, interactive, dialog).
+- Flash message confirms snapshot save (or reports error).
+- Added `.grove-debug-snapshot.json` to `.gitignore`.
+- Added tests:
+  - `preview::tests::capture_record_ring_buffer_caps_at_10`
+  - `preview::tests::capture_record_contains_expected_fields`
+  - `tui::tests::ctrl_d_triggers_debug_snapshot_in_normal_mode`
+  - `tui::tests::ctrl_d_triggers_debug_snapshot_in_interactive_mode`
+  - `tui::tests::ctrl_d_triggers_debug_snapshot_during_dialog`
+  - `tui::tests::debug_snapshot_file_is_valid_json`
+  - `tui::tests::debug_snapshot_includes_recent_captures`
+
+Current status:
+- All 137 lib tests pass. Formatting clean. Clippy clean (pre-existing
+  warnings only, none in new code).
+- Debug snapshots contain consecutive capture history so an agent can identify
+  oscillation, ANSI leakage, or cursor corruption from structured data.
+
+Next steps:
+- Manual test: run Grove, press `Ctrl+D`, inspect
+  `.grove-debug-snapshot.json` for readable capture history.
+- Use snapshots to write targeted failing tests when visual bugs are reported.
+
 ## Update 2026-02-13, E2E Plan Phase C Structured Event Log
 
 What changed:

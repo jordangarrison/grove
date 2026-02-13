@@ -1,9 +1,22 @@
-use std::time::{Duration, Instant};
+use std::collections::VecDeque;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::agent_runtime::{OutputDigest, evaluate_capture_change};
 
 const SCROLL_DEBOUNCE_MS: u64 = 40;
 const SCROLL_BURST_DEBOUNCE_MS: u64 = 120;
+const CAPTURE_RING_CAPACITY: usize = 10;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CaptureRecord {
+    pub ts: u64,
+    pub raw_output: String,
+    pub cleaned_output: String,
+    pub render_output: String,
+    pub digest: OutputDigest,
+    pub changed_raw: bool,
+    pub changed_cleaned: bool,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreviewState {
@@ -12,6 +25,7 @@ pub struct PreviewState {
     pub offset: usize,
     pub auto_scroll: bool,
     pub scroll_burst_count: u32,
+    pub recent_captures: VecDeque<CaptureRecord>,
     last_scroll_time: Option<Instant>,
     last_digest: Option<OutputDigest>,
 }
@@ -37,6 +51,7 @@ impl PreviewState {
             offset: 0,
             auto_scroll: true,
             scroll_burst_count: 0,
+            recent_captures: VecDeque::with_capacity(CAPTURE_RING_CAPACITY),
             last_scroll_time: None,
             last_digest: None,
         }
@@ -44,6 +59,24 @@ impl PreviewState {
 
     pub fn apply_capture(&mut self, raw_output: &str) -> CaptureUpdate {
         let change = evaluate_capture_change(self.last_digest.as_ref(), raw_output);
+
+        let record = CaptureRecord {
+            ts: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or(Duration::ZERO)
+                .as_millis() as u64,
+            raw_output: raw_output.to_owned(),
+            cleaned_output: change.cleaned_output.clone(),
+            render_output: change.render_output.clone(),
+            digest: change.digest.clone(),
+            changed_raw: change.changed_raw,
+            changed_cleaned: change.changed_cleaned,
+        };
+        if self.recent_captures.len() >= CAPTURE_RING_CAPACITY {
+            self.recent_captures.pop_front();
+        }
+        self.recent_captures.push_back(record);
+
         self.last_digest = Some(change.digest);
 
         if change.changed_cleaned {
@@ -285,5 +318,46 @@ mod tests {
             base + Duration::from_secs(3)
         ));
         assert!(flash.is_none());
+    }
+
+    #[test]
+    fn capture_record_ring_buffer_caps_at_10() {
+        let mut state = PreviewState::new();
+
+        for i in 0..12 {
+            state.apply_capture(&format!("output-{i}"));
+        }
+
+        assert_eq!(state.recent_captures.len(), 10);
+        assert!(
+            state
+                .recent_captures
+                .front()
+                .unwrap()
+                .raw_output
+                .contains("output-2")
+        );
+        assert!(
+            state
+                .recent_captures
+                .back()
+                .unwrap()
+                .raw_output
+                .contains("output-11")
+        );
+    }
+
+    #[test]
+    fn capture_record_contains_expected_fields() {
+        let mut state = PreviewState::new();
+        state.apply_capture("hello world");
+
+        assert_eq!(state.recent_captures.len(), 1);
+        let record = state.recent_captures.front().unwrap();
+        assert_eq!(record.raw_output, "hello world");
+        assert!(record.changed_raw);
+        assert!(record.changed_cleaned);
+        assert!(record.ts > 0);
+        assert!(record.digest.raw_len > 0);
     }
 }

@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use ftui::core::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
@@ -43,6 +43,7 @@ use crate::workspace_lifecycle::{
 
 const DEFAULT_SIDEBAR_WIDTH_PCT: u16 = 33;
 const SIDEBAR_RATIO_FILENAME: &str = ".grove-sidebar-width";
+const DEBUG_SNAPSHOT_FILENAME: &str = ".grove-debug-snapshot.json";
 const WORKSPACE_LAUNCH_PROMPT_FILENAME: &str = ".grove-prompt";
 const HEADER_HEIGHT: u16 = 1;
 const STATUS_HEIGHT: u16 = 1;
@@ -858,6 +859,113 @@ impl GroveApp {
         self.flash = Some(new_flash_message(message, is_error, Instant::now()));
     }
 
+    fn debug_snapshot_path(&self) -> PathBuf {
+        self.sidebar_ratio_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(DEBUG_SNAPSHOT_FILENAME)
+    }
+
+    fn write_debug_snapshot(&mut self) {
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::ZERO)
+            .as_millis() as u64;
+
+        let workspace_value = self
+            .state
+            .selected_workspace()
+            .map(|ws| {
+                serde_json::json!({
+                    "name": ws.name,
+                    "agent": ws.agent.label(),
+                    "status": format!("{:?}", ws.status),
+                    "branch": ws.branch,
+                })
+            })
+            .unwrap_or(Value::Null);
+
+        let interactive_value = self
+            .interactive
+            .as_ref()
+            .map(|state| {
+                serde_json::json!({
+                    "cursor_row": state.cursor_row,
+                    "cursor_col": state.cursor_col,
+                    "visible": state.cursor_visible,
+                    "pane_width": state.pane_width,
+                    "pane_height": state.pane_height,
+                    "session": state.target_session,
+                })
+            })
+            .unwrap_or(Value::Null);
+
+        let recent_captures: Vec<Value> = self
+            .preview
+            .recent_captures
+            .iter()
+            .map(|record| {
+                serde_json::json!({
+                    "ts": record.ts,
+                    "raw_output": record.raw_output,
+                    "cleaned_output": record.cleaned_output,
+                    "render_output": record.render_output,
+                    "changed_raw": record.changed_raw,
+                    "changed_cleaned": record.changed_cleaned,
+                    "digest": {
+                        "raw_hash": record.digest.raw_hash,
+                        "raw_len": record.digest.raw_len,
+                        "cleaned_hash": record.digest.cleaned_hash,
+                    },
+                })
+            })
+            .collect();
+
+        let mode_label = if self.interactive.is_some() {
+            "interactive"
+        } else {
+            Self::mode_name(self.state.mode)
+        };
+
+        let snapshot = serde_json::json!({
+            "ts": ts,
+            "workspace": workspace_value,
+            "mode": mode_label,
+            "focus": Self::focus_name(self.state.focus),
+            "viewport": {
+                "width": self.viewport_width,
+                "height": self.viewport_height,
+            },
+            "sidebar_width_pct": self.sidebar_width_pct,
+            "interactive": interactive_value,
+            "preview": {
+                "line_count": self.preview.lines.len(),
+                "render_line_count": self.preview.render_lines.len(),
+                "offset": self.preview.offset,
+                "auto_scroll": self.preview.auto_scroll,
+            },
+            "recent_captures": recent_captures,
+            "current_render_lines": self.preview.render_lines,
+            "current_clean_lines": self.preview.lines,
+            "last_tmux_error": self.last_tmux_error,
+        });
+
+        let path = self.debug_snapshot_path();
+        match serde_json::to_string_pretty(&snapshot) {
+            Ok(json) => match fs::write(&path, json) {
+                Ok(()) => {
+                    self.show_flash(format!("Debug snapshot saved to {}", path.display()), false);
+                }
+                Err(error) => {
+                    self.show_flash(format!("Debug snapshot failed: {error}"), true);
+                }
+            },
+            Err(error) => {
+                self.show_flash(format!("Debug snapshot serialize failed: {error}"), true);
+            }
+        }
+    }
+
     fn status_bar_line(&self) -> String {
         if let Some(flash) = &self.flash {
             if flash.is_error {
@@ -1143,6 +1251,10 @@ impl GroveApp {
             }
             _ => false,
         }
+    }
+
+    fn is_debug_snapshot_key(key_event: &KeyEvent) -> bool {
+        key_event.code == KeyCode::Char('d') && key_event.modifiers.contains(Modifiers::CTRL)
     }
 
     fn can_enter_interactive(&self) -> bool {
@@ -2000,6 +2112,11 @@ impl GroveApp {
             return false;
         }
 
+        if Self::is_debug_snapshot_key(&key_event) {
+            self.write_debug_snapshot();
+            return false;
+        }
+
         if self.create_dialog.is_some() {
             self.handle_create_dialog_key(key_event);
             return false;
@@ -2213,11 +2330,13 @@ impl GroveApp {
 
         let mut visible_render_lines = self.preview.visible_render_lines(preview_height);
         if visible_render_lines.is_empty() && !visible_plain_lines.is_empty() {
+            if allow_cursor_overlay {
+                self.apply_interactive_cursor_overlay(&mut visible_plain_lines, preview_height);
+            }
             visible_render_lines = visible_plain_lines;
-        }
-        if allow_cursor_overlay {
+        } else if allow_cursor_overlay {
             self.apply_interactive_cursor_overlay_render(
-                &self.preview.visible_lines(preview_height),
+                &visible_plain_lines,
                 &mut visible_render_lines,
                 preview_height,
             );
@@ -2523,8 +2642,8 @@ mod tests {
         assert_cell_style, assert_row_fg, find_cell_with_char, find_row_containing, row_text,
     };
     use super::{
-        GroveApp, LaunchDialogState, Msg, TmuxInput, ansi_16_color, ansi_line_to_styled_line,
-        parse_cursor_metadata, should_render_ansi_preview,
+        GroveApp, LaunchDialogState, Msg, SIDEBAR_RATIO_FILENAME, TmuxInput, ansi_16_color,
+        ansi_line_to_styled_line, parse_cursor_metadata, should_render_ansi_preview,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -4364,5 +4483,173 @@ mod tests {
         );
         assert_eq!(app.preview.offset, 0);
         assert!(app.preview.auto_scroll);
+    }
+
+    fn ctrl_d_key() -> KeyEvent {
+        KeyEvent::new(KeyCode::Char('d'))
+            .with_kind(KeyEventKind::Press)
+            .with_modifiers(Modifiers::CTRL)
+    }
+
+    fn unique_snapshot_dir(label: &str) -> PathBuf {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "grove-snapshot-{label}-{}-{timestamp}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&path).expect("temp snapshot directory should exist");
+        path
+    }
+
+    fn fixture_app_in_snapshot_dir(label: &str, status: WorkspaceStatus) -> (GroveApp, PathBuf) {
+        let dir = unique_snapshot_dir(label);
+        let sidebar_ratio_path = dir.join(SIDEBAR_RATIO_FILENAME);
+        let (app, _commands, _captures, _cursor_captures) = fixture_app_with_tmux_and_sidebar_path(
+            status,
+            Vec::new(),
+            Vec::new(),
+            sidebar_ratio_path,
+        );
+        (app, dir)
+    }
+
+    #[test]
+    fn ctrl_d_triggers_debug_snapshot_in_normal_mode() {
+        let (mut app, dir) = fixture_app_in_snapshot_dir("normal", WorkspaceStatus::Idle);
+
+        ftui::Model::update(&mut app, Msg::Key(ctrl_d_key()));
+
+        let flash = app.flash.as_ref().expect("flash should be set");
+        assert!(
+            flash.text.contains("snapshot"),
+            "flash text should mention snapshot: {}",
+            flash.text
+        );
+        assert!(!flash.is_error);
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn ctrl_d_triggers_debug_snapshot_in_interactive_mode() {
+        let dir = unique_snapshot_dir("interactive");
+        let sidebar_ratio_path = dir.join(SIDEBAR_RATIO_FILENAME);
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux_and_sidebar_path(
+                WorkspaceStatus::Active,
+                Vec::new(),
+                Vec::new(),
+                sidebar_ratio_path,
+            );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+        assert!(app.interactive.is_some());
+
+        ftui::Model::update(&mut app, Msg::Key(ctrl_d_key()));
+
+        let flash = app.flash.as_ref().expect("flash should be set");
+        assert!(flash.text.contains("snapshot"));
+        assert!(!flash.is_error);
+        assert!(
+            app.interactive.is_some(),
+            "interactive mode should remain active"
+        );
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn ctrl_d_triggers_debug_snapshot_during_dialog() {
+        let (mut app, dir) = fixture_app_in_snapshot_dir("dialog", WorkspaceStatus::Idle);
+        app.launch_dialog = Some(LaunchDialogState {
+            prompt: String::new(),
+            skip_permissions: false,
+        });
+
+        ftui::Model::update(&mut app, Msg::Key(ctrl_d_key()));
+
+        let flash = app.flash.as_ref().expect("flash should be set");
+        assert!(flash.text.contains("snapshot"));
+        assert!(!flash.is_error);
+        assert!(app.launch_dialog.is_some(), "dialog should remain open");
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn debug_snapshot_file_is_valid_json() {
+        let (mut app, dir) = fixture_app_in_snapshot_dir("json", WorkspaceStatus::Idle);
+
+        ftui::Model::update(&mut app, Msg::Key(ctrl_d_key()));
+
+        let snapshot_path = app.debug_snapshot_path();
+        let raw = fs::read_to_string(&snapshot_path).expect("snapshot file should exist");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&raw).expect("snapshot should be valid JSON");
+
+        assert!(parsed.get("ts").is_some());
+        assert!(parsed.get("workspace").is_some());
+        assert!(parsed.get("mode").is_some());
+        assert!(parsed.get("focus").is_some());
+        assert!(parsed.get("viewport").is_some());
+        assert!(parsed.get("sidebar_width_pct").is_some());
+        assert!(parsed.get("preview").is_some());
+        assert!(parsed.get("recent_captures").is_some());
+        assert!(parsed.get("current_render_lines").is_some());
+        assert!(parsed.get("current_clean_lines").is_some());
+        assert!(parsed.get("last_tmux_error").is_some());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn debug_snapshot_includes_recent_captures() {
+        let (mut app, dir) = fixture_app_in_snapshot_dir("captures", WorkspaceStatus::Idle);
+
+        app.preview.recent_captures.clear();
+        app.preview.apply_capture("capture-one");
+        app.preview.apply_capture("capture-two");
+        app.preview.apply_capture("capture-three");
+
+        ftui::Model::update(&mut app, Msg::Key(ctrl_d_key()));
+
+        let snapshot_path = app.debug_snapshot_path();
+        let raw = fs::read_to_string(&snapshot_path).expect("snapshot file should exist");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&raw).expect("snapshot should be valid JSON");
+
+        let captures = parsed
+            .get("recent_captures")
+            .and_then(|val| val.as_array())
+            .expect("recent_captures should be an array");
+
+        assert_eq!(captures.len(), 3);
+        assert_eq!(
+            captures[0].get("raw_output").unwrap().as_str().unwrap(),
+            "capture-one"
+        );
+        assert_eq!(
+            captures[2].get("raw_output").unwrap().as_str().unwrap(),
+            "capture-three"
+        );
+
+        for capture in captures {
+            assert!(capture.get("ts").is_some());
+            assert!(capture.get("digest").is_some());
+            assert!(capture.get("changed_raw").is_some());
+            assert!(capture.get("changed_cleaned").is_some());
+        }
+
+        let _ = fs::remove_dir_all(dir);
     }
 }

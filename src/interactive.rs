@@ -123,12 +123,22 @@ impl InteractiveState {
         cursor_visible: bool,
         pane_height: u16,
         pane_width: u16,
-    ) {
+    ) -> bool {
+        if self.cursor_row == cursor_row
+            && self.cursor_col == cursor_col
+            && self.cursor_visible == cursor_visible
+            && self.pane_height == pane_height
+            && self.pane_width == pane_width
+        {
+            return false;
+        }
+
         self.cursor_row = cursor_row;
         self.cursor_col = cursor_col;
         self.cursor_visible = cursor_visible;
         self.pane_height = pane_height;
         self.pane_width = pane_width;
+        true
     }
 
     pub fn note_mouse_event(&mut self, now: Instant) {
