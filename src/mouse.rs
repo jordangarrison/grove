@@ -22,7 +22,9 @@ pub fn parse_sidebar_ratio(value: &str) -> Option<u16> {
 
 #[cfg(test)]
 mod tests {
-    use super::{clamp_sidebar_ratio, parse_sidebar_ratio, ratio_from_drag, serialize_sidebar_ratio};
+    use super::{
+        clamp_sidebar_ratio, parse_sidebar_ratio, ratio_from_drag, serialize_sidebar_ratio,
+    };
 
     #[test]
     fn drag_ratio_is_clamped_between_twenty_and_sixty_percent() {

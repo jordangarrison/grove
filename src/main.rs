@@ -131,8 +131,8 @@ mod tests {
 
     #[test]
     fn cli_parser_reads_debug_record_flag() {
-        let parsed = parse_cli_args(vec!["--debug-record".to_string()])
-            .expect("debug flag should parse");
+        let parsed =
+            parse_cli_args(vec!["--debug-record".to_string()]).expect("debug flag should parse");
         assert_eq!(
             parsed,
             CliArgs {

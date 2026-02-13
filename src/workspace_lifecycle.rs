@@ -235,7 +235,9 @@ pub(crate) fn workspace_directory_path(
     Ok(parent.join(format!("{repo_name}-{workspace_name}")))
 }
 
-pub(crate) fn ensure_grove_gitignore_entries(repo_root: &Path) -> Result<(), WorkspaceLifecycleError> {
+pub(crate) fn ensure_grove_gitignore_entries(
+    repo_root: &Path,
+) -> Result<(), WorkspaceLifecycleError> {
     let gitignore_path = repo_root.join(".gitignore");
     let existing_content = match fs::read_to_string(&gitignore_path) {
         Ok(content) => content,

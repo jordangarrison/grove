@@ -217,7 +217,11 @@ pub(crate) fn split_output_lines(output: &str) -> Vec<String> {
     trimmed.lines().map(ToOwned::to_owned).collect()
 }
 
-pub(crate) fn new_flash_message(text: impl Into<String>, is_error: bool, now: Instant) -> FlashMessage {
+pub(crate) fn new_flash_message(
+    text: impl Into<String>,
+    is_error: bool,
+    now: Instant,
+) -> FlashMessage {
     FlashMessage {
         text: text.into(),
         is_error,

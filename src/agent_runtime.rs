@@ -965,13 +965,7 @@ mod tests {
 
     #[test]
     fn strip_mouse_fragments_removes_boundary_prefixed_partial_sequences() {
-        assert_eq!(
-            strip_mouse_fragments("prompt M[<64;107;16M"),
-            "prompt "
-        );
-        assert_eq!(
-            strip_mouse_fragments("prompt m[<65;107;14"),
-            "prompt "
-        );
+        assert_eq!(strip_mouse_fragments("prompt M[<64;107;16M"), "prompt ");
+        assert_eq!(strip_mouse_fragments("prompt m[<65;107;14"), "prompt ");
     }
 }

@@ -64,6 +64,7 @@ const HIT_ID_WORKSPACE_ROW: u32 = 6;
 const HIT_ID_CREATE_DIALOG: u32 = 7;
 const HIT_ID_LAUNCH_DIALOG: u32 = 8;
 const MAX_PENDING_INPUT_TRACES: usize = 256;
+const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum HitRegion {
@@ -708,6 +709,8 @@ struct GroveApp {
     last_hit_grid: RefCell<Option<HitGrid>>,
     next_tick_due_at: Option<Instant>,
     next_tick_interval_ms: Option<u64>,
+    interactive_poll_due_at: Option<Instant>,
+    interactive_poll_generation: u64,
     debug_record_start_ts: Option<u64>,
     frame_render_seq: RefCell<u64>,
     input_seq_counter: u64,
@@ -776,6 +779,8 @@ impl GroveApp {
             last_hit_grid: RefCell::new(None),
             next_tick_due_at: None,
             next_tick_interval_ms: None,
+            interactive_poll_due_at: None,
+            interactive_poll_generation: 0,
             debug_record_start_ts,
             frame_render_seq: RefCell::new(0),
             input_seq_counter: 1,
@@ -891,6 +896,7 @@ impl GroveApp {
                     LogEvent::new("mode_change", "interactive_exited")
                         .with_data("session", Value::from(session.clone())),
                 );
+                self.interactive_poll_due_at = None;
                 let pending_before = self.pending_interactive_inputs.len();
                 self.clear_pending_inputs_for_session(session);
                 let pending_after = self.pending_interactive_inputs.len();
@@ -1102,6 +1108,22 @@ impl GroveApp {
             .front()
             .map(|trace| Self::duration_millis(now.saturating_duration_since(trace.received_at)))
             .unwrap_or(0)
+    }
+
+    fn schedule_interactive_debounced_poll(&mut self, now: Instant) {
+        if self.interactive.is_none() {
+            return;
+        }
+
+        self.interactive_poll_generation = self.interactive_poll_generation.saturating_add(1);
+        self.interactive_poll_due_at =
+            Some(now + Duration::from_millis(INTERACTIVE_KEYSTROKE_DEBOUNCE_MS));
+        self.event_log.log(
+            LogEvent::new("tick", "interactive_debounce_scheduled")
+                .with_data("generation", Value::from(self.interactive_poll_generation))
+                .with_data("due_in_ms", Value::from(INTERACTIVE_KEYSTROKE_DEBOUNCE_MS))
+                .with_data("pending_depth", Value::from(self.pending_input_depth())),
+        );
     }
 
     fn frame_lines_hash(lines: &[String]) -> u64 {
@@ -1762,6 +1784,7 @@ impl GroveApp {
             self.viewport_height,
             self.viewport_width,
         ));
+        self.interactive_poll_due_at = None;
         self.last_tmux_error = None;
         self.state.mode = UiMode::Preview;
         self.state.focus = PaneFocus::Preview;
@@ -2539,12 +2562,14 @@ impl GroveApp {
             }
             InteractiveAction::CopySelection => self.copy_interactive_capture(&target_session),
             InteractiveAction::PasteClipboard => {
-                self.paste_cached_text(&target_session, bracketed_paste, Some(trace_context))
+                self.paste_cached_text(&target_session, bracketed_paste, Some(trace_context));
+                self.schedule_interactive_debounced_poll(now);
             }
             InteractiveAction::Noop
             | InteractiveAction::SendNamed(_)
             | InteractiveAction::SendLiteral(_) => {
                 self.send_interactive_action(&action, &target_session, Some(trace_context));
+                self.schedule_interactive_debounced_poll(now);
             }
         }
     }
@@ -2583,6 +2608,7 @@ impl GroveApp {
                 received_at,
             }),
         );
+        self.schedule_interactive_debounced_poll(received_at);
     }
 
     fn handle_non_interactive_key(&mut self, key_event: KeyEvent) {
@@ -2956,14 +2982,55 @@ impl GroveApp {
         )
     }
 
+    fn is_due_with_tolerance(now: Instant, due_at: Instant) -> bool {
+        let tolerance = Duration::from_millis(TICK_EARLY_TOLERANCE_MS);
+        let now_with_tolerance = now.checked_add(tolerance).unwrap_or(now);
+        now_with_tolerance >= due_at
+    }
+
     fn schedule_next_tick(&mut self) -> Cmd<Msg> {
         let scheduled_at = Instant::now();
-        let interval = self.next_poll_interval();
+        let mut due_at = scheduled_at + self.next_poll_interval();
+        let mut source = "adaptive";
+        if let Some(interactive_due_at) = self.interactive_poll_due_at
+            && interactive_due_at < due_at
+        {
+            due_at = interactive_due_at;
+            source = "interactive_debounce";
+        }
+
+        if let Some(existing_due_at) = self.next_tick_due_at
+            && existing_due_at <= due_at
+        {
+            if existing_due_at > scheduled_at {
+                self.event_log.log(
+                    LogEvent::new("tick", "retained")
+                        .with_data("source", Value::from(source))
+                        .with_data(
+                            "interval_ms",
+                            Value::from(Self::duration_millis(
+                                existing_due_at.saturating_duration_since(scheduled_at),
+                            )),
+                        )
+                        .with_data("pending_depth", Value::from(self.pending_input_depth()))
+                        .with_data(
+                            "oldest_pending_age_ms",
+                            Value::from(self.oldest_pending_input_age_ms(scheduled_at)),
+                        ),
+                );
+                return Cmd::None;
+            }
+            due_at = scheduled_at;
+            source = "overdue";
+        }
+
+        let interval = due_at.saturating_duration_since(scheduled_at);
         let interval_ms = Self::duration_millis(interval);
-        self.next_tick_due_at = Some(scheduled_at + interval);
+        self.next_tick_due_at = Some(due_at);
         self.next_tick_interval_ms = Some(interval_ms);
         self.event_log.log(
             LogEvent::new("tick", "scheduled")
+                .with_data("source", Value::from(source))
                 .with_data("interval_ms", Value::from(interval_ms))
                 .with_data("pending_depth", Value::from(self.pending_input_depth()))
                 .with_data(
@@ -2979,9 +3046,7 @@ impl GroveApp {
             return true;
         };
 
-        let tolerance = Duration::from_millis(TICK_EARLY_TOLERANCE_MS);
-        let now_with_tolerance = now.checked_add(tolerance).unwrap_or(now);
-        now_with_tolerance >= due_at
+        Self::is_due_with_tolerance(now, due_at)
     }
 
     fn pane_border_style(&self, focused: bool) -> Style {
@@ -3449,6 +3514,12 @@ impl Model for GroveApp {
                 } else {
                     self.next_tick_due_at = None;
                     self.next_tick_interval_ms = None;
+                    if self
+                        .interactive_poll_due_at
+                        .is_some_and(|due_at| Self::is_due_with_tolerance(now, due_at))
+                    {
+                        self.interactive_poll_due_at = None;
+                    }
                     self.poll_preview();
                     let pending_after = self.pending_input_depth();
                     self.event_log.log(
@@ -5276,7 +5347,7 @@ mod tests {
     }
 
     #[test]
-    fn interactive_key_reschedules_fast_poll_interval() {
+    fn interactive_key_schedules_debounced_poll_interval() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
 
@@ -5295,9 +5366,57 @@ mod tests {
         );
 
         match cmd {
-            Cmd::Tick(interval) => assert_eq!(interval, Duration::from_millis(50)),
+            Cmd::Tick(interval) => {
+                assert!(
+                    interval <= Duration::from_millis(20) && interval >= Duration::from_millis(15),
+                    "expected debounced interactive interval near 20ms, got {interval:?}"
+                );
+            }
             _ => panic!("expected Cmd::Tick from interactive key update"),
         }
+    }
+
+    #[test]
+    fn interactive_key_does_not_postpone_existing_due_tick() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        let first_cmd = ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+        );
+        assert!(matches!(first_cmd, Cmd::Tick(_)));
+        let first_due = app
+            .next_tick_due_at
+            .expect("first key should schedule a due tick");
+
+        std::thread::sleep(Duration::from_millis(1));
+
+        let second_cmd = ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('y')).with_kind(KeyEventKind::Press)),
+        );
+        let second_due = app
+            .next_tick_due_at
+            .expect("second key should retain an existing due tick");
+
+        assert!(
+            second_due <= first_due,
+            "second key should not postpone existing due tick"
+        );
+        assert!(
+            matches!(second_cmd, Cmd::None),
+            "when a sooner tick is already pending, no new timer should be scheduled"
+        );
     }
 
     #[test]
