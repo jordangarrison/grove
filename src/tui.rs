@@ -28,7 +28,7 @@ use crate::mouse::{
     HitRegion, LayoutMetrics, clamp_sidebar_ratio, hit_test, parse_sidebar_ratio, ratio_from_drag,
     serialize_sidebar_ratio,
 };
-use crate::preview::PreviewState;
+use crate::preview::{FlashMessage, PreviewState, clear_expired_flash_message, new_flash_message};
 use crate::state::{Action, AppState, PaneFocus, UiMode, reduce};
 
 const DEFAULT_SIDEBAR_WIDTH_PCT: u16 = 33;
@@ -42,6 +42,12 @@ struct CursorMetadata {
     cursor_row: u16,
     pane_width: u16,
     pane_height: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LaunchDialogState {
+    prompt: String,
+    skip_permissions: bool,
 }
 
 trait TmuxInput {
@@ -218,7 +224,9 @@ struct GroveApp {
     state: AppState,
     discovery_state: DiscoveryState,
     preview: PreviewState,
+    flash: Option<FlashMessage>,
     interactive: Option<InteractiveState>,
+    launch_dialog: Option<LaunchDialogState>,
     tmux_input: Box<dyn TmuxInput>,
     last_tmux_error: Option<String>,
     output_changing: bool,
@@ -264,7 +272,9 @@ impl GroveApp {
             state: AppState::new(bootstrap.workspaces),
             discovery_state: bootstrap.discovery_state,
             preview: PreviewState::new(),
+            flash: None,
             interactive: None,
+            launch_dialog: None,
             tmux_input,
             last_tmux_error: None,
             output_changing: false,
@@ -317,13 +327,31 @@ impl GroveApp {
         }
     }
 
+    fn show_flash(&mut self, text: impl Into<String>, is_error: bool) {
+        self.flash = Some(new_flash_message(text, is_error, Instant::now()));
+    }
+
     fn status_bar_line(&self) -> String {
+        if let Some(flash) = &self.flash {
+            if flash.is_error {
+                return format!("Status: error: {}", flash.text);
+            }
+            return format!("Status: {}", flash.text);
+        }
+
         match &self.discovery_state {
             DiscoveryState::Error(message) => {
                 format!("Status: discovery error ({message}) [q]quit")
             }
             DiscoveryState::Empty => "Status: no worktrees found [q]quit".to_string(),
             DiscoveryState::Ready => {
+                if let Some(dialog) = &self.launch_dialog {
+                    return format!(
+                        "Status: Start agent dialog | [type]prompt [Backspace]delete [Tab]unsafe={} [Enter]start [Esc]cancel | prompt=\"{}\"",
+                        if dialog.skip_permissions { "on" } else { "off" },
+                        dialog.prompt.replace('\n', "\\n"),
+                    );
+                }
                 if self.interactive.is_some() {
                     if let Some(message) = &self.last_tmux_error {
                         return format!(
@@ -576,21 +604,58 @@ impl GroveApp {
         )
     }
 
-    fn start_selected_workspace_agent(&mut self) {
+    fn open_start_dialog(&mut self) {
+        let Some(workspace) = self.state.selected_workspace() else {
+            self.show_flash("no workspace selected", true);
+            return;
+        };
+        if workspace.is_main {
+            self.show_flash("cannot start agent in main workspace", true);
+            return;
+        }
+        if !workspace.supported_agent {
+            self.show_flash("unsupported workspace agent marker", true);
+            return;
+        }
+        if matches!(
+            workspace.status,
+            WorkspaceStatus::Active | WorkspaceStatus::Thinking | WorkspaceStatus::Waiting
+        ) {
+            self.show_flash("agent already running", true);
+            return;
+        }
         if !self.can_start_selected_workspace() {
+            self.show_flash("workspace cannot be started", true);
+            return;
+        }
+
+        self.launch_dialog = Some(LaunchDialogState {
+            prompt: read_workspace_launch_prompt(&workspace.path).unwrap_or_default(),
+            skip_permissions: self.launch_skip_permissions,
+        });
+        self.last_tmux_error = None;
+    }
+
+    fn start_selected_workspace_agent_with_options(
+        &mut self,
+        prompt: Option<String>,
+        skip_permissions: bool,
+    ) {
+        if !self.can_start_selected_workspace() {
+            self.show_flash("workspace cannot be started", true);
             return;
         }
         let Some(workspace) = self.state.selected_workspace() else {
+            self.show_flash("no workspace selected", true);
             return;
         };
-        let prompt = read_workspace_launch_prompt(&workspace.path);
 
         let request = LaunchRequest {
             workspace_name: workspace.name.clone(),
             workspace_path: workspace.path.clone(),
             agent: workspace.agent,
             prompt,
-            skip_permissions: self.launch_skip_permissions,
+            skip_permissions,
         };
         let launch_plan = build_launch_plan(&request);
 
@@ -598,18 +663,21 @@ impl GroveApp {
             && let Err(error) = write_launcher_script(&script.path, &script.contents)
         {
             self.last_tmux_error = Some(format!("launcher script write failed: {error}"));
+            self.show_flash("launcher script write failed", true);
             return;
         }
 
         for command in &launch_plan.pre_launch_cmds {
             if let Err(error) = self.tmux_input.execute(command) {
                 self.last_tmux_error = Some(error.to_string());
+                self.show_flash("agent start failed", true);
                 return;
             }
         }
 
         if let Err(error) = self.tmux_input.execute(&launch_plan.launch_cmd) {
             self.last_tmux_error = Some(error.to_string());
+            self.show_flash("agent start failed", true);
             return;
         }
 
@@ -618,7 +686,49 @@ impl GroveApp {
             selected.is_orphaned = false;
         }
         self.last_tmux_error = None;
+        self.show_flash("agent started", false);
         self.poll_preview();
+    }
+
+    fn confirm_start_dialog(&mut self) {
+        let Some(dialog) = self.launch_dialog.take() else {
+            return;
+        };
+
+        self.launch_skip_permissions = dialog.skip_permissions;
+        let prompt = if dialog.prompt.trim().is_empty() {
+            None
+        } else {
+            Some(dialog.prompt.trim().to_string())
+        };
+        self.start_selected_workspace_agent_with_options(prompt, dialog.skip_permissions);
+    }
+
+    fn handle_launch_dialog_key(&mut self, key_event: KeyEvent) {
+        match key_event.code {
+            KeyCode::Escape => {
+                self.launch_dialog = None;
+            }
+            KeyCode::Enter => {
+                self.confirm_start_dialog();
+            }
+            KeyCode::Tab => {
+                if let Some(dialog) = self.launch_dialog.as_mut() {
+                    dialog.skip_permissions = !dialog.skip_permissions;
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(dialog) = self.launch_dialog.as_mut() {
+                    dialog.prompt.pop();
+                }
+            }
+            KeyCode::Char(character) if key_event.modifiers.is_empty() => {
+                if let Some(dialog) = self.launch_dialog.as_mut() {
+                    dialog.prompt.push(character);
+                }
+            }
+            _ => {}
+        }
     }
 
     fn can_stop_selected_workspace(&self) -> bool {
@@ -641,10 +751,12 @@ impl GroveApp {
 
     fn stop_selected_workspace_agent(&mut self) {
         if !self.can_stop_selected_workspace() {
+            self.show_flash("no agent running", true);
             return;
         }
 
         let Some(workspace) = self.state.selected_workspace() else {
+            self.show_flash("no workspace selected", true);
             return;
         };
         let session_name = session_name_for_workspace(&workspace.name);
@@ -652,6 +764,7 @@ impl GroveApp {
         for command in &stop_commands {
             if let Err(error) = self.tmux_input.execute(command) {
                 self.last_tmux_error = Some(error.to_string());
+                self.show_flash("agent stop failed", true);
                 return;
             }
         }
@@ -669,6 +782,7 @@ impl GroveApp {
             selected.is_orphaned = false;
         }
         self.last_tmux_error = None;
+        self.show_flash("agent stopped", false);
         self.poll_preview();
     }
 
@@ -807,7 +921,7 @@ impl GroveApp {
             KeyCode::Char('!') => {
                 self.launch_skip_permissions = !self.launch_skip_permissions;
             }
-            KeyCode::Char('s') => self.start_selected_workspace_agent(),
+            KeyCode::Char('s') => self.open_start_dialog(),
             KeyCode::Char('x') => self.stop_selected_workspace_agent(),
             KeyCode::PageUp => {
                 if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
@@ -917,6 +1031,10 @@ impl GroveApp {
     }
 
     fn handle_mouse_event(&mut self, mouse_event: MouseEvent) {
+        if self.launch_dialog.is_some() {
+            return;
+        }
+
         let region = hit_test(self.layout_metrics(), mouse_event.x, mouse_event.y);
 
         match mouse_event.kind {
@@ -968,6 +1086,11 @@ impl GroveApp {
 
     fn handle_key(&mut self, key_event: KeyEvent) -> bool {
         if key_event.kind != KeyEventKind::Press {
+            return false;
+        }
+
+        if self.launch_dialog.is_some() {
+            self.handle_launch_dialog_key(key_event);
             return false;
         }
 
@@ -1050,6 +1173,23 @@ impl GroveApp {
             }
         }
 
+        if let Some(dialog) = &self.launch_dialog {
+            lines.push(String::new());
+            lines.push("Start Agent Dialog".to_string());
+            lines.push(format!(
+                "Prompt: {}",
+                if dialog.prompt.is_empty() {
+                    "(empty)".to_string()
+                } else {
+                    dialog.prompt.clone()
+                }
+            ));
+            lines.push(format!(
+                "Unsafe launch: {}",
+                if dialog.skip_permissions { "on" } else { "off" }
+            ));
+        }
+
         let selected_workspace = self
             .state
             .selected_workspace()
@@ -1093,6 +1233,7 @@ impl Model for GroveApp {
     fn update(&mut self, msg: Msg) -> Cmd<Self::Message> {
         match msg {
             Msg::Tick => {
+                let _ = clear_expired_flash_message(&mut self.flash, Instant::now());
                 self.poll_preview();
                 Cmd::tick(self.next_poll_interval())
             }
@@ -1433,6 +1574,12 @@ mod tests {
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
         );
+        assert!(app.launch_dialog.is_some());
+        assert!(commands.borrow().is_empty());
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
 
         assert_eq!(
             commands.borrow().as_slice(),
@@ -1489,6 +1636,10 @@ mod tests {
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
         );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
 
         assert_eq!(
             commands.borrow().last(),
@@ -1522,6 +1673,10 @@ mod tests {
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
         );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
 
         assert_eq!(
             commands.borrow().last(),
@@ -1543,6 +1698,78 @@ mod tests {
         assert!(launcher_script.contains("codex"));
 
         let _ = fs::remove_dir_all(workspace_dir);
+    }
+
+    #[test]
+    fn start_dialog_tab_toggles_unsafe_for_launch() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        assert_eq!(
+            commands.borrow().last(),
+            Some(&vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+                "codex --dangerously-bypass-approvals-and-sandbox".to_string(),
+                "Enter".to_string(),
+            ])
+        );
+    }
+
+    #[test]
+    fn start_dialog_blocks_background_navigation_and_escape_cancels() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        assert_eq!(app.state.selected_index, 1);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('k')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert_eq!(app.state.selected_index, 1);
+        assert_eq!(
+            app.launch_dialog
+                .as_ref()
+                .map(|dialog| dialog.prompt.clone()),
+            Some("k".to_string())
+        );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(app.launch_dialog.is_none());
+        assert!(commands.borrow().is_empty());
     }
 
     #[test]
@@ -1596,12 +1823,54 @@ mod tests {
         );
 
         assert!(commands.borrow().is_empty());
+        assert!(app.launch_dialog.is_none());
         assert_eq!(
             app.state
                 .selected_workspace()
                 .map(|workspace| workspace.status),
             Some(WorkspaceStatus::Main)
         );
+        assert!(
+            app.status_bar_line()
+                .contains("cannot start agent in main workspace")
+        );
+    }
+
+    #[test]
+    fn start_key_on_running_workspace_shows_flash_and_no_dialog() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(app.launch_dialog.is_none());
+        assert!(commands.borrow().is_empty());
+        assert!(app.status_bar_line().contains("agent already running"));
+    }
+
+    #[test]
+    fn stop_key_without_running_agent_shows_flash() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(commands.borrow().is_empty());
+        assert!(app.status_bar_line().contains("no agent running"));
     }
 
     #[test]

@@ -489,3 +489,32 @@ Exit criteria:
     with PRD UX (instead of file/key-based interim input).
   - Run manual TUI milestone validation with real tmux sessions for start/stop,
     prompt launch, and status transitions.
+- 2026-02-13: Added modal start-agent dialog flow in the TUI app loop for
+  prompt and unsafe launch controls.
+  Changes: updated `src/tui.rs` to open a start dialog on `[s]` with prompt
+  editing and `[Tab]` unsafe toggle, block background key/mouse input while the
+  dialog is active, confirm with `[Enter]` to execute launch plan, and cancel
+  with `[Esc]`. Dialog defaults are seeded from `.grove-prompt` and the global
+  unsafe default, then applied on confirmation.
+  Expanded TUI tests for dialog-open sequencing, background-input guard,
+  tab-based unsafe toggle, prompt-launch script path, and existing start/stop
+  sequencing.
+  Status: targeted checks pass locally (`cargo fmt`, `cargo test tui:: --lib`,
+  `cargo clippy --all-targets --all-features -- -D warnings`).
+  Next:
+  - Run manual TUI milestone validation with real tmux sessions for start/stop,
+    dialog prompt launch, cursor overlay, and persisted split ratio behavior.
+  - Implement explicit flash-message UX for start-on-running and invalid actions
+    to align with PRD status-bar messaging.
+- 2026-02-13: Implemented status-bar flash messaging for start/stop guardrails
+  and action outcomes.
+  Changes: updated `src/tui.rs` to use timed flash messages in the status bar
+  for invalid actions (start on main/running, stop when idle, unsupported
+  marker) and action outcomes (agent started/stopped, launch failures), with
+  auto-expiry on tick. Added focused TUI tests for running-start and idle-stop
+  flash behavior and main-worktree start flash guard.
+  Status: targeted checks pass locally (`cargo fmt`, `cargo test tui:: --lib`,
+  `cargo clippy --all-targets --all-features -- -D warnings`).
+  Next:
+  - Run manual TUI milestone validation with real tmux sessions for start/stop,
+    dialog prompt launch, cursor overlay, persisted split ratio, and flash UX.
