@@ -3,6 +3,32 @@
 This document turns the PRD into a phased execution plan with explicit
 quality gates.
 
+## Update 2026-02-13, Codex Interactive Plain Capture + Overlay Guard
+
+What changed:
+- For Codex in interactive mode, live preview capture now disables tmux escape
+  capture (`include_escape_sequences = false`) so Grove parses plain lines
+  instead of Codex’s full ANSI stream (`src/tui.rs`).
+- Preview rendering now forces plain-path output for Codex interactive sessions
+  and skips Grove’s synthetic cursor overlay for Codex to avoid duplicate
+  cursor drawing (`src/tui.rs`).
+- Updated TUI tests:
+  - interactive flow now expects Codex interactive live capture without
+    escapes
+  - cursor-overlay assertion is pinned to Claude so overlay behavior remains
+    covered (`src/tui.rs` tests).
+
+Current status:
+- Reduces Codex-specific double-cursor and multiline overwrite artifacts caused
+  by combining ANSI-screen output with Grove cursor injection in preview mode.
+- Focused TUI tests are green after the change.
+
+Next steps:
+- Manual retest in your normal setup with long multiline prompts in Codex
+  interactive mode, confirm cursor stays single and lines no longer overwrite.
+- If lag still reproduces, next step is adding a small sampling log for
+  per-tick render cost and tmux capture duration to isolate I/O vs render cost.
+
 ## Update 2026-02-13, Remove Codex `--no-alt-screen` Default
 
 What changed:
@@ -28,6 +54,36 @@ Next steps:
 - If edge terminals show flicker with default `codex`, use
   `GROVE_CODEX_CMD='codex --no-alt-screen'` as immediate runtime override while
   diagnosing.
+
+## Update 2026-02-13, Interactive tmux Pane Geometry Sync
+
+What changed:
+- Added tmux pane-resize support to the TUI tmux adapter path
+  (`src/tui.rs`):
+  - new `TmuxInput::resize_session(...)`
+  - command implementation sets `window-size` to `manual`, then uses
+    `resize-window` with `resize-pane` fallback.
+- Added preview output geometry calculation and interactive sync wiring so the
+  target tmux session is resized to the preview pane dimensions when entering
+  interactive mode, on terminal resize, and while dragging the sidebar divider
+  (`src/tui.rs`).
+- Added regression coverage asserting interactive entry triggers a resize call
+  with expected preview dimensions (`src/tui.rs` tests).
+
+Current status:
+- Codex interactive sessions now run at the same geometry Grove renders in the
+  preview pane, preventing Codex’s screen-oriented UI from being shown as a
+  mismatched bottom slice that looks like broken scrollback.
+- Verified by runtime probe: `grove-ws-test-codex` pane changed from default
+  geometry to preview-matched geometry after entering interactive mode.
+- Focused TUI tests are green.
+
+Next steps:
+- Manual retest in your normal terminal workflow: start Codex in Grove, enter
+  interactive, and confirm preview content now looks stable without Codex-only
+  scrollback artifacts.
+- If any residual artifact remains, next likely step is tracking explicit
+  preview scroll offsets against pane geometry changes during rapid resize/drag.
 
 ## Update 2026-02-13, Restore Codex ANSI Styling In Preview
 

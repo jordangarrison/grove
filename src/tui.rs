@@ -46,6 +46,7 @@ const HEADER_HEIGHT: u16 = 1;
 const STATUS_HEIGHT: u16 = 1;
 const DIVIDER_WIDTH: u16 = 1;
 const WORKSPACE_ITEM_HEIGHT: u16 = 2;
+const PREVIEW_METADATA_ROWS: u16 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum HitRegion {
@@ -97,6 +98,12 @@ trait TmuxInput {
         include_escape_sequences: bool,
     ) -> std::io::Result<String>;
     fn capture_cursor_metadata(&self, target_session: &str) -> std::io::Result<String>;
+    fn resize_session(
+        &self,
+        target_session: &str,
+        target_width: u16,
+        target_height: u16,
+    ) -> std::io::Result<()>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,6 +188,64 @@ impl TmuxInput for CommandTmuxInput {
         String::from_utf8(output.stdout).map_err(|error| {
             std::io::Error::other(format!("tmux cursor metadata utf8 decode failed: {error}"))
         })
+    }
+
+    fn resize_session(
+        &self,
+        target_session: &str,
+        target_width: u16,
+        target_height: u16,
+    ) -> std::io::Result<()> {
+        if target_width == 0 || target_height == 0 {
+            return Ok(());
+        }
+
+        let width = target_width.to_string();
+        let height = target_height.to_string();
+
+        let _ = std::process::Command::new("tmux")
+            .args(["set-option", "-t", target_session, "window-size", "manual"])
+            .status();
+
+        let resize_window = std::process::Command::new("tmux")
+            .args([
+                "resize-window",
+                "-t",
+                target_session,
+                "-x",
+                &width,
+                "-y",
+                &height,
+            ])
+            .output()?;
+        if resize_window.status.success() {
+            return Ok(());
+        }
+
+        let resize_pane = std::process::Command::new("tmux")
+            .args([
+                "resize-pane",
+                "-t",
+                target_session,
+                "-x",
+                &width,
+                "-y",
+                &height,
+            ])
+            .output()?;
+        if resize_pane.status.success() {
+            return Ok(());
+        }
+
+        let resize_window_error = String::from_utf8_lossy(&resize_window.stderr)
+            .trim()
+            .to_string();
+        let resize_pane_error = String::from_utf8_lossy(&resize_pane.stderr)
+            .trim()
+            .to_string();
+        Err(std::io::Error::other(format!(
+            "tmux resize failed for '{target_session}': resize-window={resize_window_error}; resize-pane={resize_pane_error}"
+        )))
     }
 }
 
@@ -752,6 +817,21 @@ impl GroveApp {
             .apply_capture(&self.selected_workspace_summary());
     }
 
+    fn preview_output_dimensions(&self) -> Option<(u16, u16)> {
+        let layout = self.view_layout();
+        if layout.preview.is_empty() {
+            return None;
+        }
+
+        let inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        if inner.is_empty() || inner.width == 0 {
+            return None;
+        }
+
+        let output_height = inner.height.saturating_sub(PREVIEW_METADATA_ROWS).max(1);
+        Some((inner.width, output_height))
+    }
+
     fn selected_session_for_live_preview(&self) -> Option<(String, bool)> {
         let workspace = self.state.selected_workspace()?;
         if workspace.is_main {
@@ -766,9 +846,11 @@ impl GroveApp {
                 | WorkspaceStatus::Done
                 | WorkspaceStatus::Error
         ) {
+            let codex_interactive_plain =
+                self.interactive.is_some() && workspace.agent == AgentType::Codex;
             return Some((
                 session_name_for_workspace(&workspace.name),
-                should_render_ansi_preview(workspace.agent),
+                should_render_ansi_preview(workspace.agent) && !codex_interactive_plain,
             ));
         }
 
@@ -799,6 +881,39 @@ impl GroveApp {
             metadata.pane_height,
             metadata.pane_width,
         );
+    }
+
+    fn sync_interactive_session_geometry(&mut self) {
+        let Some(target_session) = self.interactive_target_session() else {
+            return;
+        };
+        let Some((pane_width, pane_height)) = self.preview_output_dimensions() else {
+            return;
+        };
+
+        let needs_resize = self.interactive.as_ref().is_some_and(|state| {
+            state.pane_width != pane_width || state.pane_height != pane_height
+        });
+        if !needs_resize {
+            return;
+        }
+
+        if let Some(state) = self.interactive.as_mut() {
+            state.update_cursor(
+                state.cursor_row,
+                state.cursor_col,
+                state.cursor_visible,
+                pane_height,
+                pane_width,
+            );
+        }
+
+        if let Err(error) = self
+            .tmux_input
+            .resize_session(&target_session, pane_width, pane_height)
+        {
+            self.last_tmux_error = Some(error.to_string());
+        }
     }
 
     fn poll_preview(&mut self) {
@@ -910,6 +1025,7 @@ impl GroveApp {
         self.last_tmux_error = None;
         self.state.mode = UiMode::Preview;
         self.state.focus = PaneFocus::Preview;
+        self.sync_interactive_session_geometry();
         true
     }
 
@@ -1671,6 +1787,7 @@ impl GroveApp {
                     if ratio != self.sidebar_width_pct {
                         self.sidebar_width_pct = ratio;
                         self.persist_sidebar_ratio();
+                        self.sync_interactive_session_geometry();
                     }
                 }
             }
@@ -1871,6 +1988,9 @@ impl GroveApp {
 
         let selected_workspace = self.state.selected_workspace();
         let selected_agent = selected_workspace.map(|workspace| workspace.agent);
+        let codex_interactive_plain =
+            self.interactive.is_some() && selected_agent == Some(AgentType::Codex);
+        let allow_cursor_overlay = selected_agent != Some(AgentType::Codex);
         let selected_workspace_label = selected_workspace
             .map(|workspace| {
                 format!(
@@ -1882,7 +2002,7 @@ impl GroveApp {
             })
             .unwrap_or_else(|| "none".to_string());
 
-        let metadata_rows = 2usize;
+        let metadata_rows = usize::from(PREVIEW_METADATA_ROWS);
         let preview_height = usize::from(inner.height)
             .saturating_sub(metadata_rows)
             .max(1);
@@ -1893,8 +2013,12 @@ impl GroveApp {
         ];
 
         let mut visible_plain_lines = self.preview.visible_lines(preview_height);
-        if !should_render_ansi_preview(selected_agent.unwrap_or(AgentType::Claude)) {
-            self.apply_interactive_cursor_overlay(&mut visible_plain_lines, preview_height);
+        if !should_render_ansi_preview(selected_agent.unwrap_or(AgentType::Claude))
+            || codex_interactive_plain
+        {
+            if allow_cursor_overlay {
+                self.apply_interactive_cursor_overlay(&mut visible_plain_lines, preview_height);
+            }
             if visible_plain_lines.is_empty() {
                 text_lines.push(FtLine::raw("(no preview output)"));
             } else {
@@ -1908,11 +2032,13 @@ impl GroveApp {
         if visible_render_lines.is_empty() && !visible_plain_lines.is_empty() {
             visible_render_lines = visible_plain_lines;
         }
-        self.apply_interactive_cursor_overlay_render(
-            &self.preview.visible_lines(preview_height),
-            &mut visible_render_lines,
-            preview_height,
-        );
+        if allow_cursor_overlay {
+            self.apply_interactive_cursor_overlay_render(
+                &self.preview.visible_lines(preview_height),
+                &mut visible_render_lines,
+                preview_height,
+            );
+        }
 
         if visible_render_lines.is_empty() {
             text_lines.push(FtLine::raw("(no preview output)"));
@@ -2155,6 +2281,7 @@ impl Model for GroveApp {
                         width,
                     );
                 }
+                self.sync_interactive_session_geometry();
                 Cmd::None
             }
             Msg::Noop => Cmd::None,
@@ -2275,6 +2402,18 @@ mod tests {
                 Ok(output) => Ok(output),
                 Err(error) => Err(std::io::Error::other(error)),
             }
+        }
+
+        fn resize_session(
+            &self,
+            target_session: &str,
+            target_width: u16,
+            target_height: u16,
+        ) -> std::io::Result<()> {
+            self.calls.borrow_mut().push(format!(
+                "resize:{target_session}:{target_width}:{target_height}"
+            ));
+            Ok(())
         }
     }
 
@@ -2882,6 +3021,28 @@ mod tests {
     }
 
     #[test]
+    fn enter_on_active_workspace_resizes_tmux_session_to_preview_dimensions() {
+        let (mut app, _commands, _captures, _cursor_captures, calls) =
+            fixture_app_with_tmux_and_calls(WorkspaceStatus::Active, Vec::new(), Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(
+            calls
+                .borrow()
+                .iter()
+                .any(|call| call == "resize:grove-ws-feature-a:78:34")
+        );
+    }
+
+    #[test]
     fn interactive_keys_forward_to_tmux_session() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -3166,7 +3327,7 @@ mod tests {
         assert_eq!(
             calls.borrow().as_slice(),
             &[
-                "capture:grove-ws-feature-a:600:true".to_string(),
+                "capture:grove-ws-feature-a:600:false".to_string(),
                 "cursor:grove-ws-feature-a".to_string(),
                 "exec:tmux send-keys -l -t grove-ws-feature-a x".to_string(),
                 "capture:grove-ws-feature-a:200:true".to_string(),
@@ -3299,6 +3460,7 @@ mod tests {
                 vec![Ok("1 1 1 120 3".to_string())],
                 sidebar_ratio_path,
             );
+        app.state.workspaces[1].agent = AgentType::Claude;
 
         ftui::Model::update(
             &mut app,
