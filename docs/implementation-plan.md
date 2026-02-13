@@ -3,6 +3,113 @@
 This document turns the PRD into a phased execution plan with explicit
 quality gates.
 
+## Update 2026-02-13, Restore Codex ANSI Styling In Preview
+
+What changed:
+- Removed Codex-only plain-render fallback in preview policy. ANSI rendering is
+  now enabled for both Claude and Codex (`src/tui.rs`).
+- Live preview capture for Codex now keeps tmux escape capture enabled (`-e`),
+  matching Claude capture path (`src/tui.rs` tests).
+- Updated TUI regression tests to assert Codex ANSI rendering/capture behavior
+  and updated interactive-flow call expectations (`src/tui.rs`).
+
+Current status:
+- Codex preview styling now matches styled rendering behavior expected from
+  Codex output instead of forced plain text.
+- Targeted TUI tests pass, and the local flicker harness still reports no
+  style/plain oscillation in this environment.
+
+Next steps:
+- Validate visually in your setup with long Codex sessions and active mouse
+  interaction to confirm style fidelity and no flicker regression.
+- If any flicker returns, add a runtime toggle to switch Codex between ANSI and
+  plain capture without code changes.
+
+## Update 2026-02-13, Local Autonomous Codex Flicker Feedback Loop
+
+What changed:
+- Added launch-command env overrides in runtime command construction:
+  `GROVE_CODEX_CMD` and `GROVE_CLAUDE_CMD` now replace default agent launch
+  commands when set (`src/agent_runtime.rs`).
+- Added normalization coverage for override values (trim + empty rejection)
+  (`src/agent_runtime.rs` tests).
+- Added deterministic fake Codex stream emitter script that produces
+  ANSI + mouse-fragment heavy output (`scripts/fake-codex-flicker-emitter.sh`).
+- Added local harness script that:
+  - creates a temporary Codex-marked git worktree
+  - launches Grove in a tmux session with `GROVE_CODEX_CMD` pointed at the fake
+    emitter
+  - automatically selects that workspace, starts the agent, enters interactive
+    mode, and sends input
+  - samples frame styling via `tmux capture-pane -e` and fails on sustained
+    styled/plain mode oscillation (`scripts/check-codex-flicker.sh`).
+- Added optional harness override `GROVE_FLICKER_CODEX_CMD` so the same loop can
+  run against real Codex (or any command) without changing the script.
+
+Current status:
+- We now have a one-command local repro/verification loop with no manual
+  interaction required.
+- Latest local run completed with no style-oscillation flicker detected by the
+  harness heuristic.
+
+Next steps:
+- Keep iterating Codex rendering fixes using the harness as the first local
+  gate (`scripts/check-codex-flicker.sh`).
+- If needed, tune oscillation thresholds by changing
+  `GROVE_FLICKER_*` environment variables while collecting real failures.
+
+## Update 2026-02-13, Interactive Split-Mouse Fragment Input Filter
+
+What changed:
+- Added interactive-state tracking for recent mouse events and in-progress
+  split mouse-fragment detection (`src/interactive.rs`).
+- Implemented Sidecar-style fragment suppression for leaked split CSI mouse
+  input in interactive mode:
+  - starts filtering when a bare `[` arrives immediately after mouse activity
+  - drops subsequent fragment chars (`<`, digits, `;`, `M/m`) in a short window
+  (`src/interactive.rs`, `src/tui.rs`).
+- Wired mouse-event timestamping into the TUI mouse handler so key filtering
+  has the needed timing signal (`src/tui.rs`).
+- Added focused regression tests for the filter and non-filter paths in both
+  interactive state and app-level TUI flow (`src/interactive.rs`, `src/tui.rs`).
+
+Current status:
+- Interactive key forwarding now suppresses known split mouse CSI leak patterns
+  that can destabilize Codex redraw behavior during mouse/scroll interaction.
+- Focused test suites for touched modules are green.
+
+Next steps:
+- Manual retest in your environment: keep Codex open, scroll/click/type in
+  Grove interactive mode, confirm no styled/plain flicker.
+- If flicker persists, next step is instrumenting per-frame render mode + raw
+  captured bytes from the running Grove session to isolate non-input causes.
+
+## Update 2026-02-13, Codex Capture Escape Filtering At Source
+
+What changed:
+- Added an ANSI-escape capture toggle to tmux preview capture plumbing in
+  `src/tui.rs` (`TmuxInput::capture_output` now accepts
+  `include_escape_sequences`).
+- Switched live preview polling to choose capture mode by selected agent:
+  Codex capture now runs without `tmux capture-pane -e`, Claude keeps `-e`.
+- Kept interactive copy capture on `Alt+C` using ANSI capture (`-e`) so
+  existing copy/paste behavior stays unchanged.
+- Added regression tests proving capture mode selection:
+  Codex preview path uses plain capture, Claude preview path keeps ANSI capture
+  (`src/tui.rs` tests).
+
+Current status:
+- Codex preview no longer ingests tmux ANSI escape streams during normal live
+  polling, reducing risk of control-sequence-induced render instability and
+  flicker.
+- Focused TUI test suite is green.
+
+Next steps:
+- Manual validation in your terminal: run Codex in Grove interactive mode and
+  confirm flicker no longer reproduces during active typing/navigation.
+- If any residual flicker remains, next likely step is adding Sidecar-style
+  split-mouse-fragment key filtering in interactive key forwarding.
+
 ## Update 2026-02-13, Restore Ctrl+Backslash Interactive Exit
 
 What changed:

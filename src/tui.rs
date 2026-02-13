@@ -94,6 +94,7 @@ trait TmuxInput {
         &self,
         target_session: &str,
         scrollback_lines: usize,
+        include_escape_sequences: bool,
     ) -> std::io::Result<String>;
     fn capture_cursor_metadata(&self, target_session: &str) -> std::io::Result<String>;
 }
@@ -134,18 +135,18 @@ impl TmuxInput for CommandTmuxInput {
         &self,
         target_session: &str,
         scrollback_lines: usize,
+        include_escape_sequences: bool,
     ) -> std::io::Result<String> {
-        let output = std::process::Command::new("tmux")
-            .args([
-                "capture-pane",
-                "-p",
-                "-e",
-                "-t",
-                target_session,
-                "-S",
-                &format!("-{scrollback_lines}"),
-            ])
-            .output()?;
+        let mut args = vec!["capture-pane".to_string(), "-p".to_string()];
+        if include_escape_sequences {
+            args.push("-e".to_string());
+        }
+        args.push("-t".to_string());
+        args.push(target_session.to_string());
+        args.push("-S".to_string());
+        args.push(format!("-{scrollback_lines}"));
+
+        let output = std::process::Command::new("tmux").args(args).output()?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -480,7 +481,9 @@ fn ansi_line_to_styled_line(line: &str) -> FtLine {
 }
 
 fn should_render_ansi_preview(agent: AgentType) -> bool {
-    !matches!(agent, AgentType::Codex)
+    match agent {
+        AgentType::Claude | AgentType::Codex => true,
+    }
 }
 
 fn default_sidebar_ratio_path() -> PathBuf {
@@ -749,7 +752,7 @@ impl GroveApp {
             .apply_capture(&self.selected_workspace_summary());
     }
 
-    fn selected_session_for_live_preview(&self) -> Option<String> {
+    fn selected_session_for_live_preview(&self) -> Option<(String, bool)> {
         let workspace = self.state.selected_workspace()?;
         if workspace.is_main {
             return None;
@@ -763,7 +766,10 @@ impl GroveApp {
                 | WorkspaceStatus::Done
                 | WorkspaceStatus::Error
         ) {
-            return Some(session_name_for_workspace(&workspace.name));
+            return Some((
+                session_name_for_workspace(&workspace.name),
+                should_render_ansi_preview(workspace.agent),
+            ));
         }
 
         None
@@ -796,7 +802,9 @@ impl GroveApp {
     }
 
     fn poll_preview(&mut self) {
-        let Some(session_name) = self.selected_session_for_live_preview() else {
+        let Some((session_name, include_escape_sequences)) =
+            self.selected_session_for_live_preview()
+        else {
             self.output_changing = false;
             self.refresh_preview_summary();
             if let Some(target_session) = self.interactive_target_session() {
@@ -805,7 +813,10 @@ impl GroveApp {
             return;
         };
 
-        match self.tmux_input.capture_output(&session_name, 600) {
+        match self
+            .tmux_input
+            .capture_output(&session_name, 600, include_escape_sequences)
+        {
             Ok(output) => {
                 let update = self.preview.apply_capture(&output);
                 self.output_changing = update.changed_cleaned;
@@ -1333,7 +1344,7 @@ impl GroveApp {
     }
 
     fn copy_interactive_capture(&mut self, target_session: &str) {
-        match self.tmux_input.capture_output(target_session, 200) {
+        match self.tmux_input.capture_output(target_session, 200, true) {
             Ok(output) => {
                 self.copied_text = Some(output);
                 self.last_tmux_error = None;
@@ -1355,11 +1366,19 @@ impl GroveApp {
     }
 
     fn handle_interactive_key(&mut self, key_event: KeyEvent) {
+        let now = Instant::now();
+        if let KeyCode::Char(character) = key_event.code
+            && key_event.modifiers.is_empty()
+            && let Some(state) = self.interactive.as_mut()
+            && state.should_drop_split_mouse_fragment(character, now)
+        {
+            return;
+        }
+
         let Some(interactive_key) = Self::map_interactive_key(key_event) else {
             return;
         };
 
-        let now = Instant::now();
         let (action, target_session, bracketed_paste) = {
             let Some(state) = self.interactive.as_mut() else {
                 return;
@@ -1619,6 +1638,10 @@ impl GroveApp {
     }
 
     fn handle_mouse_event(&mut self, mouse_event: MouseEvent) {
+        if let Some(state) = self.interactive.as_mut() {
+            state.note_mouse_event(Instant::now());
+        }
+
         if self.modal_open() {
             return;
         }
@@ -2181,7 +2204,7 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use std::rc::Rc;
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     type RecordedCommands = Rc<RefCell<Vec<Vec<String>>>>;
     type RecordedCaptures = Rc<RefCell<Vec<Result<String, String>>>>;
@@ -2221,10 +2244,11 @@ mod tests {
             &self,
             target_session: &str,
             scrollback_lines: usize,
+            include_escape_sequences: bool,
         ) -> std::io::Result<String> {
-            self.calls
-                .borrow_mut()
-                .push(format!("capture:{target_session}:{scrollback_lines}"));
+            self.calls.borrow_mut().push(format!(
+                "capture:{target_session}:{scrollback_lines}:{include_escape_sequences}"
+            ));
             let mut captures = self.captures.borrow_mut();
             if captures.is_empty() {
                 return Ok(String::new());
@@ -2890,6 +2914,64 @@ mod tests {
     }
 
     #[test]
+    fn interactive_filters_split_mouse_bracket_fragment() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        let Some(state) = app.interactive.as_mut() else {
+            panic!("interactive state should be active");
+        };
+        state.note_mouse_event(Instant::now());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('[')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(commands.borrow().is_empty());
+    }
+
+    #[test]
+    fn interactive_still_forwards_bracket_when_not_mouse_fragment() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('[')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert_eq!(
+            commands.borrow().as_slice(),
+            &[vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-l".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+                "[".to_string(),
+            ]]
+        );
+    }
+
+    #[test]
     fn double_escape_exits_interactive_mode() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -3084,15 +3166,68 @@ mod tests {
         assert_eq!(
             calls.borrow().as_slice(),
             &[
-                "capture:grove-ws-feature-a:600".to_string(),
+                "capture:grove-ws-feature-a:600:true".to_string(),
                 "cursor:grove-ws-feature-a".to_string(),
                 "exec:tmux send-keys -l -t grove-ws-feature-a x".to_string(),
-                "capture:grove-ws-feature-a:200".to_string(),
+                "capture:grove-ws-feature-a:200:true".to_string(),
                 "exec:tmux send-keys -l -t grove-ws-feature-a copied-text".to_string(),
                 "exec:tmux send-keys -t grove-ws-feature-a Escape".to_string(),
             ]
         );
         assert!(app.interactive.is_none());
+    }
+
+    #[test]
+    fn codex_live_preview_capture_keeps_tmux_escape_output() {
+        let (mut app, _commands, _captures, _cursor_captures, calls) =
+            fixture_app_with_tmux_and_calls(
+                WorkspaceStatus::Active,
+                vec![
+                    Ok("line one\nline two\n".to_string()),
+                    Ok("line one\nline two\n".to_string()),
+                ],
+                Vec::new(),
+            );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(&mut app, Msg::Tick);
+
+        assert!(
+            calls
+                .borrow()
+                .iter()
+                .any(|call| call == "capture:grove-ws-feature-a:600:true")
+        );
+    }
+
+    #[test]
+    fn claude_live_preview_capture_keeps_tmux_escape_output() {
+        let (mut app, _commands, _captures, _cursor_captures, calls) =
+            fixture_app_with_tmux_and_calls(
+                WorkspaceStatus::Active,
+                vec![
+                    Ok("line one\nline two\n".to_string()),
+                    Ok("line one\nline two\n".to_string()),
+                ],
+                Vec::new(),
+            );
+        app.state.workspaces[1].agent = AgentType::Claude;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(&mut app, Msg::Tick);
+
+        assert!(
+            calls
+                .borrow()
+                .iter()
+                .any(|call| call == "capture:grove-ws-feature-a:600:true")
+        );
     }
 
     #[test]
@@ -3146,8 +3281,8 @@ mod tests {
     }
 
     #[test]
-    fn codex_preview_uses_plain_rendering_path() {
-        assert!(!should_render_ansi_preview(AgentType::Codex));
+    fn codex_preview_uses_ansi_rendering_path() {
+        assert!(should_render_ansi_preview(AgentType::Codex));
         assert!(should_render_ansi_preview(AgentType::Claude));
     }
 

@@ -1,6 +1,8 @@
 use std::time::{Duration, Instant};
 
 const DOUBLE_ESCAPE_WINDOW_MS: u64 = 150;
+const SPLIT_MOUSE_FRAGMENT_START_WINDOW_MS: u64 = 10;
+const SPLIT_MOUSE_FRAGMENT_MAX_AGE_MS: u64 = 50;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InteractiveState {
@@ -14,6 +16,8 @@ pub struct InteractiveState {
     pub pane_height: u16,
     pub pane_width: u16,
     pub bracketed_paste: bool,
+    last_mouse_event_time: Option<Instant>,
+    mouse_fragment_started_at: Option<Instant>,
     last_escape_time: Option<Instant>,
 }
 
@@ -69,6 +73,8 @@ impl InteractiveState {
             pane_height,
             pane_width,
             bracketed_paste: false,
+            last_mouse_event_time: None,
+            mouse_fragment_started_at: None,
             last_escape_time: None,
         }
     }
@@ -124,6 +130,45 @@ impl InteractiveState {
         self.pane_height = pane_height;
         self.pane_width = pane_width;
     }
+
+    pub fn note_mouse_event(&mut self, now: Instant) {
+        self.last_mouse_event_time = Some(now);
+    }
+
+    pub fn should_drop_split_mouse_fragment(&mut self, character: char, now: Instant) -> bool {
+        if let Some(started_at) = self.mouse_fragment_started_at {
+            if now.saturating_duration_since(started_at)
+                > Duration::from_millis(SPLIT_MOUSE_FRAGMENT_MAX_AGE_MS)
+            {
+                self.mouse_fragment_started_at = None;
+            } else if is_mouse_fragment_character(character) {
+                if matches!(character, 'M' | 'm') {
+                    self.mouse_fragment_started_at = None;
+                }
+                return true;
+            } else {
+                self.mouse_fragment_started_at = None;
+            }
+        }
+
+        if character == '['
+            && self
+                .last_mouse_event_time
+                .is_some_and(|last_mouse_event_time| {
+                    now.saturating_duration_since(last_mouse_event_time)
+                        <= Duration::from_millis(SPLIT_MOUSE_FRAGMENT_START_WINDOW_MS)
+                })
+        {
+            self.mouse_fragment_started_at = Some(now);
+            return true;
+        }
+
+        false
+    }
+}
+
+fn is_mouse_fragment_character(character: char) -> bool {
+    matches!(character, '[' | '<' | ';' | 'M' | 'm') || character.is_ascii_digit()
 }
 
 pub fn key_to_action(key: InteractiveKey) -> InteractiveAction {
@@ -445,6 +490,34 @@ mod tests {
         assert!(!should_snap_back_for_input("[<35;192;47M"));
         assert!(!should_snap_back_for_input("["));
         assert!(should_snap_back_for_input("a"));
+    }
+
+    #[test]
+    fn split_mouse_fragment_filter_drops_sequence_after_mouse_event() {
+        let now = Instant::now();
+        let mut state =
+            InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+        state.note_mouse_event(now);
+
+        assert!(state.should_drop_split_mouse_fragment('[', now));
+        assert!(state.should_drop_split_mouse_fragment('<', now + Duration::from_millis(1)));
+        assert!(state.should_drop_split_mouse_fragment('3', now + Duration::from_millis(2)));
+        assert!(state.should_drop_split_mouse_fragment('5', now + Duration::from_millis(3)));
+        assert!(state.should_drop_split_mouse_fragment(';', now + Duration::from_millis(4)));
+        assert!(state.should_drop_split_mouse_fragment('1', now + Duration::from_millis(5)));
+        assert!(state.should_drop_split_mouse_fragment('0', now + Duration::from_millis(6)));
+        assert!(state.should_drop_split_mouse_fragment(';', now + Duration::from_millis(7)));
+        assert!(state.should_drop_split_mouse_fragment('5', now + Duration::from_millis(8)));
+        assert!(state.should_drop_split_mouse_fragment('M', now + Duration::from_millis(9)));
+    }
+
+    #[test]
+    fn split_mouse_fragment_filter_allows_normal_bracket_typing() {
+        let now = Instant::now();
+        let mut state =
+            InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+
+        assert!(!state.should_drop_split_mouse_fragment('[', now));
     }
 
     #[test]

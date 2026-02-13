@@ -203,6 +203,14 @@ pub fn stop_plan(session_name: &str) -> Vec<Vec<String>> {
 }
 
 pub fn build_agent_command(agent: AgentType, skip_permissions: bool) -> String {
+    if let Some(command_override) = env_agent_command_override(agent) {
+        return command_override;
+    }
+
+    default_agent_command(agent, skip_permissions)
+}
+
+fn default_agent_command(agent: AgentType, skip_permissions: bool) -> String {
     match (agent, skip_permissions) {
         (AgentType::Claude, true) => "claude --dangerously-skip-permissions".to_string(),
         (AgentType::Claude, false) => "claude".to_string(),
@@ -211,6 +219,24 @@ pub fn build_agent_command(agent: AgentType, skip_permissions: bool) -> String {
         }
         (AgentType::Codex, false) => "codex --no-alt-screen".to_string(),
     }
+}
+
+fn env_agent_command_override(agent: AgentType) -> Option<String> {
+    let variable = match agent {
+        AgentType::Claude => "GROVE_CLAUDE_CMD",
+        AgentType::Codex => "GROVE_CODEX_CMD",
+    };
+    let override_value = std::env::var(variable).ok()?;
+    normalized_agent_command_override(&override_value)
+}
+
+fn normalized_agent_command_override(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    Some(trimmed.to_string())
 }
 
 pub fn detect_waiting_prompt(output: &str) -> Option<String> {
@@ -581,9 +607,10 @@ mod tests {
     use std::time::Duration;
 
     use super::{
-        CaptureChange, LaunchRequest, SessionActivity, build_agent_command, build_launch_plan,
-        detect_status, detect_waiting_prompt, evaluate_capture_change, poll_interval,
-        reconcile_with_sessions, sanitize_workspace_name, session_name_for_workspace, stop_plan,
+        CaptureChange, LaunchRequest, SessionActivity, build_launch_plan, default_agent_command,
+        detect_status, detect_waiting_prompt, evaluate_capture_change,
+        normalized_agent_command_override, poll_interval, reconcile_with_sessions,
+        sanitize_workspace_name, session_name_for_workspace, stop_plan,
     };
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
@@ -624,13 +651,27 @@ mod tests {
     #[test]
     fn codex_launch_command_always_disables_alt_screen() {
         assert_eq!(
-            build_agent_command(AgentType::Codex, false),
+            default_agent_command(AgentType::Codex, false),
             "codex --no-alt-screen"
         );
         assert_eq!(
-            build_agent_command(AgentType::Codex, true),
+            default_agent_command(AgentType::Codex, true),
             "codex --dangerously-bypass-approvals-and-sandbox --no-alt-screen"
         );
+    }
+
+    #[test]
+    fn agent_command_override_normalization_trims_whitespace() {
+        assert_eq!(
+            normalized_agent_command_override("  /tmp/fake-codex --flag  "),
+            Some("/tmp/fake-codex --flag".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_command_override_normalization_ignores_empty_values() {
+        assert_eq!(normalized_agent_command_override(""), None);
+        assert_eq!(normalized_agent_command_override("   "), None);
     }
 
     #[test]

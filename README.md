@@ -19,4 +19,10 @@ make fmt
 make clippy
 make test
 make ci
+
+# local codex flicker harness (no manual interaction)
+scripts/check-codex-flicker.sh
+
+# run harness against real codex instead of fake emitter
+GROVE_FLICKER_CODEX_CMD='codex --no-alt-screen' scripts/check-codex-flicker.sh
 ```
