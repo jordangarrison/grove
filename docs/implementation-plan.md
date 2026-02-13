@@ -1117,3 +1117,18 @@ Exit criteria:
     the new-workspace modal for full Phase 3 parity.
   - Run manual interaction pass in live terminal for `n` create flow and drag
     behavior across different terminal emulators.
+- 2026-02-13: Investigated reported "every-frame" Codex workspace flicker in
+  live usage.
+  Changes: verified `.grove-debug-snapshot.json` shows 10/10 unchanged captures
+  (`changed_raw=false`, `changed_cleaned=false`) while UI still redraws;
+  traced to FTUI runtime always marking the model dirty on tick/mouse events
+  and rendering every event, plus adaptive diff strategy selecting
+  `FullRedraw` and only probing out every 60 frames.
+  Status: root cause isolated to render/present cadence and diff-strategy
+  behavior, not tmux capture churn or styled/plain oscillation.
+  Next:
+  - Add per-frame diff-strategy + emitted-cell counters to Grove debug snapshot
+    for direct attribution in real repros.
+  - Apply a mitigation path (disable Bayesian selector in Grove diff config, or
+    in FTUI avoid `FullRedraw` when previous frame exists and no diff probe has
+    proven high change-rate recently).
