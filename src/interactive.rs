@@ -32,6 +32,7 @@ pub enum InteractiveKey {
     PageUp,
     PageDown,
     Escape,
+    CtrlBackslash,
     Ctrl(char),
     Function(u8),
     Char(char),
@@ -76,6 +77,10 @@ impl InteractiveState {
         self.last_key_time = now;
 
         match key {
+            InteractiveKey::CtrlBackslash => {
+                self.last_escape_time = None;
+                InteractiveAction::ExitInteractive
+            }
             InteractiveKey::Escape => {
                 let should_exit = self.last_escape_time.is_some_and(|last_escape_time| {
                     now.saturating_duration_since(last_escape_time)
@@ -350,6 +355,18 @@ mod tests {
         assert_eq!(
             state.handle_key(InteractiveKey::Escape, now + Duration::from_millis(200)),
             InteractiveAction::SendNamed("Escape".to_string())
+        );
+    }
+
+    #[test]
+    fn ctrl_backslash_exits_immediately() {
+        let now = Instant::now();
+        let mut state =
+            InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+
+        assert_eq!(
+            state.handle_key(InteractiveKey::CtrlBackslash, now),
+            InteractiveAction::ExitInteractive
         );
     }
 

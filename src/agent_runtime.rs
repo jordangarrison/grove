@@ -407,6 +407,10 @@ pub fn evaluate_capture_change(previous: Option<&OutputDigest>, raw_output: &str
     }
 }
 
+fn is_safe_text_character(character: char) -> bool {
+    matches!(character, '\n' | '\t') || !character.is_control()
+}
+
 pub fn strip_mouse_fragments(input: &str) -> String {
     let mut cleaned = input
         .replace("[?1000h", "")
@@ -425,7 +429,9 @@ fn strip_non_sgr_control_sequences(input: &str) -> String {
 
     while let Some(character) = chars.next() {
         if character != '\u{1b}' {
-            cleaned.push(character);
+            if is_safe_text_character(character) {
+                cleaned.push(character);
+            }
             continue;
         }
 
@@ -475,7 +481,9 @@ fn strip_sgr_sequences(input: &str) -> String {
             continue;
         }
 
-        cleaned.push(character);
+        if is_safe_text_character(character) {
+            cleaned.push(character);
+        }
     }
 
     cleaned
@@ -844,5 +852,13 @@ mod tests {
         let raw = "A\u{1b}[31mB\u{1b}[39m C\u{1b}]0;title\u{7}\n";
         let change = evaluate_capture_change(None, raw);
         assert_eq!(change.cleaned_output, "AB C\n");
+    }
+
+    #[test]
+    fn capture_change_strips_terminal_control_bytes() {
+        let raw = "A\u{000e}B\u{000f}C\r\n";
+        let change = evaluate_capture_change(None, raw);
+        assert_eq!(change.cleaned_output, "ABC\n");
+        assert_eq!(change.render_output, "ABC\n");
     }
 }

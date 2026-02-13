@@ -3,6 +3,70 @@
 This document turns the PRD into a phased execution plan with explicit
 quality gates.
 
+## Update 2026-02-13, Restore Ctrl+Backslash Interactive Exit
+
+What changed:
+- Reintroduced `Ctrl+\` as an immediate interactive-exit key path in the
+  interactive state machine (`src/interactive.rs`).
+- Updated interactive key mapping to recognize both common terminal encodings
+  for `Ctrl+\`: modified `\\` and raw control character `\u{1c}`
+  (`src/tui.rs`).
+- Added fallback recognition for `Ctrl+4`/`Ctrl+|` variants and accepted
+  `Repeat` key events so `Ctrl+\`-intent exit works across more terminal
+  key-event implementations (`src/tui.rs`).
+- Updated interactive status hint text to advertise both exit paths:
+  `Esc Esc` and `Ctrl+\` (`src/tui.rs`).
+- Added regression tests for direct and control-character `Ctrl+\` exit
+  behavior (`src/interactive.rs`, `src/tui.rs`).
+
+Current status:
+- Interactive exit no longer depends only on the 150ms double-escape timing
+  window.
+- Existing `Esc Esc` behavior remains available.
+
+Next steps:
+- Manual check in your terminal: verify `Ctrl+\` exits interactive mode on the
+  first keypress in Codex and Claude workspaces.
+
+## Update 2026-02-13, Codex Plain Preview Fallback
+
+What changed:
+- Added agent-specific preview rendering policy: Codex now uses the plain
+  preview render path (sanitized text + cursor marker), while Claude keeps ANSI
+  styled rendering (`src/tui.rs`).
+- Kept interactive cursor overlay for Codex by applying plain cursor insertion
+  on already-sanitized lines (`src/tui.rs`).
+- Added unit coverage for the render-policy split by agent
+  (`src/tui.rs`).
+
+Current status:
+- Codex preview no longer goes through ANSI span rendering logic inside Grove,
+  reducing Codex-specific render-state instability without changing Claude.
+- Focused TUI tests covering overlay/render-policy paths are green.
+
+Next steps:
+- Manual retest in Grove interactive mode on Codex workspace to confirm the
+  global styled/plain flip is gone.
+
+## Update 2026-02-13, Control-Byte Sanitization For Preview Stability
+
+What changed:
+- Hardened capture sanitization to drop unsafe control bytes from tmux output
+  while preserving printable text, tabs, and newlines (`src/agent_runtime.rs`).
+- Kept ANSI SGR style support, but now strips C0 control bytes like `\r`,
+  `\x0e`, and `\x0f` that can affect terminal/global render state when leaked.
+- Added regression test proving terminal control bytes are removed from both
+  plain and render capture outputs (`src/agent_runtime.rs`).
+
+Current status:
+- Preview render pipeline now blocks non-SGR control traffic that can destabilize
+  pane/border rendering during interactive Codex sessions.
+- Focused sanitizer + preview tests are green.
+
+Next steps:
+- Manual validation in real interactive Codex flow to confirm no more
+  styled/plain render flipping when focusing preview.
+
 ## Update 2026-02-13, Codex Alternate-Screen Launch Fix
 
 What changed:

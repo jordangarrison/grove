@@ -24,7 +24,6 @@ use crate::agent_runtime::{
     LaunchRequest, build_launch_plan, poll_interval, session_name_for_workspace, stop_plan,
 };
 use crate::domain::{AgentType, WorkspaceStatus};
-#[cfg(test)]
 use crate::interactive::render_cursor_overlay;
 use crate::interactive::{
     InteractiveAction, InteractiveKey, InteractiveState, encode_paste_payload,
@@ -480,6 +479,10 @@ fn ansi_line_to_styled_line(line: &str) -> FtLine {
     FtLine::from_spans(spans)
 }
 
+fn should_render_ansi_preview(agent: AgentType) -> bool {
+    !matches!(agent, AgentType::Codex)
+}
+
 fn default_sidebar_ratio_path() -> PathBuf {
     match std::env::current_dir() {
         Ok(cwd) => cwd.join(SIDEBAR_RATIO_FILENAME),
@@ -672,7 +675,7 @@ impl GroveApp {
                 if self.interactive.is_some() {
                     if let Some(message) = &self.last_tmux_error {
                         return format!(
-                            "Status: -- INSERT -- [Esc Esc]exit | unsafe={} | tmux error: {message}",
+                            "Status: -- INSERT -- [Esc Esc]/[Ctrl+\\]exit | unsafe={} | tmux error: {message}",
                             if self.launch_skip_permissions {
                                 "on"
                             } else {
@@ -681,7 +684,7 @@ impl GroveApp {
                         );
                     }
                     return format!(
-                        "Status: -- INSERT -- [Esc Esc]exit | unsafe={}",
+                        "Status: -- INSERT -- [Esc Esc]/[Ctrl+\\]exit | unsafe={}",
                         if self.launch_skip_permissions {
                             "on"
                         } else {
@@ -1296,6 +1299,9 @@ impl GroveApp {
             KeyCode::Escape => Some(InteractiveKey::Escape),
             KeyCode::F(index) => Some(InteractiveKey::Function(index)),
             KeyCode::Char(character) => {
+                if (ctrl && matches!(character, '\\' | '|' | '4')) || character == '\u{1c}' {
+                    return Some(InteractiveKey::CtrlBackslash);
+                }
                 if alt && matches!(character, 'c' | 'C') {
                     return Some(InteractiveKey::AltC);
                 }
@@ -1548,7 +1554,6 @@ impl GroveApp {
         ))
     }
 
-    #[cfg(test)]
     fn apply_interactive_cursor_overlay(
         &self,
         visible_lines: &mut [String],
@@ -1668,7 +1673,7 @@ impl GroveApp {
     }
 
     fn handle_key(&mut self, key_event: KeyEvent) -> bool {
-        if key_event.kind != KeyEventKind::Press {
+        if !matches!(key_event.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
             return false;
         }
 
@@ -1841,9 +1846,9 @@ impl GroveApp {
             return;
         }
 
-        let selected_workspace = self
-            .state
-            .selected_workspace()
+        let selected_workspace = self.state.selected_workspace();
+        let selected_agent = selected_workspace.map(|workspace| workspace.agent);
+        let selected_workspace_label = selected_workspace
             .map(|workspace| {
                 format!(
                     "{} | {} | {}",
@@ -1859,21 +1864,33 @@ impl GroveApp {
             .saturating_sub(metadata_rows)
             .max(1);
 
-        let visible_plain_lines = self.preview.visible_lines(preview_height);
+        let mut text_lines = vec![
+            FtLine::raw(format!("Selected: {selected_workspace_label}")),
+            FtLine::raw(""),
+        ];
+
+        let mut visible_plain_lines = self.preview.visible_lines(preview_height);
+        if !should_render_ansi_preview(selected_agent.unwrap_or(AgentType::Claude)) {
+            self.apply_interactive_cursor_overlay(&mut visible_plain_lines, preview_height);
+            if visible_plain_lines.is_empty() {
+                text_lines.push(FtLine::raw("(no preview output)"));
+            } else {
+                text_lines.extend(visible_plain_lines.iter().map(FtLine::raw));
+            }
+            Paragraph::new(FtText::from_lines(text_lines)).render(inner, frame);
+            return;
+        }
+
         let mut visible_render_lines = self.preview.visible_render_lines(preview_height);
         if visible_render_lines.is_empty() && !visible_plain_lines.is_empty() {
-            visible_render_lines = visible_plain_lines.clone();
+            visible_render_lines = visible_plain_lines;
         }
         self.apply_interactive_cursor_overlay_render(
-            &visible_plain_lines,
+            &self.preview.visible_lines(preview_height),
             &mut visible_render_lines,
             preview_height,
         );
 
-        let mut text_lines = vec![
-            FtLine::raw(format!("Selected: {selected_workspace}")),
-            FtLine::raw(""),
-        ];
         if visible_render_lines.is_empty() {
             text_lines.push(FtLine::raw("(no preview output)"));
         } else {
@@ -2151,6 +2168,7 @@ pub fn run() -> std::io::Result<()> {
 mod tests {
     use super::{
         GroveApp, Msg, TmuxInput, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
+        should_render_ansi_preview,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -2908,6 +2926,83 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_backslash_exits_interactive_mode() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('\\'))
+                    .with_modifiers(Modifiers::CTRL)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+
+        assert!(app.interactive.is_none());
+        assert!(commands.borrow().is_empty());
+    }
+
+    #[test]
+    fn ctrl_backslash_control_character_exits_interactive_mode() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('\u{1c}')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(app.interactive.is_none());
+        assert!(commands.borrow().is_empty());
+    }
+
+    #[test]
+    fn ctrl_four_exits_interactive_mode() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('4'))
+                    .with_modifiers(Modifiers::CTRL)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+
+        assert!(app.interactive.is_none());
+        assert!(commands.borrow().is_empty());
+    }
+
+    #[test]
     fn interactive_key_reschedules_fast_poll_interval() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -3048,6 +3143,12 @@ mod tests {
             line.spans()[1].style.and_then(|style| style.fg),
             Some(ansi_16_color(1))
         );
+    }
+
+    #[test]
+    fn codex_preview_uses_plain_rendering_path() {
+        assert!(!should_render_ansi_preview(AgentType::Codex));
+        assert!(should_render_ansi_preview(AgentType::Claude));
     }
 
     #[test]
