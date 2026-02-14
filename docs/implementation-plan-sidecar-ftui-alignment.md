@@ -219,3 +219,12 @@ sites can trigger async poll work without broad signature churn.
 instead of only logging.
 5. Cursor capture is also result-driven in async mode, applied via
 `apply_cursor_capture_result`.
+
+### Workstream 3, One-Writer Hardening (Completed)
+
+1. Replaced runtime tmux execution `.status()` path with `.output()` in
+`CommandTmuxInput::execute_command`, stderr/status are now captured into errors.
+2. Replaced resize preflight `set-option` `.status()` call with `.output()`,
+capturing failure details and threading them into the final resize error.
+3. Added a source guard test to assert `src/tui.rs` contains no status-call
+runtime paths (`tmux_runtime_paths_avoid_status_calls_in_tui_module`).

@@ -299,22 +299,32 @@ impl TmuxInput for CommandTmuxInput {
 }
 
 impl CommandTmuxInput {
+    fn stderr_or_status(output: &std::process::Output) -> String {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if !stderr.is_empty() {
+            return stderr;
+        }
+
+        format!("exit status {}", output.status)
+    }
+
     fn execute_command(command: &[String]) -> std::io::Result<()> {
         if command.is_empty() {
             return Ok(());
         }
 
-        let status = std::process::Command::new(&command[0])
+        let output = std::process::Command::new(&command[0])
             .args(&command[1..])
-            .status()?;
+            .output()?;
 
-        if status.success() {
+        if output.status.success() {
             return Ok(());
         }
 
         Err(std::io::Error::other(format!(
-            "tmux command failed: {}",
-            command.join(" ")
+            "tmux command failed: {}; {}",
+            command.join(" "),
+            Self::stderr_or_status(&output),
         )))
     }
 
@@ -381,9 +391,14 @@ impl CommandTmuxInput {
         let width = target_width.to_string();
         let height = target_height.to_string();
 
-        let _ = std::process::Command::new("tmux")
+        let set_manual_output = std::process::Command::new("tmux")
             .args(["set-option", "-t", target_session, "window-size", "manual"])
-            .status();
+            .output();
+        let set_manual_error = match set_manual_output {
+            Ok(output) if output.status.success() => None,
+            Ok(output) => Some(Self::stderr_or_status(&output)),
+            Err(error) => Some(error.to_string()),
+        };
 
         let resize_window = std::process::Command::new("tmux")
             .args([
@@ -421,8 +436,11 @@ impl CommandTmuxInput {
         let resize_pane_error = String::from_utf8_lossy(&resize_pane.stderr)
             .trim()
             .to_string();
+        let set_manual_suffix = set_manual_error.map_or_else(String::new, |error| {
+            format!("; set-option={error}")
+        });
         Err(std::io::Error::other(format!(
-            "tmux resize failed for '{target_session}': resize-window={resize_window_error}; resize-pane={resize_pane_error}"
+            "tmux resize failed for '{target_session}': resize-window={resize_window_error}; resize-pane={resize_pane_error}{set_manual_suffix}"
         )))
     }
 }
@@ -4914,6 +4932,18 @@ mod tests {
                     .with_modifiers(Modifiers::CTRL)
                     .with_kind(KeyEventKind::Press)
             )
+        );
+    }
+
+    #[test]
+    fn tmux_runtime_paths_avoid_status_calls_in_tui_module() {
+        let source = include_str!("tui.rs");
+        let status_call_pattern = ['.', 's', 't', 'a', 't', 'u', 's', '(']
+            .into_iter()
+            .collect::<String>();
+        assert!(
+            !source.contains(&status_call_pattern),
+            "runtime tmux paths should avoid status command calls to preserve one-writer discipline"
         );
     }
 
