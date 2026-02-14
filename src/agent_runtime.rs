@@ -31,6 +31,7 @@ pub struct LaunchRequest {
     pub workspace_path: PathBuf,
     pub agent: AgentType,
     pub prompt: Option<String>,
+    pub pre_launch_command: Option<String>,
     pub skip_permissions: bool,
 }
 
@@ -143,6 +144,9 @@ pub fn build_launch_plan(request: &LaunchRequest) -> LaunchPlan {
     ];
 
     let agent_cmd = build_agent_command(request.agent, request.skip_permissions);
+    let pre_launch_command = normalized_pre_launch_command(request.pre_launch_command.as_deref());
+    let launch_agent_cmd =
+        launch_command_with_pre_launch(&agent_cmd, pre_launch_command.as_deref());
 
     match &request.prompt {
         None => LaunchPlan {
@@ -154,14 +158,15 @@ pub fn build_launch_plan(request: &LaunchRequest) -> LaunchPlan {
                 "send-keys".to_string(),
                 "-t".to_string(),
                 session_target,
-                agent_cmd,
+                launch_agent_cmd,
                 "Enter".to_string(),
             ],
             launcher_script: None,
         },
         Some(prompt) => {
             let launcher_path = request.workspace_path.join(".grove-start.sh");
-            let launcher_contents = build_launcher_script(&agent_cmd, prompt, &launcher_path);
+            let launcher_contents =
+                build_launcher_script(&launch_agent_cmd, prompt, &launcher_path);
             LaunchPlan {
                 session_name,
                 pane_lookup_cmd,
@@ -234,6 +239,23 @@ fn normalized_agent_command_override(value: &str) -> Option<String> {
     }
 
     Some(trimmed.to_string())
+}
+
+fn normalized_pre_launch_command(value: Option<&str>) -> Option<String> {
+    let raw = value?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    Some(trimmed.to_string())
+}
+
+fn launch_command_with_pre_launch(agent_command: &str, pre_launch_command: Option<&str>) -> String {
+    match pre_launch_command {
+        Some(pre_launch) => format!("{pre_launch} && {agent_command}"),
+        None => agent_command.to_string(),
+    }
 }
 
 pub(crate) fn detect_waiting_prompt(output: &str) -> Option<String> {
@@ -707,6 +729,7 @@ mod tests {
             workspace_path: PathBuf::from("/repos/grove-auth-flow"),
             agent: AgentType::Claude,
             prompt: None,
+            pre_launch_command: None,
             skip_permissions: true,
         };
 
@@ -734,6 +757,7 @@ mod tests {
             workspace_path: PathBuf::from("/repos/grove-db_migration"),
             agent: AgentType::Codex,
             prompt: Some("fix migration".to_string()),
+            pre_launch_command: None,
             skip_permissions: false,
         };
 
@@ -767,6 +791,31 @@ mod tests {
         assert_eq!(
             plan[1],
             vec!["tmux", "kill-session", "-t", "grove-ws-auth-flow"]
+        );
+    }
+
+    #[test]
+    fn launch_plan_with_pre_launch_command_runs_before_agent() {
+        let request = LaunchRequest {
+            workspace_name: "auth-flow".to_string(),
+            workspace_path: PathBuf::from("/repos/grove-auth-flow"),
+            agent: AgentType::Claude,
+            prompt: None,
+            pre_launch_command: Some("direnv allow".to_string()),
+            skip_permissions: true,
+        };
+
+        let plan = build_launch_plan(&request);
+        assert_eq!(
+            plan.launch_cmd,
+            vec![
+                "tmux",
+                "send-keys",
+                "-t",
+                "grove-ws-auth-flow",
+                "direnv allow && claude --dangerously-skip-permissions",
+                "Enter"
+            ]
         );
     }
 

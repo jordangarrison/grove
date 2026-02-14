@@ -359,7 +359,50 @@ struct PreviewContentViewport {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LaunchDialogState {
     prompt: String,
+    pre_launch_command: String,
     skip_permissions: bool,
+    focused_field: LaunchDialogField,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LaunchDialogField {
+    Prompt,
+    PreLaunchCommand,
+    Unsafe,
+    StartButton,
+    CancelButton,
+}
+
+impl LaunchDialogField {
+    fn next(self) -> Self {
+        match self {
+            Self::Prompt => Self::PreLaunchCommand,
+            Self::PreLaunchCommand => Self::Unsafe,
+            Self::Unsafe => Self::StartButton,
+            Self::StartButton => Self::CancelButton,
+            Self::CancelButton => Self::Prompt,
+        }
+    }
+
+    fn previous(self) -> Self {
+        match self {
+            Self::Prompt => Self::CancelButton,
+            Self::PreLaunchCommand => Self::Prompt,
+            Self::Unsafe => Self::PreLaunchCommand,
+            Self::StartButton => Self::Unsafe,
+            Self::CancelButton => Self::StartButton,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Prompt => "prompt",
+            Self::PreLaunchCommand => "pre_launch_command",
+            Self::Unsafe => "unsafe",
+            Self::StartButton => "start",
+            Self::CancelButton => "cancel",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2087,9 +2130,11 @@ impl GroveApp {
                 }
                 if let Some(dialog) = &self.launch_dialog {
                     return format!(
-                        "Status: start agent, unsafe={}, prompt=\"{}\"",
+                        "Status: start agent, field={}, unsafe={}, prompt=\"{}\", pre=\"{}\"",
+                        dialog.focused_field.label(),
                         if dialog.skip_permissions { "on" } else { "off" },
                         dialog.prompt.replace('\n', "\\n"),
+                        dialog.pre_launch_command.replace('\n', "\\n"),
                     );
                 }
                 if self.interactive.is_some() {
@@ -2129,7 +2174,7 @@ impl GroveApp {
             return "Tab/S-Tab field, j/k or C-n/C-p move, h/l buttons, Enter select/create, Esc cancel";
         }
         if self.launch_dialog.is_some() {
-            return "Type prompt, Tab unsafe, Enter start, Esc cancel";
+            return "Tab/S-Tab field, h/l buttons, Space toggle unsafe, Enter select/start, Esc cancel";
         }
         if self.interactive.is_some() {
             return "Esc Esc / Ctrl+\\ exit, Alt+C copy, Alt+V paste";
@@ -2782,7 +2827,7 @@ impl GroveApp {
 
     fn keybinding_input_nonempty(&self) -> bool {
         if let Some(dialog) = self.launch_dialog.as_ref() {
-            return !dialog.prompt.is_empty();
+            return !dialog.prompt.is_empty() || !dialog.pre_launch_command.is_empty();
         }
         if let Some(dialog) = self.create_dialog.as_ref() {
             return !dialog.workspace_name.is_empty() || !dialog.base_branch.is_empty();
@@ -2813,7 +2858,13 @@ impl GroveApp {
             }
             KeybindingAction::ClearInput => {
                 if let Some(dialog) = self.launch_dialog.as_mut() {
-                    dialog.prompt.clear();
+                    match dialog.focused_field {
+                        LaunchDialogField::Prompt => dialog.prompt.clear(),
+                        LaunchDialogField::PreLaunchCommand => dialog.pre_launch_command.clear(),
+                        LaunchDialogField::Unsafe
+                        | LaunchDialogField::StartButton
+                        | LaunchDialogField::CancelButton => {}
+                    }
                     return false;
                 }
                 if let Some(dialog) = self.create_dialog.as_mut() {
@@ -2934,7 +2985,9 @@ impl GroveApp {
         let skip_permissions = self.launch_skip_permissions;
         self.launch_dialog = Some(LaunchDialogState {
             prompt: prompt.clone(),
+            pre_launch_command: String::new(),
             skip_permissions,
+            focused_field: LaunchDialogField::Prompt,
         });
         self.log_dialog_event_with_fields(
             "launch",
@@ -2949,6 +3002,7 @@ impl GroveApp {
                     "skip_permissions".to_string(),
                     Value::from(skip_permissions),
                 ),
+                ("pre_launch_len".to_string(), Value::from(0_u64)),
             ],
         );
         self.last_tmux_error = None;
@@ -3461,6 +3515,7 @@ impl GroveApp {
     fn start_selected_workspace_agent_with_options(
         &mut self,
         prompt: Option<String>,
+        pre_launch_command: Option<String>,
         skip_permissions: bool,
     ) {
         if self.start_in_flight {
@@ -3481,6 +3536,7 @@ impl GroveApp {
             workspace_path: workspace.path.clone(),
             agent: workspace.agent,
             prompt,
+            pre_launch_command,
             skip_permissions,
         };
         let launch_plan = build_launch_plan(&request);
@@ -3589,6 +3645,10 @@ impl GroveApp {
                     "skip_permissions".to_string(),
                     Value::from(dialog.skip_permissions),
                 ),
+                (
+                    "pre_launch_len".to_string(),
+                    Value::from(u64::try_from(dialog.pre_launch_command.len()).unwrap_or(u64::MAX)),
+                ),
             ],
         );
 
@@ -3598,31 +3658,106 @@ impl GroveApp {
         } else {
             Some(dialog.prompt.trim().to_string())
         };
-        self.start_selected_workspace_agent_with_options(prompt, dialog.skip_permissions);
+        let pre_launch_command = if dialog.pre_launch_command.trim().is_empty() {
+            None
+        } else {
+            Some(dialog.pre_launch_command.trim().to_string())
+        };
+        self.start_selected_workspace_agent_with_options(
+            prompt,
+            pre_launch_command,
+            dialog.skip_permissions,
+        );
     }
 
     fn handle_launch_dialog_key(&mut self, key_event: KeyEvent) {
+        if self.start_in_flight {
+            return;
+        }
+
         match key_event.code {
             KeyCode::Escape => {
                 self.log_dialog_event("launch", "dialog_cancelled");
                 self.launch_dialog = None;
             }
             KeyCode::Enter => {
-                self.confirm_start_dialog();
+                enum EnterAction {
+                    ConfirmStart,
+                    CancelDialog,
+                }
+
+                let action = self
+                    .launch_dialog
+                    .as_ref()
+                    .map(|dialog| match dialog.focused_field {
+                        LaunchDialogField::StartButton => EnterAction::ConfirmStart,
+                        LaunchDialogField::CancelButton => EnterAction::CancelDialog,
+                        LaunchDialogField::Prompt
+                        | LaunchDialogField::PreLaunchCommand
+                        | LaunchDialogField::Unsafe => EnterAction::ConfirmStart,
+                    });
+
+                match action {
+                    Some(EnterAction::ConfirmStart) => self.confirm_start_dialog(),
+                    Some(EnterAction::CancelDialog) => {
+                        self.log_dialog_event("launch", "dialog_cancelled");
+                        self.launch_dialog = None;
+                    }
+                    None => {}
+                }
             }
             KeyCode::Tab => {
                 if let Some(dialog) = self.launch_dialog.as_mut() {
-                    dialog.skip_permissions = !dialog.skip_permissions;
+                    dialog.focused_field = dialog.focused_field.next();
+                }
+            }
+            KeyCode::BackTab => {
+                if let Some(dialog) = self.launch_dialog.as_mut() {
+                    dialog.focused_field = dialog.focused_field.previous();
                 }
             }
             KeyCode::Backspace => {
                 if let Some(dialog) = self.launch_dialog.as_mut() {
-                    dialog.prompt.pop();
+                    match dialog.focused_field {
+                        LaunchDialogField::Prompt => {
+                            dialog.prompt.pop();
+                        }
+                        LaunchDialogField::PreLaunchCommand => {
+                            dialog.pre_launch_command.pop();
+                        }
+                        LaunchDialogField::Unsafe
+                        | LaunchDialogField::StartButton
+                        | LaunchDialogField::CancelButton => {}
+                    }
                 }
             }
+            KeyCode::Left | KeyCode::Right => {}
             KeyCode::Char(character) if key_event.modifiers.is_empty() => {
                 if let Some(dialog) = self.launch_dialog.as_mut() {
-                    dialog.prompt.push(character);
+                    if (dialog.focused_field == LaunchDialogField::StartButton
+                        || dialog.focused_field == LaunchDialogField::CancelButton)
+                        && (character == 'h' || character == 'l')
+                    {
+                        dialog.focused_field =
+                            if dialog.focused_field == LaunchDialogField::StartButton {
+                                LaunchDialogField::CancelButton
+                            } else {
+                                LaunchDialogField::StartButton
+                            };
+                        return;
+                    }
+                    match dialog.focused_field {
+                        LaunchDialogField::Prompt => dialog.prompt.push(character),
+                        LaunchDialogField::PreLaunchCommand => {
+                            dialog.pre_launch_command.push(character)
+                        }
+                        LaunchDialogField::Unsafe => {
+                            if character == ' ' || character == 'j' || character == 'k' {
+                                dialog.skip_permissions = !dialog.skip_permissions;
+                            }
+                        }
+                        LaunchDialogField::StartButton | LaunchDialogField::CancelButton => {}
+                    }
                 }
             }
             _ => {}
@@ -5642,29 +5777,63 @@ impl GroveApp {
         let Some(dialog) = self.launch_dialog.as_ref() else {
             return;
         };
-        if area.width < 20 || area.height < 8 {
+        if area.width < 20 || area.height < 11 {
             return;
         }
 
         let dialog_width = area.width.saturating_sub(8).min(100);
-        let dialog_height = 8u16;
+        let dialog_height = 11u16;
         let theme = ui_theme();
+        let focused = |field| dialog.focused_field == field;
+        let input_line = |value: &str, placeholder: &str, is_focused: bool| {
+            let content = if value.is_empty() { placeholder } else { value };
+            if is_focused {
+                format!("> [{content}]")
+            } else {
+                format!("  [{content}]")
+            }
+        };
+        let unsafe_row = format!(
+            "{} Unsafe launch: {}",
+            if focused(LaunchDialogField::Unsafe) {
+                ">"
+            } else {
+                " "
+            },
+            if dialog.skip_permissions { "on" } else { "off" }
+        );
 
-        let body_lines = [
-            format!(
-                "Unsafe launch: {}",
-                if dialog.skip_permissions { "on" } else { "off" }
-            ),
-            format!(
-                "Prompt: {}",
-                if dialog.prompt.is_empty() {
-                    "(empty)".to_string()
+        let body = FtText::from_lines(vec![
+            FtLine::raw("Prompt:"),
+            FtLine::raw(input_line(
+                dialog.prompt.as_str(),
+                "(empty)",
+                focused(LaunchDialogField::Prompt),
+            )),
+            FtLine::raw(""),
+            FtLine::raw("Pre-launch Command:"),
+            FtLine::raw(input_line(
+                dialog.pre_launch_command.as_str(),
+                "(empty)",
+                focused(LaunchDialogField::PreLaunchCommand),
+            )),
+            FtLine::raw(""),
+            FtLine::raw(unsafe_row),
+            FtLine::raw(""),
+            FtLine::raw(format!(
+                "{} Start   {} Cancel",
+                if focused(LaunchDialogField::StartButton) {
+                    "[*]"
                 } else {
-                    dialog.prompt.clone()
+                    "[ ]"
+                },
+                if focused(LaunchDialogField::CancelButton) {
+                    "[*]"
+                } else {
+                    "[ ]"
                 }
-            ),
-        ];
-        let body = FtText::from_lines(body_lines.into_iter().map(FtLine::raw));
+            )),
+        ]);
         let content = OverlayModalContent {
             title: "Start Agent",
             body,
@@ -5874,12 +6043,21 @@ impl GroveApp {
         if let Some(dialog) = &self.launch_dialog {
             lines.push(String::new());
             lines.push("Start Agent Dialog".to_string());
+            lines.push(format!("Field: {}", dialog.focused_field.label()));
             lines.push(format!(
                 "Prompt: {}",
                 if dialog.prompt.is_empty() {
                     "(empty)".to_string()
                 } else {
                     dialog.prompt.clone()
+                }
+            ));
+            lines.push(format!(
+                "Pre-launch command: {}",
+                if dialog.pre_launch_command.is_empty() {
+                    "(empty)".to_string()
+                } else {
+                    dialog.pre_launch_command.clone()
                 }
             ));
             lines.push(format!(
@@ -6200,10 +6378,11 @@ mod tests {
     use super::{
         ClipboardAccess, CreateDialogField, CreateWorkspaceCompletion, CursorCapture,
         FAST_SPINNER_FRAMES, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS,
-        HIT_ID_WORKSPACE_ROW, LaunchDialogState, LivePreviewCapture, Msg, PREVIEW_METADATA_ROWS,
-        PendingResizeVerification, PreviewPollCompletion, StartAgentCompletion,
-        StopAgentCompletion, TextSelectionPoint, TmuxInput, WORKSPACE_ITEM_HEIGHT, ansi_16_color,
-        ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
+        HIT_ID_WORKSPACE_ROW, LaunchDialogField, LaunchDialogState, LivePreviewCapture, Msg,
+        PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion,
+        StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput,
+        WORKSPACE_ITEM_HEIGHT, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
+        ui_theme,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -6948,7 +7127,9 @@ mod tests {
         let mut app = fixture_app();
         app.launch_dialog = Some(LaunchDialogState {
             prompt: String::new(),
+            pre_launch_command: String::new(),
             skip_permissions: false,
+            focused_field: LaunchDialogField::Prompt,
         });
 
         with_rendered_frame(&app, 80, 24, |frame| {
@@ -6961,12 +7142,14 @@ mod tests {
         let mut app = fixture_app();
         app.launch_dialog = Some(LaunchDialogState {
             prompt: String::new(),
+            pre_launch_command: String::new(),
             skip_permissions: false,
+            focused_field: LaunchDialogField::Prompt,
         });
 
         with_rendered_frame(&app, 80, 24, |frame| {
             let dialog_width = frame.width().saturating_sub(8).min(100);
-            let dialog_height = 8u16;
+            let dialog_height = 11u16;
             let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
             let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
             let probe_x = dialog_x.saturating_add(dialog_width.saturating_sub(3));
@@ -7126,14 +7309,16 @@ mod tests {
         let mut app = fixture_app();
         app.launch_dialog = Some(LaunchDialogState {
             prompt: String::new(),
+            pre_launch_command: String::new(),
             skip_permissions: false,
+            focused_field: LaunchDialogField::Prompt,
         });
 
         with_rendered_frame(&app, 80, 24, |frame| {
             let status_row = frame.height().saturating_sub(1);
             let status_text = row_text(frame, status_row, 0, frame.width());
-            assert!(status_text.contains("Type prompt"));
-            assert!(status_text.contains("Enter start"));
+            assert!(status_text.contains("Tab/S-Tab field"));
+            assert!(status_text.contains("Enter select/start"));
         });
     }
 
@@ -7901,7 +8086,7 @@ mod tests {
     }
 
     #[test]
-    fn start_dialog_tab_toggles_unsafe_for_launch() {
+    fn start_dialog_pre_launch_command_runs_before_agent() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
 
@@ -7916,6 +8101,57 @@ mod tests {
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+
+        for character in ['d', 'i', 'r', 'e', 'n', 'v', ' ', 'a', 'l', 'l', 'o', 'w'] {
+            ftui::Model::update(
+                &mut app,
+                Msg::Key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press)),
+            );
+        }
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        assert_eq!(
+            commands.borrow().last(),
+            Some(&vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+                "direnv allow && codex".to_string(),
+                "Enter".to_string(),
+            ])
+        );
+    }
+
+    #[test]
+    fn start_dialog_field_navigation_can_toggle_unsafe_for_launch() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char(' ')).with_kind(KeyEventKind::Press)),
         );
         ftui::Model::update(
             &mut app,
