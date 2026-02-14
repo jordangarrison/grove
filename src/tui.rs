@@ -19,7 +19,10 @@ use ftui::layout::{Constraint, Flex};
 use ftui::render::budget::FrameBudgetConfig;
 use ftui::render::frame::{Frame, HitGrid, HitId, HitRegion as FrameHitRegion};
 use ftui::runtime::WidgetRefreshConfig;
-use ftui::text::{Line as FtLine, Span as FtSpan, Text as FtText};
+use ftui::text::{
+    Line as FtLine, Span as FtSpan, Text as FtText, display_width as text_display_width,
+    graphemes as text_graphemes,
+};
 use ftui::widgets::Widget;
 use ftui::widgets::block::Block;
 use ftui::widgets::borders::Borders;
@@ -234,6 +237,112 @@ impl TextSelectionState {
 
         Some((0, None))
     }
+}
+
+fn line_visual_width(line: &str) -> usize {
+    text_display_width(line)
+}
+
+fn visual_substring(line: &str, start_col: usize, end_col_inclusive: Option<usize>) -> String {
+    let mut out = String::new();
+    let end_col_exclusive = end_col_inclusive.map(|end| end.saturating_add(1));
+    let mut visual_col = 0usize;
+
+    for grapheme in text_graphemes(line) {
+        if end_col_exclusive.is_some_and(|end| visual_col >= end) {
+            break;
+        }
+
+        let width = line_visual_width(grapheme);
+        let next_col = visual_col.saturating_add(width);
+        let intersects = if width == 0 {
+            visual_col >= start_col
+        } else {
+            next_col > start_col
+        };
+
+        if intersects {
+            out.push_str(grapheme);
+        }
+
+        visual_col = next_col;
+    }
+
+    out
+}
+
+fn visual_grapheme_at(line: &str, target_col: usize) -> Option<(String, usize, usize)> {
+    let mut visual_col = 0usize;
+    for grapheme in text_graphemes(line) {
+        let width = line_visual_width(grapheme);
+        let start_col = visual_col;
+        let end_col = if width == 0 {
+            start_col
+        } else {
+            start_col.saturating_add(width.saturating_sub(1))
+        };
+
+        if (width == 0 && target_col == start_col) || (width > 0 && target_col <= end_col) {
+            return Some((grapheme.to_string(), start_col, end_col));
+        }
+
+        visual_col = visual_col.saturating_add(width);
+    }
+
+    None
+}
+
+fn truncate_for_log(value: &str, max_chars: usize) -> String {
+    value.chars().take(max_chars).collect()
+}
+
+fn ansi_line_to_plain_text(line: &str) -> String {
+    let mut plain = String::with_capacity(line.len());
+    let mut chars = line.chars().peekable();
+
+    while let Some(character) = chars.next() {
+        if character != '\u{1b}' {
+            plain.push(character);
+            continue;
+        }
+
+        let Some(next) = chars.next() else {
+            break;
+        };
+
+        match next {
+            '[' => {
+                while let Some(value) = chars.next() {
+                    if ('\u{40}'..='\u{7e}').contains(&value) {
+                        break;
+                    }
+                }
+            }
+            ']' => {
+                while let Some(value) = chars.next() {
+                    if value == '\u{7}' {
+                        break;
+                    }
+                    if value == '\u{1b}' && chars.next_if_eq(&'\\').is_some() {
+                        break;
+                    }
+                }
+            }
+            'P' | 'X' | '^' | '_' => {
+                while let Some(value) = chars.next() {
+                    if value == '\u{1b}' && chars.next_if_eq(&'\\').is_some() {
+                        break;
+                    }
+                }
+            }
+            '(' | ')' | '*' | '+' | '-' | '.' | '/' | '#' => {
+                let _ = chars.next();
+            }
+            _ => {}
+        }
+    }
+
+    plain
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -921,120 +1030,6 @@ fn apply_sgr_codes(raw_params: &str, state: &mut AnsiStyleState) {
     }
 }
 
-fn sgr_params_affect_background(raw_params: &str) -> bool {
-    if raw_params.is_empty() {
-        return true;
-    }
-
-    raw_params.split(';').any(|value| {
-        if value.is_empty() {
-            return true;
-        }
-
-        let Ok(code) = value.parse::<i32>() else {
-            return false;
-        };
-
-        matches!(code, 0 | 49 | 40..=47 | 100..=107 | 48)
-    })
-}
-
-fn inject_selection_background_ansi(
-    line: &str,
-    start_col: usize,
-    end_col: Option<usize>,
-    selection_bg: PackedRgba,
-) -> String {
-    let selection_bg_ansi = format!(
-        "\u{1b}[48;2;{};{};{}m",
-        selection_bg.r(),
-        selection_bg.g(),
-        selection_bg.b()
-    );
-
-    let mut rendered = String::with_capacity(line.len().saturating_add(64));
-    let mut chars = line.chars().peekable();
-    let mut visible_index = 0usize;
-    let mut in_selection = false;
-
-    while let Some(character) = chars.next() {
-        if character == '\u{1b}' {
-            rendered.push(character);
-            let Some(next) = chars.next() else {
-                break;
-            };
-            rendered.push(next);
-
-            match next {
-                '[' => {
-                    let mut params = String::new();
-                    let mut final_char = None;
-                    while let Some(value) = chars.next() {
-                        rendered.push(value);
-                        if ('\u{40}'..='\u{7e}').contains(&value) {
-                            final_char = Some(value);
-                            break;
-                        }
-                        params.push(value);
-                    }
-
-                    if in_selection
-                        && final_char == Some('m')
-                        && sgr_params_affect_background(&params)
-                    {
-                        rendered.push_str(&selection_bg_ansi);
-                    }
-                }
-                ']' => {
-                    while let Some(value) = chars.next() {
-                        rendered.push(value);
-                        if value == '\u{7}' {
-                            break;
-                        }
-                        if value == '\u{1b}' && chars.next_if_eq(&'\\').is_some() {
-                            rendered.push('\\');
-                            break;
-                        }
-                    }
-                }
-                'P' | 'X' | '^' | '_' => {
-                    while let Some(value) = chars.next() {
-                        rendered.push(value);
-                        if value == '\u{1b}' && chars.next_if_eq(&'\\').is_some() {
-                            rendered.push('\\');
-                            break;
-                        }
-                    }
-                }
-                _ => {}
-            }
-            continue;
-        }
-
-        let in_range = match end_col {
-            Some(end_col) => visible_index >= start_col && visible_index <= end_col,
-            None => visible_index >= start_col,
-        };
-
-        if in_range && !in_selection {
-            rendered.push_str(&selection_bg_ansi);
-            in_selection = true;
-        } else if !in_range && in_selection {
-            rendered.push_str("\u{1b}[49m");
-            in_selection = false;
-        }
-
-        rendered.push(character);
-        visible_index = visible_index.saturating_add(1);
-    }
-
-    if in_selection {
-        rendered.push_str("\u{1b}[49m");
-    }
-
-    rendered
-}
-
 fn ansi_line_to_styled_line(line: &str) -> FtLine {
     let mut spans: Vec<FtSpan<'static>> = Vec::new();
     let mut buffer = String::new();
@@ -1355,6 +1350,17 @@ impl GroveApp {
         match mode {
             UiMode::List => "list",
             UiMode::Preview => "preview",
+        }
+    }
+
+    fn hit_region_name(region: HitRegion) -> &'static str {
+        match region {
+            HitRegion::WorkspaceList => "workspace_list",
+            HitRegion::Preview => "preview",
+            HitRegion::Divider => "divider",
+            HitRegion::StatusLine => "status_line",
+            HitRegion::Header => "header",
+            HitRegion::Outside => "outside",
         }
     }
 
@@ -3875,12 +3881,19 @@ impl GroveApp {
         }
     }
 
+    fn effective_viewport_size(&self) -> (u16, u16) {
+        let from_hit_grid = self
+            .last_hit_grid
+            .borrow()
+            .as_ref()
+            .map(|grid| (grid.width(), grid.height()));
+        let (width, height) = from_hit_grid.unwrap_or((self.viewport_width, self.viewport_height));
+        (width.max(1), height.max(1))
+    }
+
     fn view_layout(&self) -> ViewLayout {
-        Self::view_layout_for_size(
-            self.viewport_width,
-            self.viewport_height,
-            self.sidebar_width_pct,
-        )
+        let (width, height) = self.effective_viewport_size();
+        Self::view_layout_for_size(width, height, self.sidebar_width_pct)
     }
 
     fn divider_hit_area(divider: Rect, viewport_width: u16) -> Rect {
@@ -3913,9 +3926,10 @@ impl GroveApp {
             return (mapped, row_data);
         }
 
+        let (viewport_width, viewport_height) = self.effective_viewport_size();
         let layout = self.view_layout();
 
-        if x >= self.viewport_width || y >= self.viewport_height {
+        if x >= viewport_width || y >= viewport_height {
             return (HitRegion::Outside, None);
         }
         if y < layout.header.bottom() {
@@ -3925,7 +3939,7 @@ impl GroveApp {
             return (HitRegion::StatusLine, None);
         }
 
-        let divider_area = Self::divider_hit_area(layout.divider, self.viewport_width);
+        let divider_area = Self::divider_hit_area(layout.divider, viewport_width);
         if x >= divider_area.x && x < divider_area.right() {
             return (HitRegion::Divider, None);
         }
@@ -4068,8 +4082,8 @@ impl GroveApp {
         }
 
         let line_idx = viewport.visible_start.saturating_add(visible_row);
-        let line = self.preview.lines.get(line_idx)?;
-        let line_len = line.chars().count();
+        let line = self.preview_plain_line(line_idx)?;
+        let line_width = line_visual_width(&line);
         if x < viewport.output_x {
             return Some(TextSelectionPoint {
                 line: line_idx,
@@ -4078,10 +4092,10 @@ impl GroveApp {
         }
 
         let relative_x = usize::from(x - viewport.output_x);
-        let col = if line_len == 0 {
+        let col = if line_width == 0 {
             0
         } else {
-            relative_x.min(line_len.saturating_sub(1))
+            relative_x.min(line_width.saturating_sub(1))
         };
 
         Some(TextSelectionPoint {
@@ -4090,8 +4104,235 @@ impl GroveApp {
         })
     }
 
+    fn preview_plain_line(&self, line_idx: usize) -> Option<String> {
+        if let Some(line) = self.preview.render_lines.get(line_idx) {
+            return Some(ansi_line_to_plain_text(line));
+        }
+
+        self.preview.lines.get(line_idx).cloned()
+    }
+
+    fn preview_plain_lines_range(&self, start: usize, end: usize) -> Vec<String> {
+        if start >= end {
+            return Vec::new();
+        }
+
+        let mut lines = Vec::with_capacity(end.saturating_sub(start));
+        for line_idx in start..end {
+            if let Some(line) = self.preview_plain_line(line_idx) {
+                lines.push(line);
+                continue;
+            }
+            break;
+        }
+
+        lines
+    }
+
+    fn add_selection_point_snapshot_fields(
+        &self,
+        mut event: LogEvent,
+        key_prefix: &str,
+        point: TextSelectionPoint,
+    ) -> LogEvent {
+        let raw_line = self.preview.lines.get(point.line).cloned();
+        let clean_line = self.preview_plain_line(point.line);
+        let render_line = self.preview.render_lines.get(point.line).cloned();
+
+        if let Some(line) = raw_line {
+            event = event.with_data(
+                format!("{key_prefix}line_raw_preview"),
+                Value::from(truncate_for_log(&line, 120)),
+            );
+        }
+
+        if let Some(line) = clean_line {
+            event = event
+                .with_data(
+                    format!("{key_prefix}line_clean_preview"),
+                    Value::from(truncate_for_log(&line, 120)),
+                )
+                .with_data(
+                    format!("{key_prefix}line_visual_width"),
+                    Value::from(u64::try_from(line_visual_width(&line)).unwrap_or(u64::MAX)),
+                )
+                .with_data(
+                    format!("{key_prefix}line_context"),
+                    Value::from(truncate_for_log(
+                        &visual_substring(
+                            &line,
+                            point.col.saturating_sub(16),
+                            Some(point.col.saturating_add(16)),
+                        ),
+                        120,
+                    )),
+                );
+
+            if let Some((grapheme, start_col, end_col)) = visual_grapheme_at(&line, point.col) {
+                event = event
+                    .with_data(
+                        format!("{key_prefix}grapheme"),
+                        Value::from(truncate_for_log(&grapheme, 16)),
+                    )
+                    .with_data(
+                        format!("{key_prefix}grapheme_start_col"),
+                        Value::from(u64::try_from(start_col).unwrap_or(u64::MAX)),
+                    )
+                    .with_data(
+                        format!("{key_prefix}grapheme_end_col"),
+                        Value::from(u64::try_from(end_col).unwrap_or(u64::MAX)),
+                    );
+            }
+        }
+
+        if let Some(line) = render_line {
+            event = event.with_data(
+                format!("{key_prefix}line_render_preview"),
+                Value::from(truncate_for_log(&line, 120)),
+            );
+        }
+
+        event
+    }
+
+    fn log_preview_drag_started(&self, x: u16, y: u16, point: Option<TextSelectionPoint>) {
+        let mut event = LogEvent::new("selection", "preview_drag_started")
+            .with_data("x", Value::from(x))
+            .with_data("y", Value::from(y))
+            .with_data("mapped", Value::from(point.is_some()))
+            .with_data("interactive", Value::from(self.interactive.is_some()))
+            .with_data("mode", Value::from(Self::mode_name(self.state.mode)))
+            .with_data("focus", Value::from(Self::focus_name(self.state.focus)))
+            .with_data(
+                "preview_offset",
+                Value::from(u64::try_from(self.preview.offset).unwrap_or(u64::MAX)),
+            );
+
+        if let Some(viewport) = self.preview_content_viewport() {
+            event = event
+                .with_data("output_x", Value::from(viewport.output_x))
+                .with_data("output_y", Value::from(viewport.output_y))
+                .with_data(
+                    "visible_start",
+                    Value::from(u64::try_from(viewport.visible_start).unwrap_or(u64::MAX)),
+                )
+                .with_data(
+                    "visible_end",
+                    Value::from(u64::try_from(viewport.visible_end).unwrap_or(u64::MAX)),
+                );
+        }
+
+        if let Some(point) = point {
+            event = event
+                .with_data(
+                    "line",
+                    Value::from(u64::try_from(point.line).unwrap_or(u64::MAX)),
+                )
+                .with_data(
+                    "col",
+                    Value::from(u64::try_from(point.col).unwrap_or(u64::MAX)),
+                );
+            event = self.add_selection_point_snapshot_fields(event, "", point);
+            if let Some(line) = self.preview_plain_line(point.line) {
+                event = event.with_data("line_preview", Value::from(truncate_for_log(&line, 120)));
+            }
+            if let Some(render_line) = self.preview.render_lines.get(point.line) {
+                event = event.with_data(
+                    "render_line_preview",
+                    Value::from(truncate_for_log(render_line, 120)),
+                );
+            }
+        }
+
+        self.event_log.log(event);
+    }
+
+    fn log_preview_drag_finished(&self, x: u16, y: u16, point: Option<TextSelectionPoint>) {
+        let mut event = LogEvent::new("selection", "preview_drag_finished")
+            .with_data("x", Value::from(x))
+            .with_data("y", Value::from(y))
+            .with_data("mapped", Value::from(point.is_some()))
+            .with_data(
+                "has_selection",
+                Value::from(self.preview_selection.has_selection()),
+            )
+            .with_data("interactive", Value::from(self.interactive.is_some()));
+
+        if let Some(point) = point {
+            event = event
+                .with_data(
+                    "release_line",
+                    Value::from(u64::try_from(point.line).unwrap_or(u64::MAX)),
+                )
+                .with_data(
+                    "release_col",
+                    Value::from(u64::try_from(point.col).unwrap_or(u64::MAX)),
+                );
+            event = self.add_selection_point_snapshot_fields(event, "release_", point);
+        }
+
+        if let Some(anchor) = self.preview_selection.anchor {
+            event = event
+                .with_data(
+                    "anchor_line",
+                    Value::from(u64::try_from(anchor.line).unwrap_or(u64::MAX)),
+                )
+                .with_data(
+                    "anchor_col",
+                    Value::from(u64::try_from(anchor.col).unwrap_or(u64::MAX)),
+                );
+            event = self.add_selection_point_snapshot_fields(event, "anchor_", anchor);
+        }
+
+        if let Some(start) = self.preview_selection.start {
+            event = event
+                .with_data(
+                    "start_line",
+                    Value::from(u64::try_from(start.line).unwrap_or(u64::MAX)),
+                )
+                .with_data(
+                    "start_col",
+                    Value::from(u64::try_from(start.col).unwrap_or(u64::MAX)),
+                );
+            event = self.add_selection_point_snapshot_fields(event, "start_", start);
+        }
+        if let Some(end) = self.preview_selection.end {
+            event = event
+                .with_data(
+                    "end_line",
+                    Value::from(u64::try_from(end.line).unwrap_or(u64::MAX)),
+                )
+                .with_data(
+                    "end_col",
+                    Value::from(u64::try_from(end.col).unwrap_or(u64::MAX)),
+                );
+            event = self.add_selection_point_snapshot_fields(event, "end_", end);
+        }
+
+        if let Some(lines) = self.selected_preview_text_lines() {
+            let text = lines.join("\n");
+            event = event
+                .with_data(
+                    "selected_line_count",
+                    Value::from(u64::try_from(lines.len()).unwrap_or(u64::MAX)),
+                )
+                .with_data(
+                    "selected_char_count",
+                    Value::from(u64::try_from(text.chars().count()).unwrap_or(u64::MAX)),
+                )
+                .with_data(
+                    "selected_preview",
+                    Value::from(truncate_for_log(&text, 240)),
+                );
+        }
+
+        self.event_log.log(event);
+    }
+
     fn prepare_preview_selection_drag(&mut self, x: u16, y: u16) {
-        if let Some(point) = self.preview_text_point_at(x, y) {
+        let point = self.preview_text_point_at(x, y);
+        self.log_preview_drag_started(x, y, point);
+        if let Some(point) = point {
             self.preview_selection.prepare_drag(point);
             return;
         }
@@ -4113,17 +4354,21 @@ impl GroveApp {
         if self.preview_selection.anchor.is_none() {
             return;
         }
+        let release_point = self.preview_text_point_at(x, y);
         if !self.preview_selection.has_selection()
-            && let Some(point) = self.preview_text_point_at(x, y)
+            && let Some(point) = release_point
         {
             self.preview_selection.handle_drag(point);
         }
+        self.log_preview_drag_finished(x, y, release_point);
         self.preview_selection.finish_drag();
     }
 
-    fn apply_preview_selection_highlight(
+    fn apply_preview_selection_highlight_cells(
         &self,
-        render_visible_lines: &mut [String],
+        frame: &mut Frame,
+        inner: Rect,
+        visible_plain_lines: &[String],
         visible_start: usize,
     ) {
         if !self.preview_selection.has_selection() {
@@ -4131,49 +4376,81 @@ impl GroveApp {
         }
 
         let selection_bg = ui_theme().surface1;
-        for (offset, line) in render_visible_lines.iter_mut().enumerate() {
+        let output_y = inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+        for (offset, line) in visible_plain_lines.iter().enumerate() {
             let line_idx = visible_start.saturating_add(offset);
             let Some((start_col, end_col)) = self.preview_selection.line_selection_cols(line_idx)
             else {
                 continue;
             };
-            *line = inject_selection_background_ansi(line, start_col, end_col, selection_bg);
+
+            let line_width = line_visual_width(line);
+            if line_width == 0 {
+                continue;
+            }
+
+            let start = start_col.min(line_width.saturating_sub(1));
+            let end = end_col
+                .unwrap_or_else(|| line_width.saturating_sub(1))
+                .min(line_width.saturating_sub(1));
+            if end < start {
+                continue;
+            }
+
+            let y = output_y.saturating_add(u16::try_from(offset).unwrap_or(u16::MAX));
+            if y >= inner.bottom() {
+                break;
+            }
+
+            let x_start = inner
+                .x
+                .saturating_add(u16::try_from(start).unwrap_or(u16::MAX));
+            let x_end = inner
+                .x
+                .saturating_add(u16::try_from(end).unwrap_or(u16::MAX))
+                .min(inner.right().saturating_sub(1));
+            if x_start > x_end {
+                continue;
+            }
+
+            for x in x_start..=x_end {
+                if let Some(cell) = frame.buffer.get_mut(x, y) {
+                    cell.bg = selection_bg;
+                }
+            }
         }
     }
 
     fn selected_preview_text_lines(&self) -> Option<Vec<String>> {
         let (start, end) = self.preview_selection.bounds()?;
-        if self.preview.lines.is_empty() {
+        let source_len = self
+            .preview
+            .lines
+            .len()
+            .max(self.preview.render_lines.len());
+        if source_len == 0 {
             return None;
         }
 
-        let start_line = start.line.min(self.preview.lines.len().saturating_sub(1));
-        let end_line = end.line.min(self.preview.lines.len().saturating_sub(1));
+        let start_line = start.line.min(source_len.saturating_sub(1));
+        let end_line = end.line.min(source_len.saturating_sub(1));
         if end_line < start_line {
             return None;
         }
 
-        let mut lines = self.preview.lines[start_line..=end_line].to_vec();
+        let mut lines = self.preview_plain_lines_range(start_line, end_line.saturating_add(1));
         if lines.is_empty() {
             return None;
         }
 
         if lines.len() == 1 {
-            let end_exclusive = end.col.saturating_add(1);
-            lines[0] = lines[0]
-                .chars()
-                .skip(start.col)
-                .take(end_exclusive.saturating_sub(start.col))
-                .collect();
+            lines[0] = visual_substring(&lines[0], start.col, Some(end.col));
             return Some(lines);
         }
 
-        lines[0] = lines[0].chars().skip(start.col).collect();
+        lines[0] = visual_substring(&lines[0], start.col, None);
         let last_idx = lines.len().saturating_sub(1);
-        lines[last_idx] = lines[last_idx]
-            .chars()
-            .take(end.col.saturating_add(1))
-            .collect();
+        lines[last_idx] = visual_substring(&lines[last_idx], 0, Some(end.col));
 
         Some(lines)
     }
@@ -4182,13 +4459,15 @@ impl GroveApp {
         let Some((_, output_height)) = self.preview_output_dimensions() else {
             return Vec::new();
         };
-        self.preview.visible_lines(usize::from(output_height))
+        let (visible_start, visible_end) =
+            self.preview_visible_range_for_height(usize::from(output_height));
+        self.preview_plain_lines_range(visible_start, visible_end)
     }
 
     fn copy_interactive_selection_or_visible(&mut self) {
-        let mut lines = self
-            .selected_preview_text_lines()
-            .unwrap_or_else(|| self.visible_preview_output_lines());
+        let selected_lines = self.selected_preview_text_lines();
+        let copied_from_selection = selected_lines.is_some();
+        let mut lines = selected_lines.unwrap_or_else(|| self.visible_preview_output_lines());
         if lines.is_empty() {
             self.last_tmux_error = Some("no output to copy".to_string());
             return;
@@ -4202,6 +4481,19 @@ impl GroveApp {
             return;
         }
         let text = lines.join("\n");
+        self.event_log.log(
+            LogEvent::new("selection", "interactive_copy_payload")
+                .with_data("from_selection", Value::from(copied_from_selection))
+                .with_data(
+                    "line_count",
+                    Value::from(u64::try_from(lines.len()).unwrap_or(u64::MAX)),
+                )
+                .with_data(
+                    "char_count",
+                    Value::from(u64::try_from(text.chars().count()).unwrap_or(u64::MAX)),
+                )
+                .with_data("preview", Value::from(truncate_for_log(&text, 240))),
+        );
         self.copied_text = Some(text.clone());
         match self.clipboard.write_text(&text) {
             Ok(()) => {
@@ -4257,11 +4549,39 @@ impl GroveApp {
             state.note_mouse_event(Instant::now());
         }
 
+        let (region, row_data) = self.hit_region_for_point(mouse_event.x, mouse_event.y);
+        let mut event = LogEvent::new("mouse", "event")
+            .with_data("x", Value::from(mouse_event.x))
+            .with_data("y", Value::from(mouse_event.y))
+            .with_data("kind", Value::from(format!("{:?}", mouse_event.kind)))
+            .with_data("region", Value::from(Self::hit_region_name(region)))
+            .with_data("modal_open", Value::from(self.modal_open()))
+            .with_data("interactive", Value::from(self.interactive.is_some()))
+            .with_data("divider_drag_active", Value::from(self.divider_drag_active))
+            .with_data("focus", Value::from(Self::focus_name(self.state.focus)))
+            .with_data("mode", Value::from(Self::mode_name(self.state.mode)));
+        if let Some(row_data) = row_data {
+            event = event.with_data("row_data", Value::from(row_data));
+        }
+        if matches!(region, HitRegion::Preview)
+            && let Some(point) = self.preview_text_point_at(mouse_event.x, mouse_event.y)
+        {
+            event = event
+                .with_data(
+                    "mapped_line",
+                    Value::from(u64::try_from(point.line).unwrap_or(u64::MAX)),
+                )
+                .with_data(
+                    "mapped_col",
+                    Value::from(u64::try_from(point.col).unwrap_or(u64::MAX)),
+                );
+            event = self.add_selection_point_snapshot_fields(event, "mapped_", point);
+        }
+        self.event_log.log(event);
+
         if self.modal_open() {
             return;
         }
-
-        let (region, row_data) = self.hit_region_for_point(mouse_event.x, mouse_event.y);
 
         match mouse_event.kind {
             MouseEventKind::Down(MouseButton::Left) => match region {
@@ -4835,13 +5155,29 @@ impl GroveApp {
             )]),
         ];
 
-        let visible_plain_lines = self.preview.visible_lines(preview_height);
-        let mut visible_render_lines = self.preview.visible_render_lines(preview_height);
-        let (visible_start, _visible_end) = self.preview_visible_range_for_height(preview_height);
+        let (visible_start, visible_end) = self.preview_visible_range_for_height(preview_height);
+        let visible_plain_lines = self.preview_plain_lines_range(visible_start, visible_end);
+        let mut visible_render_lines = if self.preview.render_lines.is_empty() {
+            Vec::new()
+        } else {
+            let render_start = visible_start.min(self.preview.render_lines.len());
+            let render_end = visible_end.min(self.preview.render_lines.len());
+            if render_start < render_end {
+                self.preview.render_lines[render_start..render_end].to_vec()
+            } else {
+                Vec::new()
+            }
+        };
+        if visible_render_lines.len() < visible_plain_lines.len() {
+            visible_render_lines.extend(
+                visible_plain_lines[visible_render_lines.len()..]
+                    .iter()
+                    .cloned(),
+            );
+        }
         if visible_render_lines.is_empty() && !visible_plain_lines.is_empty() {
             visible_render_lines = visible_plain_lines.clone();
         }
-        self.apply_preview_selection_highlight(&mut visible_render_lines, visible_start);
         if allow_cursor_overlay {
             self.apply_interactive_cursor_overlay_render(
                 &visible_plain_lines,
@@ -4861,6 +5197,12 @@ impl GroveApp {
         }
 
         Paragraph::new(FtText::from_lines(text_lines)).render(inner, frame);
+        self.apply_preview_selection_highlight_cells(
+            frame,
+            inner,
+            &visible_plain_lines,
+            visible_start,
+        );
     }
 
     fn render_status_line(&self, frame: &mut Frame, area: Rect) {
@@ -5362,7 +5704,7 @@ mod tests {
         CursorCapture, FAST_SPINNER_FRAMES, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS,
         HIT_ID_WORKSPACE_ROW, LaunchDialogState, LivePreviewCapture, Msg, PREVIEW_METADATA_ROWS,
         PendingResizeVerification, PreviewPollCompletion, StartAgentCompletion,
-        StopAgentCompletion, TmuxInput, WORKSPACE_ITEM_HEIGHT, ansi_16_color,
+        StopAgentCompletion, TextSelectionPoint, TmuxInput, WORKSPACE_ITEM_HEIGHT, ansi_16_color,
         ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
@@ -8573,6 +8915,223 @@ mod tests {
     }
 
     #[test]
+    fn interactive_mouse_drag_logs_click_mapping_and_selected_preview() {
+        let (mut app, _commands, _captures, _cursor_captures, events) =
+            fixture_app_with_tmux_and_events(WorkspaceStatus::Active, Vec::new(), Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+        app.preview.lines = vec!["alpha beta".to_string()];
+        app.preview.render_lines = app.preview.lines.clone();
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Resize {
+                width: 100,
+                height: 40,
+            },
+        );
+        clear_recorded_events(&events);
+
+        let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+        let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        let select_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Down(MouseButton::Left),
+                preview_inner.x,
+                select_y,
+            )),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Drag(MouseButton::Left),
+                preview_inner.x.saturating_add(4),
+                select_y,
+            )),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Up(MouseButton::Left),
+                preview_inner.x.saturating_add(4),
+                select_y,
+            )),
+        );
+
+        let recorded = recorded_events(&events);
+        let started = recorded
+            .iter()
+            .find(|event| event.event == "selection" && event.kind == "preview_drag_started")
+            .expect("drag start event should be logged");
+        assert_eq!(started.data.get("mapped"), Some(&Value::from(true)));
+        assert_eq!(started.data.get("line"), Some(&Value::from(0)));
+        assert_eq!(started.data.get("col"), Some(&Value::from(0)));
+        assert_eq!(
+            started.data.get("line_clean_preview"),
+            Some(&Value::from("alpha beta"))
+        );
+        assert_eq!(started.data.get("grapheme"), Some(&Value::from("a")));
+
+        let finished = recorded
+            .iter()
+            .find(|event| event.event == "selection" && event.kind == "preview_drag_finished")
+            .expect("drag finish event should be logged");
+        assert_eq!(finished.data.get("has_selection"), Some(&Value::from(true)));
+        assert_eq!(finished.data.get("start_line"), Some(&Value::from(0)));
+        assert_eq!(finished.data.get("start_col"), Some(&Value::from(0)));
+        assert_eq!(finished.data.get("end_line"), Some(&Value::from(0)));
+        assert_eq!(finished.data.get("end_col"), Some(&Value::from(4)));
+        assert_eq!(
+            finished.data.get("selected_preview"),
+            Some(&Value::from("alpha"))
+        );
+        assert_eq!(
+            finished.data.get("release_grapheme"),
+            Some(&Value::from("a"))
+        );
+        assert_eq!(finished.data.get("end_grapheme"), Some(&Value::from("a")));
+
+        let mouse_event = recorded
+            .iter()
+            .find(|event| {
+                event.event == "mouse"
+                    && event.kind == "event"
+                    && event.data.get("kind") == Some(&Value::from("Down(Left)"))
+            })
+            .expect("mouse event telemetry should be logged");
+        assert_eq!(
+            mouse_event.data.get("region"),
+            Some(&Value::from("preview"))
+        );
+        assert_eq!(mouse_event.data.get("mapped_line"), Some(&Value::from(0)));
+        assert_eq!(mouse_event.data.get("mapped_col"), Some(&Value::from(0)));
+        assert_eq!(
+            mouse_event.data.get("mapped_grapheme"),
+            Some(&Value::from("a"))
+        );
+    }
+
+    #[test]
+    fn interactive_drag_mapping_prefers_render_line_when_clean_line_empty() {
+        let (mut app, _commands, _captures, _cursor_captures, events) =
+            fixture_app_with_tmux_and_events(WorkspaceStatus::Active, Vec::new(), Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+        app.preview.lines = vec![String::new()];
+        app.preview.render_lines = vec!["hello".to_string()];
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Resize {
+                width: 100,
+                height: 40,
+            },
+        );
+        clear_recorded_events(&events);
+
+        let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+        let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        let select_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Down(MouseButton::Left),
+                preview_inner.x,
+                select_y,
+            )),
+        );
+
+        let recorded = recorded_events(&events);
+        let started = recorded
+            .iter()
+            .find(|event| event.event == "selection" && event.kind == "preview_drag_started")
+            .expect("drag start event should be logged");
+        assert_eq!(
+            started.data.get("line_preview"),
+            Some(&Value::from("hello"))
+        );
+        assert_eq!(
+            started.data.get("line_clean_preview"),
+            Some(&Value::from("hello"))
+        );
+    }
+
+    #[test]
+    fn interactive_drag_mapping_uses_rendered_frame_size_without_resize_message() {
+        let (mut app, _commands, _captures, _cursor_captures, events) =
+            fixture_app_with_tmux_and_events(WorkspaceStatus::Active, Vec::new(), Vec::new());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+        app.preview.lines = (0..120).map(|index| format!("line-{index:03}")).collect();
+        app.preview.render_lines = app.preview.lines.clone();
+
+        with_rendered_frame(&app, 100, 50, |_| {});
+        clear_recorded_events(&events);
+
+        let layout = GroveApp::view_layout_for_size(100, 50, app.sidebar_width_pct);
+        let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        let select_x = preview_inner.x;
+        let select_y = preview_inner
+            .y
+            .saturating_add(PREVIEW_METADATA_ROWS)
+            .saturating_add(40);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Mouse(MouseEvent::new(
+                MouseEventKind::Down(MouseButton::Left),
+                select_x,
+                select_y,
+            )),
+        );
+
+        let recorded = recorded_events(&events);
+        let started = recorded
+            .iter()
+            .find(|event| event.event == "selection" && event.kind == "preview_drag_started")
+            .expect("drag start event should be logged");
+        assert_eq!(started.data.get("mapped"), Some(&Value::from(true)));
+
+        let output_height = usize::from(preview_inner.height.saturating_sub(PREVIEW_METADATA_ROWS));
+        let output_row = usize::from(
+            select_y.saturating_sub(preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS)),
+        );
+        let expected_visible_start = app.preview.lines.len().saturating_sub(output_height);
+        let expected_line = expected_visible_start.saturating_add(output_row);
+        assert_eq!(
+            started.data.get("line"),
+            Some(&Value::from(
+                u64::try_from(expected_line).unwrap_or(u64::MAX)
+            ))
+        );
+    }
+
+    #[test]
     fn mouse_move_then_release_highlights_selected_text_without_drag_event() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -8724,6 +9283,53 @@ mod tests {
                 first_col,
                 first_col.saturating_add(3),
                 ui_theme().surface1,
+            );
+        });
+    }
+
+    #[test]
+    fn selected_preview_text_lines_use_visual_columns() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        app.preview.lines = vec!["A😀B".to_string()];
+        app.preview.render_lines = app.preview.lines.clone();
+        app.preview_selection
+            .prepare_drag(TextSelectionPoint { line: 0, col: 0 });
+        app.preview_selection
+            .handle_drag(TextSelectionPoint { line: 0, col: 2 });
+        app.preview_selection.finish_drag();
+
+        assert_eq!(
+            app.selected_preview_text_lines(),
+            Some(vec!["A😀".to_string()])
+        );
+    }
+
+    #[test]
+    fn preview_render_lines_align_with_plain_visible_range_when_lengths_differ() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        app.preview.lines = (0..40).map(|index| format!("p{index}")).collect();
+        app.preview.render_lines = (0..42).map(|index| format!("r{index}")).collect();
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Resize {
+                width: 100,
+                height: 40,
+            },
+        );
+
+        let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+        let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+        let x_start = layout.preview.x.saturating_add(1);
+        let x_end = layout.preview.right().saturating_sub(1);
+        with_rendered_frame(&app, 100, 40, |frame| {
+            let rendered = row_text(frame, output_y, x_start, x_end);
+            assert!(
+                rendered.contains("r6"),
+                "expected first visible rendered row to start from aligned render index, got: {rendered}"
             );
         });
     }

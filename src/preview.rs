@@ -177,6 +177,7 @@ impl PreviewState {
         self.auto_scroll = true;
     }
 
+    #[cfg(test)]
     pub fn visible_lines(&self, height: usize) -> Vec<String> {
         if height == 0 || self.lines.is_empty() {
             return Vec::new();
@@ -187,18 +188,6 @@ impl PreviewState {
         let end = self.lines.len().saturating_sub(clamped_offset);
         let start = end.saturating_sub(height);
         self.lines[start..end].to_vec()
-    }
-
-    pub fn visible_render_lines(&self, height: usize) -> Vec<String> {
-        if height == 0 || self.render_lines.is_empty() {
-            return Vec::new();
-        }
-
-        let max_offset = Self::max_scroll_offset_for(self.render_lines.len(), height);
-        let clamped_offset = self.offset.min(max_offset);
-        let end = self.render_lines.len().saturating_sub(clamped_offset);
-        let start = end.saturating_sub(height);
-        self.render_lines[start..end].to_vec()
     }
 }
 
@@ -362,22 +351,6 @@ mod tests {
 
         let visible = state.visible_lines(2);
         assert_eq!(visible, vec!["3".to_string(), "4".to_string()]);
-    }
-
-    #[test]
-    fn visible_render_lines_respects_offset_from_bottom() {
-        let mut state = PreviewState::new();
-        state.render_lines = vec![
-            "r1".to_string(),
-            "r2".to_string(),
-            "r3".to_string(),
-            "r4".to_string(),
-            "r5".to_string(),
-        ];
-        state.offset = 1;
-
-        let visible = state.visible_render_lines(2);
-        assert_eq!(visible, vec!["r3".to_string(), "r4".to_string()]);
     }
 
     #[test]
