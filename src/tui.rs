@@ -6726,13 +6726,10 @@ mod tests {
                     Ok("preview-output".to_string()),
                     Ok("copied-text".to_string()),
                 ],
-                vec![Ok("1 0 0 120 40".to_string())],
+                vec![Ok("1 0 0 78 34".to_string())],
             );
+        app.state.selected_index = 1;
 
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-        );
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
@@ -6796,11 +6793,8 @@ mod tests {
                 ],
                 vec![Ok("1 0 0 120 40".to_string())],
             );
+        app.state.selected_index = 1;
 
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-        );
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
@@ -6866,11 +6860,8 @@ mod tests {
                 ],
                 vec![Ok("1 0 0 120 40".to_string())],
             );
+        app.state.selected_index = 1;
 
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-        );
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
@@ -7133,15 +7124,12 @@ mod tests {
                     Ok("first\nsecond\nthird\n".to_string()),
                     Ok("first\nsecond\nthird\n".to_string()),
                 ],
-                vec![Ok("1 1 1 120 3".to_string())],
+                vec![Ok("1 1 1 78 34".to_string()), Ok("1 1 1 78 34".to_string())],
                 sidebar_ratio_path,
             );
         app.state.workspaces[1].agent = AgentType::Claude;
+        app.state.selected_index = 1;
 
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-        );
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
@@ -7156,7 +7144,7 @@ mod tests {
                 state.cursor_col,
                 state.pane_height
             )),
-            Some((1, 1, 3))
+            Some((1, 1, 34))
         );
         assert!(rendered.contains("s|econd"), "{rendered}");
     }
@@ -7372,15 +7360,15 @@ mod tests {
 
     #[test]
     fn alt_copy_then_alt_paste_uses_captured_text() {
-        let (mut app, commands, captures, _cursor_captures) = fixture_app_with_tmux(
+        let sidebar_ratio_path = unique_sidebar_ratio_path("alt-copy-paste");
+        let (mut app, commands, captures, _cursor_captures) = fixture_app_with_tmux_and_sidebar_path(
             WorkspaceStatus::Active,
             vec![Ok(String::new()), Ok("copy me".to_string())],
+            vec![Ok("1 0 0 78 34".to_string())],
+            sidebar_ratio_path,
         );
+        app.state.selected_index = 1;
 
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-        );
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),

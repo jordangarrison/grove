@@ -1,6 +1,6 @@
 # Grove Implementation Plan, Sidecar Architecture + FrankenTUI Practice
 
-Status: Draft  
+Status: Completed  
 Date: 2026-02-14  
 Audience: implementation agents working in this repo
 
