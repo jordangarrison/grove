@@ -9,11 +9,11 @@ use ftui::core::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
     PasteEvent,
 };
+use ftui::core::geometry::Rect;
 use ftui::core::keybinding::{
     Action as KeybindingAction, ActionConfig as KeybindingConfig, ActionMapper,
     AppState as KeybindingAppState, SequenceConfig as KeySequenceConfig,
 };
-use ftui::core::geometry::Rect;
 use ftui::layout::{Constraint, Flex};
 use ftui::render::budget::FrameBudgetConfig;
 use ftui::render::frame::{Frame, HitGrid, HitId, HitRegion as FrameHitRegion};
@@ -23,6 +23,7 @@ use ftui::widgets::Widget;
 use ftui::widgets::block::Block;
 use ftui::widgets::borders::Borders;
 use ftui::widgets::paragraph::Paragraph;
+use ftui::widgets::status_line::{StatusItem, StatusLine};
 use ftui::{App, Cmd, Model, PackedRgba, ScreenMode, Style};
 use serde_json::Value;
 
@@ -69,6 +70,51 @@ const HIT_ID_CREATE_DIALOG: u32 = 7;
 const HIT_ID_LAUNCH_DIALOG: u32 = 8;
 const MAX_PENDING_INPUT_TRACES: usize = 256;
 const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
+const FAST_ANIMATION_INTERVAL_MS: u64 = 100;
+const SLOW_ANIMATION_INTERVAL_MS: u64 = 333;
+const FAST_SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SLOW_PULSE_FRAMES: [&str; 4] = ["⧗", "⧖", "⧗", "⧖"];
+
+#[derive(Debug, Clone, Copy)]
+struct UiTheme {
+    base: PackedRgba,
+    mantle: PackedRgba,
+    crust: PackedRgba,
+    surface0: PackedRgba,
+    surface1: PackedRgba,
+    overlay0: PackedRgba,
+    text: PackedRgba,
+    subtext0: PackedRgba,
+    blue: PackedRgba,
+    lavender: PackedRgba,
+    green: PackedRgba,
+    yellow: PackedRgba,
+    red: PackedRgba,
+    peach: PackedRgba,
+    mauve: PackedRgba,
+    teal: PackedRgba,
+}
+
+fn ui_theme() -> UiTheme {
+    UiTheme {
+        base: PackedRgba::rgb(30, 30, 46),
+        mantle: PackedRgba::rgb(24, 24, 37),
+        crust: PackedRgba::rgb(17, 17, 27),
+        surface0: PackedRgba::rgb(49, 50, 68),
+        surface1: PackedRgba::rgb(69, 71, 90),
+        overlay0: PackedRgba::rgb(108, 112, 134),
+        text: PackedRgba::rgb(205, 214, 244),
+        subtext0: PackedRgba::rgb(166, 173, 200),
+        blue: PackedRgba::rgb(137, 180, 250),
+        lavender: PackedRgba::rgb(180, 190, 254),
+        green: PackedRgba::rgb(166, 227, 161),
+        yellow: PackedRgba::rgb(249, 226, 175),
+        red: PackedRgba::rgb(243, 139, 168),
+        peach: PackedRgba::rgb(250, 179, 135),
+        mauve: PackedRgba::rgb(203, 166, 247),
+        teal: PackedRgba::rgb(148, 226, 213),
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum HitRegion {
@@ -478,9 +524,8 @@ impl CommandTmuxInput {
         let resize_pane_error = String::from_utf8_lossy(&resize_pane.stderr)
             .trim()
             .to_string();
-        let set_manual_suffix = set_manual_error.map_or_else(String::new, |error| {
-            format!("; set-option={error}")
-        });
+        let set_manual_suffix =
+            set_manual_error.map_or_else(String::new, |error| format!("; set-option={error}"));
         Err(std::io::Error::other(format!(
             "tmux resize failed for '{target_session}': resize-window={resize_window_error}; resize-pane={resize_pane_error}{set_manual_suffix}"
         )))
@@ -845,7 +890,11 @@ struct GroveApp {
     last_hit_grid: RefCell<Option<HitGrid>>,
     next_tick_due_at: Option<Instant>,
     next_tick_interval_ms: Option<u64>,
+    next_poll_due_at: Option<Instant>,
+    next_visual_due_at: Option<Instant>,
     interactive_poll_due_at: Option<Instant>,
+    fast_animation_frame: usize,
+    slow_animation_frame: usize,
     poll_generation: u64,
     debug_record_start_ts: Option<u64>,
     frame_render_seq: RefCell<u64>,
@@ -900,8 +949,11 @@ impl GroveApp {
         debug_record_start_ts: Option<u64>,
     ) -> Self {
         let sidebar_width_pct = load_sidebar_ratio(&sidebar_ratio_path);
-        let mapper_config = KeybindingConfig::from_env()
-            .with_sequence_config(KeySequenceConfig::from_env().disable_sequences().validated());
+        let mapper_config = KeybindingConfig::from_env().with_sequence_config(
+            KeySequenceConfig::from_env()
+                .disable_sequences()
+                .validated(),
+        );
         let mut app = Self {
             repo_name: bootstrap.repo_name,
             state: AppState::new(bootstrap.workspaces),
@@ -926,7 +978,11 @@ impl GroveApp {
             last_hit_grid: RefCell::new(None),
             next_tick_due_at: None,
             next_tick_interval_ms: None,
+            next_poll_due_at: None,
+            next_visual_due_at: None,
             interactive_poll_due_at: None,
+            fast_animation_frame: 0,
+            slow_animation_frame: 0,
             poll_generation: 0,
             debug_record_start_ts,
             frame_render_seq: RefCell::new(0),
@@ -1448,10 +1504,8 @@ impl GroveApp {
         }
 
         match &self.discovery_state {
-            DiscoveryState::Error(message) => {
-                format!("Status: discovery error ({message}) [q]quit")
-            }
-            DiscoveryState::Empty => "Status: no worktrees found [q]quit".to_string(),
+            DiscoveryState::Error(message) => format!("Status: discovery error ({message})"),
+            DiscoveryState::Empty => "Status: no worktrees found".to_string(),
             DiscoveryState::Ready => {
                 if let Some(dialog) = &self.create_dialog {
                     let branch_value = match dialog.branch_mode {
@@ -1461,7 +1515,7 @@ impl GroveApp {
                         }
                     };
                     return format!(
-                        "Status: New workspace | [Tab/Shift+Tab]field={} [Left/Right]toggle [type]edit [Enter]create [Esc]cancel | mode={} agent={} branch=\"{}\" name=\"{}\"",
+                        "Status: new workspace, field={}, mode={}, agent={}, branch=\"{}\", name=\"{}\"",
                         dialog.focused_field.label(),
                         dialog.branch_mode.label(),
                         dialog.agent.label(),
@@ -1471,7 +1525,7 @@ impl GroveApp {
                 }
                 if let Some(dialog) = &self.launch_dialog {
                     return format!(
-                        "Status: Start agent dialog | [type]prompt [Backspace]delete [Tab]unsafe={} [Enter]start [Esc]cancel | prompt=\"{}\"",
+                        "Status: start agent, unsafe={}, prompt=\"{}\"",
                         if dialog.skip_permissions { "on" } else { "off" },
                         dialog.prompt.replace('\n', "\\n"),
                     );
@@ -1479,24 +1533,21 @@ impl GroveApp {
                 if self.interactive.is_some() {
                     if let Some(message) = &self.last_tmux_error {
                         return format!(
-                            "Status: -- INSERT -- [Esc Esc]/[Ctrl+\\]exit | unsafe={} | tmux error: {message}",
+                            "Status: INSERT, unsafe={}, tmux error: {message}",
                             self.unsafe_label()
                         );
                     }
-                    return format!(
-                        "Status: -- INSERT -- [Esc Esc]/[Ctrl+\\]exit | unsafe={}",
-                        self.unsafe_label()
-                    );
+                    return format!("Status: INSERT, unsafe={}", self.unsafe_label());
                 }
 
                 match self.state.mode {
                     UiMode::List => format!(
-                        "Status: [j/k]move [Tab]focus [Enter]preview-or-interactive [n]new [s]start [x]stop [!]unsafe [q]quit | [mouse]click/drag/scroll | selected={} unsafe={}",
+                        "Status: list, selected={}, unsafe={}",
                         self.selected_status_hint(),
                         self.unsafe_label()
                     ),
                     UiMode::Preview => format!(
-                        "Status: [j/k]scroll [PgUp/PgDn]scroll [G]bottom [Esc]list [Tab]focus [n]new [s]start [x]stop [!]unsafe [q]quit | [mouse]scroll/drag divider | autoscroll={} offset={} split={}%% unsafe={}",
+                        "Status: preview, autoscroll={}, offset={}, split={}%, unsafe={}",
                         if self.preview.auto_scroll {
                             "on"
                         } else {
@@ -1577,7 +1628,8 @@ impl GroveApp {
             .tmux_input
             .capture_cursor_metadata(target_session)
             .map_err(|error| error.to_string());
-        let capture_ms = Self::duration_millis(Instant::now().saturating_duration_since(started_at));
+        let capture_ms =
+            Self::duration_millis(Instant::now().saturating_duration_since(started_at));
         self.apply_cursor_capture_result(CursorCapture {
             session: target_session.to_string(),
             capture_ms,
@@ -1641,8 +1693,9 @@ impl GroveApp {
             Ok(output) => {
                 let apply_started_at = Instant::now();
                 let update = self.preview.apply_capture(&output);
-                let apply_capture_ms =
-                    Self::duration_millis(Instant::now().saturating_duration_since(apply_started_at));
+                let apply_capture_ms = Self::duration_millis(
+                    Instant::now().saturating_duration_since(apply_started_at),
+                );
                 self.output_changing = update.changed_cleaned;
                 self.last_tmux_error = None;
                 self.event_log.log(
@@ -1834,7 +1887,11 @@ impl GroveApp {
             metadata.pane_height,
             metadata.pane_width,
         );
-        self.verify_resize_after_cursor_capture(&session, metadata.pane_width, metadata.pane_height);
+        self.verify_resize_after_cursor_capture(
+            &session,
+            metadata.pane_width,
+            metadata.pane_height,
+        );
         let parse_duration_ms =
             Self::duration_millis(Instant::now().saturating_duration_since(parse_started_at));
         self.event_log.log(
@@ -1944,9 +2001,12 @@ impl GroveApp {
         Cmd::task(move || {
             let live_capture = live_preview.map(|(session, include_escape_sequences)| {
                 let capture_started_at = Instant::now();
-                let result =
-                    CommandTmuxInput::capture_session_output(&session, 600, include_escape_sequences)
-                        .map_err(|error| error.to_string());
+                let result = CommandTmuxInput::capture_session_output(
+                    &session,
+                    600,
+                    include_escape_sequences,
+                )
+                .map_err(|error| error.to_string());
                 let capture_ms = GroveApp::duration_millis(
                     Instant::now().saturating_duration_since(capture_started_at),
                 );
@@ -2123,7 +2183,10 @@ impl GroveApp {
     }
 
     fn keybinding_task_running(&self) -> bool {
-        self.refresh_in_flight || self.create_in_flight || self.start_in_flight || self.stop_in_flight
+        self.refresh_in_flight
+            || self.create_in_flight
+            || self.start_in_flight
+            || self.stop_in_flight
     }
 
     fn keybinding_input_nonempty(&self) -> bool {
@@ -3712,10 +3775,7 @@ impl GroveApp {
     }
 
     fn next_poll_interval(&self) -> Duration {
-        let status = self
-            .state
-            .selected_workspace()
-            .map_or(WorkspaceStatus::Unknown, |workspace| workspace.status);
+        let status = self.selected_workspace_status();
 
         let since_last_key = self
             .interactive
@@ -3734,6 +3794,32 @@ impl GroveApp {
         )
     }
 
+    fn selected_workspace_status(&self) -> WorkspaceStatus {
+        self.state
+            .selected_workspace()
+            .map_or(WorkspaceStatus::Unknown, |workspace| workspace.status)
+    }
+
+    fn visual_tick_interval(&self) -> Option<Duration> {
+        let selected_status = self.selected_workspace_status();
+        if matches!(
+            selected_status,
+            WorkspaceStatus::Active | WorkspaceStatus::Thinking
+        ) || self.interactive.is_some()
+        {
+            return Some(Duration::from_millis(FAST_ANIMATION_INTERVAL_MS));
+        }
+        if selected_status == WorkspaceStatus::Waiting {
+            return Some(Duration::from_millis(SLOW_ANIMATION_INTERVAL_MS));
+        }
+        None
+    }
+
+    fn advance_visual_animation(&mut self) {
+        self.fast_animation_frame = self.fast_animation_frame.wrapping_add(1);
+        self.slow_animation_frame = self.slow_animation_frame.wrapping_add(1);
+    }
+
     fn is_due_with_tolerance(now: Instant, due_at: Instant) -> bool {
         let tolerance = Duration::from_millis(TICK_EARLY_TOLERANCE_MS);
         let now_with_tolerance = now.checked_add(tolerance).unwrap_or(now);
@@ -3742,38 +3828,76 @@ impl GroveApp {
 
     fn schedule_next_tick(&mut self) -> Cmd<Msg> {
         let scheduled_at = Instant::now();
-        let mut due_at = scheduled_at + self.next_poll_interval();
-        let mut source = "adaptive";
+        let mut poll_due_at = scheduled_at + self.next_poll_interval();
+        let mut source = "adaptive_poll";
         if let Some(interactive_due_at) = self.interactive_poll_due_at
-            && interactive_due_at < due_at
+            && interactive_due_at < poll_due_at
         {
-            due_at = interactive_due_at;
+            poll_due_at = interactive_due_at;
             source = "interactive_debounce";
+        }
+
+        if let Some(existing_poll_due_at) = self.next_poll_due_at
+            && existing_poll_due_at <= poll_due_at
+        {
+            if existing_poll_due_at > scheduled_at {
+                poll_due_at = existing_poll_due_at;
+                source = "retained_poll";
+            } else {
+                poll_due_at = scheduled_at;
+                source = "overdue_poll";
+            }
+        }
+        self.next_poll_due_at = Some(poll_due_at);
+
+        self.next_visual_due_at = if let Some(interval) = self.visual_tick_interval() {
+            let candidate = scheduled_at + interval;
+            Some(
+                if let Some(existing_visual_due_at) = self.next_visual_due_at {
+                    if existing_visual_due_at <= candidate && existing_visual_due_at > scheduled_at
+                    {
+                        existing_visual_due_at
+                    } else {
+                        candidate
+                    }
+                } else {
+                    candidate
+                },
+            )
+        } else {
+            None
+        };
+
+        let mut due_at = poll_due_at;
+        let mut trigger = "poll";
+        if let Some(visual_due_at) = self.next_visual_due_at
+            && visual_due_at < due_at
+        {
+            due_at = visual_due_at;
+            trigger = "visual";
         }
 
         if let Some(existing_due_at) = self.next_tick_due_at
             && existing_due_at <= due_at
+            && existing_due_at > scheduled_at
         {
-            if existing_due_at > scheduled_at {
-                self.event_log.log(
-                    LogEvent::new("tick", "retained")
-                        .with_data("source", Value::from(source))
-                        .with_data(
-                            "interval_ms",
-                            Value::from(Self::duration_millis(
-                                existing_due_at.saturating_duration_since(scheduled_at),
-                            )),
-                        )
-                        .with_data("pending_depth", Value::from(self.pending_input_depth()))
-                        .with_data(
-                            "oldest_pending_age_ms",
-                            Value::from(self.oldest_pending_input_age_ms(scheduled_at)),
-                        ),
-                );
-                return Cmd::None;
-            }
-            due_at = scheduled_at;
-            source = "overdue";
+            self.event_log.log(
+                LogEvent::new("tick", "retained")
+                    .with_data("source", Value::from(source))
+                    .with_data("trigger", Value::from(trigger))
+                    .with_data(
+                        "interval_ms",
+                        Value::from(Self::duration_millis(
+                            existing_due_at.saturating_duration_since(scheduled_at),
+                        )),
+                    )
+                    .with_data("pending_depth", Value::from(self.pending_input_depth()))
+                    .with_data(
+                        "oldest_pending_age_ms",
+                        Value::from(self.oldest_pending_input_age_ms(scheduled_at)),
+                    ),
+            );
+            return Cmd::None;
         }
 
         let interval = due_at.saturating_duration_since(scheduled_at);
@@ -3783,6 +3907,7 @@ impl GroveApp {
         self.event_log.log(
             LogEvent::new("tick", "scheduled")
                 .with_data("source", Value::from(source))
+                .with_data("trigger", Value::from(trigger))
                 .with_data("interval_ms", Value::from(interval_ms))
                 .with_data("pending_depth", Value::from(self.pending_input_depth()))
                 .with_data(
@@ -3802,11 +3927,61 @@ impl GroveApp {
     }
 
     fn pane_border_style(&self, focused: bool) -> Style {
+        let theme = ui_theme();
         if focused {
-            return Style::new().fg(PackedRgba::rgb(56, 189, 248)).bold();
+            return Style::new().fg(theme.blue).bold();
         }
 
-        Style::new().fg(PackedRgba::rgb(107, 114, 128))
+        Style::new().fg(theme.overlay0)
+    }
+
+    fn workspace_status_color(&self, status: WorkspaceStatus) -> PackedRgba {
+        let theme = ui_theme();
+        match status {
+            WorkspaceStatus::Main => theme.lavender,
+            WorkspaceStatus::Idle => theme.overlay0,
+            WorkspaceStatus::Active | WorkspaceStatus::Thinking => theme.green,
+            WorkspaceStatus::Waiting => theme.yellow,
+            WorkspaceStatus::Done => theme.teal,
+            WorkspaceStatus::Error => theme.red,
+            WorkspaceStatus::Unknown | WorkspaceStatus::Unsupported => theme.peach,
+        }
+    }
+
+    fn animated_status_icon(&self, status: WorkspaceStatus) -> &'static str {
+        match status {
+            WorkspaceStatus::Active | WorkspaceStatus::Thinking => {
+                FAST_SPINNER_FRAMES[self.fast_animation_frame % FAST_SPINNER_FRAMES.len()]
+            }
+            WorkspaceStatus::Waiting => {
+                SLOW_PULSE_FRAMES[self.slow_animation_frame % SLOW_PULSE_FRAMES.len()]
+            }
+            _ => status.icon(),
+        }
+    }
+
+    fn relative_age_label(&self, unix_secs: Option<i64>) -> String {
+        let Some(unix_secs) = unix_secs else {
+            return String::new();
+        };
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .and_then(|duration| i64::try_from(duration.as_secs()).ok());
+        let Some(now_secs) = now_secs else {
+            return String::new();
+        };
+        let age_secs = now_secs.saturating_sub(unix_secs).max(0);
+        if age_secs < 60 {
+            return "now".to_string();
+        }
+        if age_secs < 3_600 {
+            return format!("{}m", age_secs / 60);
+        }
+        if age_secs < 86_400 {
+            return format!("{}h", age_secs / 3_600);
+        }
+        format!("{}d", age_secs / 86_400)
     }
 
     fn render_header(&self, frame: &mut Frame, area: Rect) {
@@ -3814,13 +3989,32 @@ impl GroveApp {
             return;
         }
 
-        let header = format!(
-            "Grove | Repo: {} | Mode: {} | Focus: {}",
-            self.repo_name,
-            self.mode_label(),
-            self.focus_label()
+        let theme = ui_theme();
+        let mode_chip = format!("[{}]", self.mode_label());
+        let focus_chip = format!("[{}]", self.focus_label());
+        let activity_chip = format!(
+            "{} {}",
+            self.animated_status_icon(self.selected_workspace_status()),
+            self.selected_status_hint()
         );
-        Paragraph::new(header).render(area, frame);
+
+        let mut header = StatusLine::new()
+            .separator("  ")
+            .style(Style::new().bg(theme.crust).fg(theme.text))
+            .left(StatusItem::text("Grove"))
+            .left(StatusItem::text(self.repo_name.as_str()))
+            .center(StatusItem::text(mode_chip.as_str()))
+            .center(StatusItem::text(focus_chip.as_str()))
+            .right(StatusItem::text(activity_chip.as_str()));
+
+        if matches!(
+            self.selected_workspace_status(),
+            WorkspaceStatus::Active | WorkspaceStatus::Thinking
+        ) {
+            header = header.right(StatusItem::Spinner(self.fast_animation_frame));
+        }
+
+        header.render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_HEADER));
     }
 
@@ -3843,14 +4037,24 @@ impl GroveApp {
             return;
         }
 
-        let mut lines: Vec<String> = Vec::new();
+        let theme = ui_theme();
+        let mut lines: Vec<FtLine> = Vec::new();
         match &self.discovery_state {
             DiscoveryState::Error(message) => {
-                lines.push("Discovery error".to_string());
-                lines.push(message.clone());
+                lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                    "Discovery error",
+                    Style::new().fg(theme.red).bold(),
+                )]));
+                lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                    message.as_str(),
+                    Style::new().fg(theme.peach),
+                )]));
             }
             DiscoveryState::Empty => {
-                lines.push("No workspaces".to_string());
+                lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                    "No workspaces",
+                    Style::new().fg(theme.subtext0),
+                )]));
             }
             DiscoveryState::Ready => {
                 let max_items = usize::from(inner.height / WORKSPACE_ITEM_HEIGHT);
@@ -3860,13 +4064,10 @@ impl GroveApp {
                     } else {
                         " "
                     };
-                    lines.push(format!(
-                        "{} {} {}",
-                        selected,
-                        workspace.status.icon(),
-                        workspace.name
-                    ));
-                    lines.push(format!(
+                    let icon = self.animated_status_icon(workspace.status);
+                    let age = self.relative_age_label(workspace.last_activity_unix_secs);
+
+                    let secondary = format!(
                         "  {} | {}{}",
                         workspace.branch,
                         workspace.agent.label(),
@@ -3875,7 +4076,51 @@ impl GroveApp {
                         } else {
                             ""
                         }
-                    ));
+                    );
+
+                    let row_background = if idx == self.state.selected_index {
+                        if self.state.focus == PaneFocus::WorkspaceList && !self.modal_open() {
+                            Some(theme.surface1)
+                        } else {
+                            Some(theme.surface0)
+                        }
+                    } else if workspace.status == WorkspaceStatus::Waiting {
+                        Some(theme.surface0)
+                    } else {
+                        None
+                    };
+
+                    let mut primary_style = Style::new().fg(theme.text);
+                    let mut secondary_style = Style::new().fg(theme.subtext0);
+                    if let Some(bg) = row_background {
+                        primary_style = primary_style.bg(bg);
+                        secondary_style = secondary_style.bg(bg);
+                    }
+                    if idx == self.state.selected_index {
+                        primary_style = primary_style.bold();
+                    }
+
+                    let mut primary_spans = vec![
+                        FtSpan::styled(format!("{selected} "), primary_style),
+                        FtSpan::styled(
+                            format!("{icon} "),
+                            primary_style
+                                .fg(self.workspace_status_color(workspace.status))
+                                .bold(),
+                        ),
+                        FtSpan::styled(workspace.name.clone(), primary_style),
+                    ];
+                    if !age.is_empty() {
+                        primary_spans.push(FtSpan::styled("  ", primary_style));
+                        primary_spans.push(FtSpan::styled(age, primary_style.fg(theme.overlay0)));
+                    }
+
+                    lines.push(FtLine::from_spans(primary_spans));
+                    lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                        secondary,
+                        secondary_style,
+                    )]));
+
                     if let Ok(data) = u64::try_from(idx) {
                         let row_y = inner.y.saturating_add(
                             u16::try_from(idx)
@@ -3896,7 +4141,7 @@ impl GroveApp {
             }
         }
 
-        Paragraph::new(lines.join("\n")).render(inner, frame);
+        Paragraph::new(FtText::from_lines(lines)).render(inner, frame);
     }
 
     fn render_divider(&self, frame: &mut Frame, area: Rect) {
@@ -3913,8 +4158,13 @@ impl GroveApp {
             .take(usize::from(area.height))
             .collect::<Vec<&str>>()
             .join("\n");
+        let theme = ui_theme();
         Paragraph::new(divider)
-            .style(Style::new().fg(PackedRgba::rgb(107, 114, 128)))
+            .style(Style::new().fg(if self.divider_drag_active {
+                theme.blue
+            } else {
+                theme.overlay0
+            }))
             .render(area, frame);
         let _ = frame.register_hit_region(
             Self::divider_hit_area(area, frame.width()),
@@ -3950,16 +4200,28 @@ impl GroveApp {
         let selected_workspace = self.state.selected_workspace();
         let selected_agent = selected_workspace.map(|workspace| workspace.agent);
         let allow_cursor_overlay = selected_agent != Some(AgentType::Codex);
+        let theme = ui_theme();
         let selected_workspace_label = selected_workspace
             .map(|workspace| {
-                format!(
+                let name_label = if workspace.name == workspace.branch {
+                    workspace.name.clone()
+                } else {
+                    format!("{} ({})", workspace.name, workspace.branch)
+                };
+                let mode_label = if self.interactive.is_some() {
+                    "INTERACTIVE"
+                } else {
+                    "PREVIEW"
+                };
+                let detail = format!(
                     "{} | {} | {}",
-                    workspace.name,
-                    workspace.branch,
+                    workspace.agent.label(),
+                    workspace.status.icon(),
                     workspace.path.display()
-                )
+                );
+                (format!("{mode_label} | {name_label}"), detail)
             })
-            .unwrap_or_else(|| "none".to_string());
+            .unwrap_or_else(|| ("PREVIEW | none".to_string(), "no workspace".to_string()));
 
         let metadata_rows = usize::from(PREVIEW_METADATA_ROWS);
         let preview_height = usize::from(inner.height)
@@ -3967,8 +4229,14 @@ impl GroveApp {
             .max(1);
 
         let mut text_lines = vec![
-            FtLine::raw(format!("Selected: {selected_workspace_label}")),
-            FtLine::raw(""),
+            FtLine::from_spans(vec![FtSpan::styled(
+                selected_workspace_label.0,
+                Style::new().fg(theme.subtext0),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                selected_workspace_label.1,
+                Style::new().fg(theme.overlay0),
+            )]),
         ];
 
         let mut visible_plain_lines = self.preview.visible_lines(preview_height);
@@ -4004,9 +4272,35 @@ impl GroveApp {
             return;
         }
 
-        Paragraph::new(self.status_bar_line())
-            .style(Style::new().reverse())
-            .render(area, frame);
+        let theme = ui_theme();
+        let summary = self.status_bar_line();
+        let selected_name = self
+            .state
+            .selected_workspace()
+            .map(|workspace| workspace.name.as_str())
+            .unwrap_or("none");
+        let center = format!("ws={selected_name}");
+        let hints = if self.interactive.is_some() {
+            "Esc Esc / Ctrl+\\ exit, Alt+C copy, Alt+V paste"
+        } else if self.state.mode == UiMode::Preview {
+            "j/k scroll, PgUp/PgDn, G bottom, Esc list, q quit"
+        } else {
+            "j/k move, Enter open, n new, s start, x stop, q quit"
+        };
+
+        let mut status = StatusLine::new()
+            .separator("  ")
+            .style(Style::new().bg(theme.mantle).fg(theme.text))
+            .left(StatusItem::text(summary.as_str()))
+            .center(StatusItem::text(center.as_str()))
+            .right(StatusItem::text(hints));
+        if matches!(
+            self.selected_workspace_status(),
+            WorkspaceStatus::Active | WorkspaceStatus::Thinking
+        ) {
+            status = status.right(StatusItem::Spinner(self.fast_animation_frame));
+        }
+        status.render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_STATUS));
     }
 
@@ -4023,11 +4317,12 @@ impl GroveApp {
         let dialog_x = area.x + area.width.saturating_sub(dialog_width) / 2;
         let dialog_y = area.y + area.height.saturating_sub(dialog_height) / 2;
         let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
+        let theme = ui_theme();
 
         let block = Block::new()
             .title("Start Agent")
             .borders(Borders::ALL)
-            .border_style(Style::new().fg(PackedRgba::rgb(56, 189, 248)).bold());
+            .border_style(Style::new().fg(theme.mauve).bold());
         let inner = block.inner(dialog_area);
         block.render(dialog_area, frame);
         let _ = frame.register_hit(
@@ -4059,7 +4354,9 @@ impl GroveApp {
         ]
         .join("\n");
 
-        Paragraph::new(body).render(inner, frame);
+        Paragraph::new(body)
+            .style(Style::new().fg(theme.text).bg(theme.base))
+            .render(inner, frame);
     }
 
     fn render_create_dialog_overlay(&self, frame: &mut Frame, area: Rect) {
@@ -4075,11 +4372,12 @@ impl GroveApp {
         let dialog_x = area.x + area.width.saturating_sub(dialog_width) / 2;
         let dialog_y = area.y + area.height.saturating_sub(dialog_height) / 2;
         let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
+        let theme = ui_theme();
 
         let block = Block::new()
             .title("New Workspace")
             .borders(Borders::ALL)
-            .border_style(Style::new().fg(PackedRgba::rgb(56, 189, 248)).bold());
+            .border_style(Style::new().fg(theme.mauve).bold());
         let inner = block.inner(dialog_area);
         block.render(dialog_area, frame);
         let _ = frame.register_hit(
@@ -4109,7 +4407,9 @@ impl GroveApp {
         ]
         .join("\n");
 
-        Paragraph::new(body).render(inner, frame);
+        Paragraph::new(body)
+            .style(Style::new().fg(theme.text).bg(theme.base))
+            .render(inner, frame);
     }
 
     #[cfg(test)]
@@ -4248,20 +4548,37 @@ impl Model for GroveApp {
                     );
                     Cmd::None
                 } else {
+                    let poll_due = self
+                        .next_poll_due_at
+                        .is_some_and(|due_at| Self::is_due_with_tolerance(now, due_at));
+                    let visual_due = self
+                        .next_visual_due_at
+                        .is_some_and(|due_at| Self::is_due_with_tolerance(now, due_at));
+
                     self.next_tick_due_at = None;
                     self.next_tick_interval_ms = None;
-                    if self
-                        .interactive_poll_due_at
-                        .is_some_and(|due_at| Self::is_due_with_tolerance(now, due_at))
-                    {
-                        self.interactive_poll_due_at = None;
+                    if visual_due {
+                        self.next_visual_due_at = None;
+                        self.advance_visual_animation();
                     }
-                    self.poll_preview();
+                    if poll_due {
+                        self.next_poll_due_at = None;
+                        if self
+                            .interactive_poll_due_at
+                            .is_some_and(|due_at| Self::is_due_with_tolerance(now, due_at))
+                        {
+                            self.interactive_poll_due_at = None;
+                        }
+                        self.poll_preview();
+                    }
+
                     let pending_after = self.pending_input_depth();
                     self.event_log.log(
                         LogEvent::new("tick", "processed")
                             .with_data("late_by_ms", Value::from(late_by_ms))
                             .with_data("early_by_ms", Value::from(early_by_ms))
+                            .with_data("poll_due", Value::from(poll_due))
+                            .with_data("visual_due", Value::from(visual_due))
                             .with_data("pending_before", Value::from(pending_before))
                             .with_data("pending_after", Value::from(pending_after))
                             .with_data(
@@ -4460,26 +4777,23 @@ mod tests {
         ));
     }
 
-    use self::render_support::{
-        assert_cell_style, assert_row_fg, find_cell_with_char, find_row_containing, row_text,
-    };
+    use self::render_support::{assert_row_fg, find_cell_with_char, find_row_containing, row_text};
     use super::{
         CreateBranchMode, CreateDialogField, CreateWorkspaceCompletion, CursorCapture, GroveApp,
         HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogState,
         LivePreviewCapture, Msg, PendingResizeVerification, PreviewPollCompletion,
-        StartAgentCompletion, StopAgentCompletion, TmuxInput, WORKSPACE_ITEM_HEIGHT,
-        ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
+        StartAgentCompletion, StopAgentCompletion, TmuxInput, WORKSPACE_ITEM_HEIGHT, ansi_16_color,
+        ansi_line_to_styled_line, parse_cursor_metadata,
     };
-    use crate::interactive::InteractiveState;
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
     use crate::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
+    use crate::interactive::InteractiveState;
     use crate::workspace_lifecycle::{BranchMode, CreateWorkspaceRequest, CreateWorkspaceResult};
     use ftui::core::event::{
         Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
         PasteEvent,
     };
-    use ftui::render::cell::StyleFlags as CellStyleFlags;
     use ftui::render::frame::HitId;
     use ftui::widgets::block::Block;
     use ftui::widgets::borders::Borders;
@@ -4721,13 +5035,17 @@ mod tests {
     }
 
     fn force_tick_due(app: &mut GroveApp) {
-        app.next_tick_due_at = Some(Instant::now());
+        let now = Instant::now();
+        app.next_tick_due_at = Some(now);
+        app.next_poll_due_at = Some(now);
     }
 
     fn cmd_contains_task(cmd: &Cmd<Msg>) -> bool {
         match cmd {
             Cmd::Task(_, _) => true,
-            Cmd::Batch(commands) | Cmd::Sequence(commands) => commands.iter().any(cmd_contains_task),
+            Cmd::Batch(commands) | Cmd::Sequence(commands) => {
+                commands.iter().any(cmd_contains_task)
+            }
             _ => false,
         }
     }
@@ -5047,12 +5365,6 @@ mod tests {
             let status_row = frame.height().saturating_sub(1);
             let status_text = row_text(frame, status_row, 0, frame.width());
             assert!(status_text.contains("Agent started"));
-
-            let Some(status_col) = find_cell_with_char(frame, status_row, 0, frame.width(), 'S')
-            else {
-                panic!("status row should contain status text");
-            };
-            assert_cell_style(frame, status_col, status_row, CellStyleFlags::REVERSE);
         });
     }
 
@@ -5284,7 +5596,11 @@ mod tests {
             }),
         );
         assert_eq!(app.preview.lines, vec!["initial".to_string()]);
-        assert!(event_kinds(&events).iter().any(|kind| kind == "stale_result_dropped"));
+        assert!(
+            event_kinds(&events)
+                .iter()
+                .any(|kind| kind == "stale_result_dropped")
+        );
 
         ftui::Model::update(
             &mut app,
@@ -5608,7 +5924,10 @@ mod tests {
         );
 
         assert!(!matches!(cmd, Cmd::Quit));
-        assert!(app.status_bar_line().contains("cannot cancel running lifecycle task"));
+        assert!(
+            app.status_bar_line()
+                .contains("cannot cancel running lifecycle task")
+        );
     }
 
     #[test]
@@ -6289,11 +6608,12 @@ mod tests {
 
     #[test]
     fn enter_interactive_immediately_polls_preview_and_cursor() {
-        let (mut app, _commands, _captures, _cursor_captures, calls) = fixture_app_with_tmux_and_calls(
-            WorkspaceStatus::Active,
-            vec![Ok("entered\n".to_string())],
-            vec![Ok("1 0 0 78 34".to_string())],
-        );
+        let (mut app, _commands, _captures, _cursor_captures, calls) =
+            fixture_app_with_tmux_and_calls(
+                WorkspaceStatus::Active,
+                vec![Ok("entered\n".to_string())],
+                vec![Ok("1 0 0 78 34".to_string())],
+            );
         app.state.selected_index = 1;
 
         ftui::Model::update(
@@ -6317,11 +6637,12 @@ mod tests {
 
     #[test]
     fn resize_in_interactive_mode_immediately_resizes_and_polls() {
-        let (mut app, _commands, _captures, _cursor_captures, calls) = fixture_app_with_tmux_and_calls(
-            WorkspaceStatus::Active,
-            vec![Ok("entered\n".to_string()), Ok("resized\n".to_string())],
-            vec![Ok("1 0 0 78 34".to_string()), Ok("1 0 0 58 34".to_string())],
-        );
+        let (mut app, _commands, _captures, _cursor_captures, calls) =
+            fixture_app_with_tmux_and_calls(
+                WorkspaceStatus::Active,
+                vec![Ok("entered\n".to_string()), Ok("resized\n".to_string())],
+                vec![Ok("1 0 0 78 34".to_string()), Ok("1 0 0 58 34".to_string())],
+            );
         app.state.selected_index = 1;
 
         ftui::Model::update(
@@ -6354,11 +6675,12 @@ mod tests {
 
     #[test]
     fn resize_verify_retries_once_then_stops() {
-        let (mut app, _commands, _captures, _cursor_captures, calls) = fixture_app_with_tmux_and_calls(
-            WorkspaceStatus::Active,
-            vec![Ok("after-retry\n".to_string())],
-            vec![Ok("1 0 0 70 20".to_string())],
-        );
+        let (mut app, _commands, _captures, _cursor_captures, calls) =
+            fixture_app_with_tmux_and_calls(
+                WorkspaceStatus::Active,
+                vec![Ok("after-retry\n".to_string())],
+                vec![Ok("1 0 0 70 20".to_string())],
+            );
         app.state.selected_index = 1;
         app.interactive = Some(InteractiveState::new(
             "%0".to_string(),
@@ -7371,12 +7693,13 @@ mod tests {
     #[test]
     fn alt_copy_then_alt_paste_uses_captured_text() {
         let sidebar_ratio_path = unique_sidebar_ratio_path("alt-copy-paste");
-        let (mut app, commands, captures, _cursor_captures) = fixture_app_with_tmux_and_sidebar_path(
-            WorkspaceStatus::Active,
-            vec![Ok(String::new()), Ok("copy me".to_string())],
-            vec![Ok("1 0 0 78 34".to_string())],
-            sidebar_ratio_path,
-        );
+        let (mut app, commands, captures, _cursor_captures) =
+            fixture_app_with_tmux_and_sidebar_path(
+                WorkspaceStatus::Active,
+                vec![Ok(String::new()), Ok("copy me".to_string())],
+                vec![Ok("1 0 0 78 34".to_string())],
+                sidebar_ratio_path,
+            );
         app.state.selected_index = 1;
 
         ftui::Model::update(

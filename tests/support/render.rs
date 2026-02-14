@@ -1,4 +1,3 @@
-use ftui::render::cell::StyleFlags;
 use ftui::{Frame, PackedRgba};
 
 pub fn row_text(frame: &Frame, y: u16, x_start: u16, x_end: u16) -> String {
@@ -16,17 +15,6 @@ pub fn row_text(frame: &Frame, y: u16, x_start: u16, x_end: u16) -> String {
 
 pub fn find_row_containing(frame: &Frame, text: &str, x_start: u16, x_end: u16) -> Option<u16> {
     (0..frame.height()).find(|&y| row_text(frame, y, x_start, x_end).contains(text))
-}
-
-pub fn assert_cell_style(frame: &Frame, x: u16, y: u16, flags: StyleFlags) {
-    let Some(cell) = frame.buffer.get(x, y) else {
-        panic!("cell ({x},{y}) should be in bounds");
-    };
-    assert!(
-        cell.attrs.flags().contains(flags),
-        "cell ({x},{y}) expected {flags:?}, got {:?}",
-        cell.attrs.flags()
-    );
 }
 
 pub fn find_cell_with_char(
