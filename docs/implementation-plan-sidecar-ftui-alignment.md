@@ -228,3 +228,12 @@ instead of only logging.
 capturing failure details and threading them into the final resize error.
 3. Added a source guard test to assert `src/tui.rs` contains no status-call
 runtime paths (`tmux_runtime_paths_avoid_status_calls_in_tui_module`).
+
+### Workstream 4, Poll Generation Correctness (Completed)
+
+1. Removed split generation counters and unified on `poll_generation`.
+2. Every async poll request now carries a generation id from `poll_generation`.
+3. `handle_preview_poll_completed` now drops stale generations and logs
+`preview_poll:stale_result_dropped`.
+4. Added regression test:
+`stale_preview_poll_result_is_dropped_by_generation`.

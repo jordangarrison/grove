@@ -803,8 +803,7 @@ struct GroveApp {
     next_tick_due_at: Option<Instant>,
     next_tick_interval_ms: Option<u64>,
     interactive_poll_due_at: Option<Instant>,
-    interactive_poll_generation: u64,
-    preview_poll_generation: u64,
+    poll_generation: u64,
     debug_record_start_ts: Option<u64>,
     frame_render_seq: RefCell<u64>,
     input_seq_counter: u64,
@@ -877,8 +876,7 @@ impl GroveApp {
             next_tick_due_at: None,
             next_tick_interval_ms: None,
             interactive_poll_due_at: None,
-            interactive_poll_generation: 0,
-            preview_poll_generation: 0,
+            poll_generation: 0,
             debug_record_start_ts,
             frame_render_seq: RefCell::new(0),
             input_seq_counter: 1,
@@ -1252,12 +1250,12 @@ impl GroveApp {
             return;
         }
 
-        self.interactive_poll_generation = self.interactive_poll_generation.saturating_add(1);
         self.interactive_poll_due_at =
             Some(now + Duration::from_millis(INTERACTIVE_KEYSTROKE_DEBOUNCE_MS));
+        let next_generation = self.poll_generation.saturating_add(1);
         self.event_log.log(
             LogEvent::new("tick", "interactive_debounce_scheduled")
-                .with_data("generation", Value::from(self.interactive_poll_generation))
+                .with_data("generation", Value::from(next_generation))
                 .with_data("due_in_ms", Value::from(INTERACTIVE_KEYSTROKE_DEBOUNCE_MS))
                 .with_data("pending_depth", Value::from(self.pending_input_depth())),
         );
@@ -1873,15 +1871,28 @@ impl GroveApp {
             return;
         }
 
-        self.preview_poll_generation = self.preview_poll_generation.saturating_add(1);
+        self.poll_generation = self.poll_generation.saturating_add(1);
         self.queue_cmd(self.schedule_async_preview_poll(
-            self.preview_poll_generation,
+            self.poll_generation,
             live_preview,
             cursor_session,
         ));
     }
 
     fn handle_preview_poll_completed(&mut self, completion: PreviewPollCompletion) {
+        if completion.generation < self.poll_generation {
+            self.event_log.log(
+                LogEvent::new("preview_poll", "stale_result_dropped")
+                    .with_data("generation", Value::from(completion.generation))
+                    .with_data("latest_generation", Value::from(self.poll_generation)),
+            );
+            return;
+        }
+
+        if completion.generation > self.poll_generation {
+            self.poll_generation = completion.generation;
+        }
+
         if let Some(live_capture) = completion.live_capture {
             self.apply_live_preview_capture(
                 &live_capture.session,
@@ -4806,6 +4817,49 @@ mod tests {
         );
 
         assert!(app.status_bar_line().contains("preview capture failed"));
+    }
+
+    #[test]
+    fn stale_preview_poll_result_is_dropped_by_generation() {
+        let (mut app, _commands, _captures, _cursor_captures, events) =
+            fixture_app_with_tmux_and_events(WorkspaceStatus::Active, Vec::new(), Vec::new());
+        app.state.selected_index = 1;
+        app.preview.lines = vec!["initial".to_string()];
+        app.preview.render_lines = vec!["initial".to_string()];
+        app.poll_generation = 2;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewPollCompleted(PreviewPollCompletion {
+                generation: 1,
+                live_capture: Some(LivePreviewCapture {
+                    session: "grove-ws-feature-a".to_string(),
+                    include_escape_sequences: false,
+                    capture_ms: 1,
+                    total_ms: 1,
+                    result: Ok("stale-output\n".to_string()),
+                }),
+                cursor_capture: None,
+            }),
+        );
+        assert_eq!(app.preview.lines, vec!["initial".to_string()]);
+        assert!(event_kinds(&events).iter().any(|kind| kind == "stale_result_dropped"));
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewPollCompleted(PreviewPollCompletion {
+                generation: 2,
+                live_capture: Some(LivePreviewCapture {
+                    session: "grove-ws-feature-a".to_string(),
+                    include_escape_sequences: false,
+                    capture_ms: 1,
+                    total_ms: 1,
+                    result: Ok("fresh-output\n".to_string()),
+                }),
+                cursor_capture: None,
+            }),
+        );
+        assert_eq!(app.preview.lines, vec!["fresh-output".to_string()]);
     }
 
     #[test]
