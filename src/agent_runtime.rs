@@ -378,9 +378,6 @@ pub fn poll_interval(
         if since_last_key < Duration::from_secs(10) {
             return Duration::from_millis(200);
         }
-        if !output_changing {
-            return Duration::from_secs(2);
-        }
         return Duration::from_millis(500);
     }
 
@@ -884,7 +881,7 @@ mod tests {
                 Duration::from_secs(15),
                 false
             ),
-            Duration::from_secs(2)
+            Duration::from_millis(500)
         );
         assert_eq!(
             poll_interval(

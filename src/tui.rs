@@ -184,6 +184,10 @@ trait TmuxInput {
         target_width: u16,
         target_height: u16,
     ) -> std::io::Result<()>;
+
+    fn supports_background_send(&self) -> bool {
+        false
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,6 +197,7 @@ enum Msg {
     Paste(PasteEvent),
     Tick,
     Resize { width: u16, height: u16 },
+    InteractiveSendCompleted(InteractiveSendCompletion),
     Noop,
 }
 
@@ -219,10 +224,58 @@ struct PendingInteractiveInput {
     forwarded_at: Instant,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct QueuedInteractiveSend {
+    command: Vec<String>,
+    target_session: String,
+    action_kind: String,
+    trace_context: Option<InputTraceContext>,
+    literal_chars: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct InteractiveSendCompletion {
+    send: QueuedInteractiveSend,
+    tmux_send_ms: u64,
+    error: Option<String>,
+}
+
 struct CommandTmuxInput;
 
 impl TmuxInput for CommandTmuxInput {
     fn execute(&self, command: &[String]) -> std::io::Result<()> {
+        Self::execute_command(command)
+    }
+
+    fn capture_output(
+        &self,
+        target_session: &str,
+        scrollback_lines: usize,
+        include_escape_sequences: bool,
+    ) -> std::io::Result<String> {
+        Self::capture_session_output(target_session, scrollback_lines, include_escape_sequences)
+    }
+
+    fn capture_cursor_metadata(&self, target_session: &str) -> std::io::Result<String> {
+        Self::capture_session_cursor_metadata(target_session)
+    }
+
+    fn resize_session(
+        &self,
+        target_session: &str,
+        target_width: u16,
+        target_height: u16,
+    ) -> std::io::Result<()> {
+        Self::resize_target_session(target_session, target_width, target_height)
+    }
+
+    fn supports_background_send(&self) -> bool {
+        true
+    }
+}
+
+impl CommandTmuxInput {
+    fn execute_command(command: &[String]) -> std::io::Result<()> {
         if command.is_empty() {
             return Ok(());
         }
@@ -241,8 +294,7 @@ impl TmuxInput for CommandTmuxInput {
         )))
     }
 
-    fn capture_output(
-        &self,
+    fn capture_session_output(
         target_session: &str,
         scrollback_lines: usize,
         include_escape_sequences: bool,
@@ -270,7 +322,7 @@ impl TmuxInput for CommandTmuxInput {
         })
     }
 
-    fn capture_cursor_metadata(&self, target_session: &str) -> std::io::Result<String> {
+    fn capture_session_cursor_metadata(target_session: &str) -> std::io::Result<String> {
         let output = std::process::Command::new("tmux")
             .args([
                 "display-message",
@@ -293,8 +345,7 @@ impl TmuxInput for CommandTmuxInput {
         })
     }
 
-    fn resize_session(
-        &self,
+    fn resize_target_session(
         target_session: &str,
         target_width: u16,
         target_height: u16,
@@ -715,6 +766,8 @@ struct GroveApp {
     frame_render_seq: RefCell<u64>,
     input_seq_counter: u64,
     pending_interactive_inputs: VecDeque<PendingInteractiveInput>,
+    pending_interactive_sends: VecDeque<QueuedInteractiveSend>,
+    interactive_send_in_flight: bool,
 }
 
 impl GroveApp {
@@ -785,6 +838,8 @@ impl GroveApp {
             frame_render_seq: RefCell::new(0),
             input_seq_counter: 1,
             pending_interactive_inputs: VecDeque::new(),
+            pending_interactive_sends: VecDeque::new(),
+            interactive_send_in_flight: false,
         };
         app.refresh_preview_summary();
         app
@@ -900,6 +955,7 @@ impl GroveApp {
                 let pending_before = self.pending_interactive_inputs.len();
                 self.clear_pending_inputs_for_session(session);
                 let pending_after = self.pending_interactive_inputs.len();
+                self.clear_pending_sends_for_session(session);
                 if pending_before != pending_after {
                     self.event_log.log(
                         LogEvent::new("input", "pending_inputs_cleared")
@@ -981,6 +1037,7 @@ impl GroveApp {
             Msg::Mouse(_) => "mouse",
             Msg::Paste(_) => "paste",
             Msg::Resize { .. } => "resize",
+            Msg::InteractiveSendCompleted(_) => "interactive_send_completed",
             Msg::Noop => "noop",
         }
     }
@@ -1078,6 +1135,11 @@ impl GroveApp {
     fn clear_pending_inputs_for_session(&mut self, target_session: &str) {
         self.pending_interactive_inputs
             .retain(|input| input.session != target_session);
+    }
+
+    fn clear_pending_sends_for_session(&mut self, target_session: &str) {
+        self.pending_interactive_sends
+            .retain(|send| send.target_session != target_session);
     }
 
     fn drain_pending_inputs_for_session(
@@ -2344,12 +2406,101 @@ impl GroveApp {
         }
     }
 
+    fn queue_interactive_send(&mut self, send: QueuedInteractiveSend) -> Cmd<Msg> {
+        self.pending_interactive_sends.push_back(send);
+        self.dispatch_next_interactive_send()
+    }
+
+    fn dispatch_next_interactive_send(&mut self) -> Cmd<Msg> {
+        if self.interactive_send_in_flight {
+            return Cmd::None;
+        }
+        let Some(send) = self.pending_interactive_sends.pop_front() else {
+            return Cmd::None;
+        };
+        self.interactive_send_in_flight = true;
+        let command = send.command.clone();
+        Cmd::task(move || {
+            let started_at = Instant::now();
+            let execution = CommandTmuxInput::execute_command(&command);
+            let completed_at = Instant::now();
+            let tmux_send_ms = u64::try_from(
+                completed_at
+                    .saturating_duration_since(started_at)
+                    .as_millis(),
+            )
+            .unwrap_or(u64::MAX);
+            Msg::InteractiveSendCompleted(InteractiveSendCompletion {
+                send,
+                tmux_send_ms,
+                error: execution.err().map(|error| error.to_string()),
+            })
+        })
+    }
+
+    fn handle_interactive_send_completed(
+        &mut self,
+        completion: InteractiveSendCompletion,
+    ) -> Cmd<Msg> {
+        let InteractiveSendCompletion {
+            send:
+                QueuedInteractiveSend {
+                    target_session,
+                    action_kind,
+                    trace_context,
+                    literal_chars,
+                    ..
+                },
+            tmux_send_ms,
+            error,
+        } = completion;
+        self.interactive_send_in_flight = false;
+        if let Some(error) = error {
+            self.last_tmux_error = Some(error.clone());
+            self.log_tmux_error(error.clone());
+            if let Some(trace_context) = trace_context {
+                self.log_input_event_with_fields(
+                    "interactive_forward_failed",
+                    trace_context.seq,
+                    vec![
+                        ("session".to_string(), Value::from(target_session)),
+                        ("action".to_string(), Value::from(action_kind)),
+                        ("error".to_string(), Value::from(error)),
+                    ],
+                );
+            }
+            return self.dispatch_next_interactive_send();
+        }
+
+        self.last_tmux_error = None;
+        if let Some(trace_context) = trace_context {
+            let forwarded_at = Instant::now();
+            self.track_pending_interactive_input(trace_context, &target_session, forwarded_at);
+            let mut fields = vec![
+                ("session".to_string(), Value::from(target_session)),
+                ("action".to_string(), Value::from(action_kind)),
+                ("tmux_send_ms".to_string(), Value::from(tmux_send_ms)),
+                (
+                    "queue_depth".to_string(),
+                    Value::from(
+                        u64::try_from(self.pending_interactive_inputs.len()).unwrap_or(u64::MAX),
+                    ),
+                ),
+            ];
+            if let Some(literal_chars) = literal_chars {
+                fields.push(("literal_chars".to_string(), Value::from(literal_chars)));
+            }
+            self.log_input_event_with_fields("interactive_forwarded", trace_context.seq, fields);
+        }
+        self.dispatch_next_interactive_send()
+    }
+
     fn send_interactive_action(
         &mut self,
         action: &InteractiveAction,
         target_session: &str,
         trace_context: Option<InputTraceContext>,
-    ) {
+    ) -> Cmd<Msg> {
         let Some(command) = tmux_send_keys_command(target_session, action) else {
             if let Some(trace_context) = trace_context {
                 self.log_input_event_with_fields(
@@ -2367,8 +2518,24 @@ impl GroveApp {
                     ],
                 );
             }
-            return;
+            return Cmd::None;
         };
+
+        let literal_chars = if let InteractiveAction::SendLiteral(text) = action {
+            Some(u64::try_from(text.chars().count()).unwrap_or(u64::MAX))
+        } else {
+            None
+        };
+
+        if self.tmux_input.supports_background_send() {
+            return self.queue_interactive_send(QueuedInteractiveSend {
+                command,
+                target_session: target_session.to_string(),
+                action_kind: Self::interactive_action_kind(action).to_string(),
+                trace_context,
+                literal_chars,
+            });
+        }
 
         let send_started_at = Instant::now();
         match self.execute_tmux_command(&command) {
@@ -2403,11 +2570,8 @@ impl GroveApp {
                             ),
                         ),
                     ];
-                    if let InteractiveAction::SendLiteral(text) = action {
-                        fields.push((
-                            "literal_chars".to_string(),
-                            Value::from(u64::try_from(text.chars().count()).unwrap_or(u64::MAX)),
-                        ));
+                    if let Some(literal_chars) = literal_chars {
+                        fields.push(("literal_chars".to_string(), Value::from(literal_chars)));
                     }
                     self.log_input_event_with_fields(
                         "interactive_forwarded",
@@ -2439,6 +2603,7 @@ impl GroveApp {
                 }
             }
         }
+        Cmd::None
     }
 
     fn copy_interactive_capture(&mut self, target_session: &str) {
@@ -2460,7 +2625,7 @@ impl GroveApp {
         target_session: &str,
         bracketed_paste: bool,
         trace_context: Option<InputTraceContext>,
-    ) {
+    ) -> Cmd<Msg> {
         let Some(text) = self.copied_text.clone() else {
             self.last_tmux_error = Some("no copied text in session".to_string());
             if let Some(trace_context) = trace_context {
@@ -2473,7 +2638,7 @@ impl GroveApp {
                     )],
                 );
             }
-            return;
+            return Cmd::None;
         };
 
         let payload = encode_paste_payload(&text, bracketed_paste);
@@ -2481,10 +2646,10 @@ impl GroveApp {
             &InteractiveAction::SendLiteral(payload),
             target_session,
             trace_context,
-        );
+        )
     }
 
-    fn handle_interactive_key(&mut self, key_event: KeyEvent) {
+    fn handle_interactive_key(&mut self, key_event: KeyEvent) -> Cmd<Msg> {
         let now = Instant::now();
         let input_seq = self.next_input_seq();
         if let KeyCode::Char(character) = key_event.code
@@ -2500,7 +2665,7 @@ impl GroveApp {
                     ("modifiers".to_string(), Value::from("none")),
                 ],
             );
-            return;
+            return Cmd::None;
         }
 
         let Some(interactive_key) = Self::map_interactive_key(key_event) else {
@@ -2512,7 +2677,7 @@ impl GroveApp {
                     Value::from(format!("{:?}", key_event.code)),
                 )],
             );
-            return;
+            return Cmd::None;
         };
         self.log_input_event_with_fields(
             "interactive_key_received",
@@ -2531,7 +2696,7 @@ impl GroveApp {
 
         let (action, target_session, bracketed_paste) = {
             let Some(state) = self.interactive.as_mut() else {
-                return;
+                return Cmd::None;
             };
             let action = state.handle_key(interactive_key, now);
             let session = state.target_session.clone();
@@ -2559,27 +2724,35 @@ impl GroveApp {
                 self.interactive = None;
                 self.state.mode = UiMode::Preview;
                 self.state.focus = PaneFocus::Preview;
+                Cmd::None
             }
-            InteractiveAction::CopySelection => self.copy_interactive_capture(&target_session),
+            InteractiveAction::CopySelection => {
+                self.copy_interactive_capture(&target_session);
+                Cmd::None
+            }
             InteractiveAction::PasteClipboard => {
-                self.paste_cached_text(&target_session, bracketed_paste, Some(trace_context));
+                let send_cmd =
+                    self.paste_cached_text(&target_session, bracketed_paste, Some(trace_context));
                 self.schedule_interactive_debounced_poll(now);
+                send_cmd
             }
             InteractiveAction::Noop
             | InteractiveAction::SendNamed(_)
             | InteractiveAction::SendLiteral(_) => {
-                self.send_interactive_action(&action, &target_session, Some(trace_context));
+                let send_cmd =
+                    self.send_interactive_action(&action, &target_session, Some(trace_context));
                 self.schedule_interactive_debounced_poll(now);
+                send_cmd
             }
         }
     }
 
-    fn handle_paste_event(&mut self, paste_event: PasteEvent) {
+    fn handle_paste_event(&mut self, paste_event: PasteEvent) -> Cmd<Msg> {
         let input_seq = self.next_input_seq();
         let received_at = Instant::now();
         let (target_session, bracketed) = {
             let Some(state) = self.interactive.as_mut() else {
-                return;
+                return Cmd::None;
             };
             state.bracketed_paste = paste_event.bracketed;
             (state.target_session.clone(), state.bracketed_paste)
@@ -2600,7 +2773,7 @@ impl GroveApp {
         );
 
         let payload = encode_paste_payload(&paste_event.text, bracketed || paste_event.bracketed);
-        self.send_interactive_action(
+        let send_cmd = self.send_interactive_action(
             &InteractiveAction::SendLiteral(payload),
             &target_session,
             Some(InputTraceContext {
@@ -2609,6 +2782,7 @@ impl GroveApp {
             }),
         );
         self.schedule_interactive_debounced_poll(received_at);
+        send_cmd
     }
 
     fn handle_non_interactive_key(&mut self, key_event: KeyEvent) {
@@ -2931,32 +3105,31 @@ impl GroveApp {
         }
     }
 
-    fn handle_key(&mut self, key_event: KeyEvent) -> bool {
+    fn handle_key(&mut self, key_event: KeyEvent) -> (bool, Cmd<Msg>) {
         if !matches!(key_event.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
-            return false;
+            return (false, Cmd::None);
         }
 
         if self.create_dialog.is_some() {
             self.handle_create_dialog_key(key_event);
-            return false;
+            return (false, Cmd::None);
         }
 
         if self.launch_dialog.is_some() {
             self.handle_launch_dialog_key(key_event);
-            return false;
+            return (false, Cmd::None);
         }
 
         if self.interactive.is_some() {
-            self.handle_interactive_key(key_event);
-            return false;
+            return (false, self.handle_interactive_key(key_event));
         }
 
         if Self::is_quit_key(&key_event) {
-            return true;
+            return (true, Cmd::None);
         }
 
         self.handle_non_interactive_key(key_event);
-        false
+        (false, Cmd::None)
     }
 
     fn next_poll_interval(&self) -> Duration {
@@ -3537,10 +3710,16 @@ impl Model for GroveApp {
                 }
             }
             Msg::Key(key_event) => {
-                if self.handle_key(key_event) {
+                let (quit, key_cmd) = self.handle_key(key_event);
+                if quit {
                     Cmd::Quit
                 } else {
-                    self.schedule_next_tick()
+                    let tick_cmd = self.schedule_next_tick();
+                    if matches!(key_cmd, Cmd::None) {
+                        tick_cmd
+                    } else {
+                        Cmd::batch(vec![key_cmd, tick_cmd])
+                    }
                 }
             }
             Msg::Mouse(mouse_event) => {
@@ -3548,8 +3727,13 @@ impl Model for GroveApp {
                 self.schedule_next_tick()
             }
             Msg::Paste(paste_event) => {
-                self.handle_paste_event(paste_event);
-                self.schedule_next_tick()
+                let paste_cmd = self.handle_paste_event(paste_event);
+                let tick_cmd = self.schedule_next_tick();
+                if matches!(paste_cmd, Cmd::None) {
+                    tick_cmd
+                } else {
+                    Cmd::batch(vec![paste_cmd, tick_cmd])
+                }
             }
             Msg::Resize { width, height } => {
                 self.viewport_width = width;
@@ -3565,6 +3749,9 @@ impl Model for GroveApp {
                 }
                 self.sync_interactive_session_geometry();
                 Cmd::None
+            }
+            Msg::InteractiveSendCompleted(completion) => {
+                self.handle_interactive_send_completed(completion)
             }
             Msg::Noop => Cmd::None,
         };
