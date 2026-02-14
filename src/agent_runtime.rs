@@ -7,19 +7,34 @@ use std::time::Duration;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
 pub const TMUX_SESSION_PREFIX: &str = "grove-ws-";
-const WAITING_PATTERNS: [&str; 6] = [
+const WAITING_PATTERNS: [&str; 9] = [
     "[y/n]",
     "(y/n)",
     "allow edit",
     "allow bash",
+    "press enter",
+    "continue?",
+    "do you want",
     "approve",
     "confirm",
 ];
 const WAITING_TAIL_LINES: usize = 8;
 const STATUS_TAIL_LINES: usize = 60;
-const THINKING_PATTERNS: [&str; 2] = ["<thinking>", "thinking..."];
-const DONE_PATTERNS: [&str; 3] = ["task completed", "finished", "exited with code 0"];
-const ERROR_PATTERNS: [&str; 4] = ["error:", "failed", "panic:", "traceback"];
+const DONE_PATTERNS: [&str; 5] = [
+    "task completed",
+    "all done",
+    "finished",
+    "exited with code 0",
+    "goodbye",
+];
+const ERROR_PATTERNS: [&str; 6] = [
+    "error:",
+    "failed",
+    "exited with code 1",
+    "panic:",
+    "exception:",
+    "traceback",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SessionActivity {
@@ -316,25 +331,49 @@ pub(crate) fn detect_status(
 
     let lines: Vec<&str> = output.lines().collect();
     let start = lines.len().saturating_sub(STATUS_TAIL_LINES);
-    for line in lines[start..].iter().rev() {
-        let lower = line.to_ascii_lowercase();
-        if THINKING_PATTERNS
-            .iter()
-            .any(|pattern| lower.contains(pattern))
-        {
-            return WorkspaceStatus::Thinking;
-        }
-        if DONE_PATTERNS.iter().any(|pattern| lower.contains(pattern)) {
-            return WorkspaceStatus::Done;
-        }
-        if ERROR_PATTERNS.iter().any(|pattern| lower.contains(pattern)) {
-            return WorkspaceStatus::Error;
-        }
+    let tail_text = lines[start..].join("\n");
+    let tail_lower = tail_text.to_ascii_lowercase();
+
+    if has_unclosed_tag(&tail_lower, "<thinking>", "</thinking>")
+        || has_unclosed_tag(
+            &tail_lower,
+            "<internal_monologue>",
+            "</internal_monologue>",
+        )
+        || tail_lower.contains("thinking...")
+        || tail_lower.contains("reasoning about")
+    {
+        return WorkspaceStatus::Thinking;
+    }
+
+    if DONE_PATTERNS
+        .iter()
+        .any(|pattern| tail_lower.contains(pattern))
+    {
+        return WorkspaceStatus::Done;
+    }
+
+    if ERROR_PATTERNS
+        .iter()
+        .any(|pattern| tail_lower.contains(pattern))
+    {
+        return WorkspaceStatus::Error;
     }
 
     match session_activity {
         SessionActivity::Active => WorkspaceStatus::Active,
         SessionActivity::Idle => WorkspaceStatus::Idle,
+    }
+}
+
+fn has_unclosed_tag(text: &str, open_tag: &str, close_tag: &str) -> bool {
+    let Some(open_index) = text.rfind(open_tag) else {
+        return false;
+    };
+
+    match text.rfind(close_tag) {
+        Some(close_index) => close_index < open_index,
+        None => true,
     }
 }
 
@@ -904,6 +943,16 @@ mod tests {
             ),
             WorkspaceStatus::Waiting
         );
+        assert_eq!(
+            detect_status(
+                "Do you want to continue?",
+                SessionActivity::Active,
+                false,
+                true,
+                true
+            ),
+            WorkspaceStatus::Waiting
+        );
     }
 
     #[test]
@@ -914,6 +963,40 @@ mod tests {
         assert_eq!(
             detect_status(&output, SessionActivity::Active, false, true, true),
             WorkspaceStatus::Active
+        );
+    }
+
+    #[test]
+    fn status_resolution_requires_unclosed_thinking_tags() {
+        assert_eq!(
+            detect_status(
+                "<thinking>\nworking\n</thinking>",
+                SessionActivity::Active,
+                false,
+                true,
+                true
+            ),
+            WorkspaceStatus::Active
+        );
+        assert_eq!(
+            detect_status(
+                "<thinking>\nworking\n",
+                SessionActivity::Active,
+                false,
+                true,
+                true
+            ),
+            WorkspaceStatus::Thinking
+        );
+        assert_eq!(
+            detect_status(
+                "<internal_monologue>\nworking\n",
+                SessionActivity::Active,
+                false,
+                true,
+                true
+            ),
+            WorkspaceStatus::Thinking
         );
     }
 

@@ -43,7 +43,7 @@ impl WorkspaceStatus {
     pub const fn icon(self) -> &'static str {
         match self {
             Self::Main => "◉",
-            Self::Idle => "○",
+            Self::Idle => "⏸",
             Self::Active => "●",
             Self::Thinking => "◐",
             Self::Waiting => "⧗",
@@ -218,6 +218,7 @@ mod tests {
 
     #[test]
     fn status_icons_cover_phase_four_plus_states() {
+        assert_eq!(WorkspaceStatus::Idle.icon(), "⏸");
         assert_eq!(WorkspaceStatus::Active.icon(), "●");
         assert_eq!(WorkspaceStatus::Thinking.icon(), "◐");
         assert_eq!(WorkspaceStatus::Waiting.icon(), "⧗");

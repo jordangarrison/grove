@@ -78,6 +78,7 @@ const HIT_ID_WORKSPACE_ROW: u32 = 6;
 const HIT_ID_CREATE_DIALOG: u32 = 7;
 const HIT_ID_LAUNCH_DIALOG: u32 = 8;
 const HIT_ID_DELETE_DIALOG: u32 = 9;
+const HIT_ID_KEYBIND_HELP_DIALOG: u32 = 10;
 const MAX_PENDING_INPUT_TRACES: usize = 256;
 const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 const FAST_ANIMATION_INTERVAL_MS: u64 = 100;
@@ -1447,6 +1448,7 @@ struct GroveApp {
     launch_dialog: Option<LaunchDialogState>,
     delete_dialog: Option<DeleteDialogState>,
     create_dialog: Option<CreateDialogState>,
+    keybind_help_open: bool,
     create_branch_all: Vec<String>,
     create_branch_filtered: Vec<String>,
     create_branch_index: usize,
@@ -1561,6 +1563,7 @@ impl GroveApp {
             launch_dialog: None,
             delete_dialog: None,
             create_dialog: None,
+            keybind_help_open: false,
             create_branch_all: Vec::new(),
             create_branch_filtered: Vec::new(),
             create_branch_index: 0,
@@ -1630,7 +1633,7 @@ impl GroveApp {
             .map(|workspace| workspace.status)
         {
             Some(WorkspaceStatus::Main) => "main worktree",
-            Some(WorkspaceStatus::Idle) => "idle (no session)",
+            Some(WorkspaceStatus::Idle) => "paused (no session)",
             Some(WorkspaceStatus::Active) => {
                 if self.agent_output_changing {
                     "working"
@@ -2247,6 +2250,9 @@ impl GroveApp {
     }
 
     fn keybind_hints_line(&self) -> &'static str {
+        if self.keybind_help_open {
+            return "Esc/? close help";
+        }
         if self.create_dialog.is_some() {
             return "Tab/S-Tab field, j/k or C-n/C-p move, h/l buttons, Enter select/create, Esc cancel";
         }
@@ -2260,10 +2266,10 @@ impl GroveApp {
             return "Esc Esc / Ctrl+\\ exit, Alt+C copy, Alt+V paste";
         }
         if self.state.mode == UiMode::Preview {
-            return "j/k scroll, PgUp/PgDn, G bottom, Esc list, q quit";
+            return "j/k scroll, PgUp/PgDn, G bottom, h/l pane, Enter open, s start, x stop, D delete, ? help, q quit";
         }
 
-        "j/k move, Enter open, n new, s start, x stop, D delete, q quit"
+        "j/k move, h/l pane, Enter open, n new, s start, x stop, D delete, ? help, q quit"
     }
 
     fn selected_workspace_summary(&self) -> String {
@@ -2284,7 +2290,10 @@ impl GroveApp {
     }
 
     fn modal_open(&self) -> bool {
-        self.launch_dialog.is_some() || self.create_dialog.is_some() || self.delete_dialog.is_some()
+        self.launch_dialog.is_some()
+            || self.create_dialog.is_some()
+            || self.delete_dialog.is_some()
+            || self.keybind_help_open
     }
 
     fn refresh_preview_summary(&mut self) {
@@ -3098,6 +3107,8 @@ impl GroveApp {
                 } else if self.delete_dialog.is_some() {
                     self.log_dialog_event("delete", "dialog_cancelled");
                     self.delete_dialog = None;
+                } else if self.keybind_help_open {
+                    self.keybind_help_open = false;
                 }
                 false
             }
@@ -3197,6 +3208,22 @@ impl GroveApp {
                 | WorkspaceStatus::Error
                 | WorkspaceStatus::Unknown
         )
+    }
+
+    fn open_keybind_help(&mut self) {
+        if self.modal_open() {
+            return;
+        }
+        self.keybind_help_open = true;
+    }
+
+    fn handle_keybind_help_key(&mut self, key_event: KeyEvent) {
+        match key_event.code {
+            KeyCode::Escape | KeyCode::Enter | KeyCode::Char('?') => {
+                self.keybind_help_open = false;
+            }
+            _ => {}
+        }
     }
 
     fn open_start_dialog(&mut self) {
@@ -4915,9 +4942,19 @@ impl GroveApp {
                 self.launch_skip_permissions = !self.launch_skip_permissions;
             }
             KeyCode::Char('n') | KeyCode::Char('N') => self.open_create_dialog(),
+            KeyCode::Char('?') => self.open_keybind_help(),
             KeyCode::Char('D') => self.open_delete_dialog(),
             KeyCode::Char('s') => self.open_start_dialog(),
             KeyCode::Char('x') => self.stop_selected_workspace_agent(),
+            KeyCode::Char('h') => reduce(&mut self.state, Action::EnterListMode),
+            KeyCode::Char('l') => {
+                let mode_before = self.state.mode;
+                let focus_before = self.state.focus;
+                reduce(&mut self.state, Action::EnterPreviewMode);
+                if self.state.mode != mode_before || self.state.focus != focus_before {
+                    self.poll_preview();
+                }
+            }
             KeyCode::PageUp => {
                 if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
                     self.scroll_preview(-5);
@@ -5015,7 +5052,10 @@ impl GroveApp {
                 HIT_ID_DIVIDER => HitRegion::Divider,
                 HIT_ID_PREVIEW => HitRegion::Preview,
                 HIT_ID_WORKSPACE_LIST | HIT_ID_WORKSPACE_ROW => HitRegion::WorkspaceList,
-                HIT_ID_CREATE_DIALOG | HIT_ID_LAUNCH_DIALOG | HIT_ID_DELETE_DIALOG => {
+                HIT_ID_CREATE_DIALOG
+                | HIT_ID_LAUNCH_DIALOG
+                | HIT_ID_DELETE_DIALOG
+                | HIT_ID_KEYBIND_HELP_DIALOG => {
                     HitRegion::Outside
                 }
                 _ => HitRegion::Outside,
@@ -5797,6 +5837,10 @@ impl GroveApp {
 
         if self.delete_dialog.is_some() {
             self.handle_delete_dialog_key(key_event);
+            return (false, Cmd::None);
+        }
+        if self.keybind_help_open {
+            self.handle_keybind_help_key(key_event);
             return (false, Cmd::None);
         }
 
@@ -6599,6 +6643,63 @@ impl GroveApp {
             .render(area, frame);
     }
 
+    fn render_keybind_help_overlay(&self, frame: &mut Frame, area: Rect) {
+        if !self.keybind_help_open {
+            return;
+        }
+        if area.width < 56 || area.height < 18 {
+            return;
+        }
+
+        let dialog_width = area.width.saturating_sub(8).min(108);
+        let dialog_height = area.height.saturating_sub(6).min(26).max(18);
+        let theme = ui_theme();
+
+        let lines = vec![
+            FtLine::raw("Global (list + preview):"),
+            FtLine::raw("  ? help, q quit, Tab/h/l switch pane, Enter open/attach, Esc list pane"),
+            FtLine::raw("  n new, s start, x stop, D delete, ! unsafe toggle"),
+            FtLine::raw(""),
+            FtLine::raw("List pane:"),
+            FtLine::raw("  j/k or Up/Down move selection"),
+            FtLine::raw(""),
+            FtLine::raw("Preview pane:"),
+            FtLine::raw("  j/k or Up/Down scroll, PgUp/PgDn page, G bottom"),
+            FtLine::raw(""),
+            FtLine::raw("Interactive mode:"),
+            FtLine::raw("  type sends input to agent"),
+            FtLine::raw("  Esc Esc or Ctrl+\\ exit, Alt+C copy, Alt+V paste"),
+            FtLine::raw(""),
+            FtLine::raw("Create dialog: Tab/S-Tab fields, j/k or C-n/C-p move, h/l buttons, Enter/Esc"),
+            FtLine::raw("Start dialog:  Tab/S-Tab fields, Space toggle unsafe, h/l buttons, Enter/Esc"),
+            FtLine::raw("Delete dialog: Tab/S-Tab fields, j/k move, Space toggle, Enter/D confirm, Esc"),
+            FtLine::raw(""),
+            FtLine::from_spans(vec![FtSpan::styled(
+                "Close help: Esc, Enter, or ?",
+                Style::new().fg(theme.lavender).bold(),
+            )]),
+        ];
+
+        let content = OverlayModalContent {
+            title: "Keybind Help",
+            body: FtText::from_lines(lines),
+            theme,
+            border_color: theme.blue,
+        };
+
+        Modal::new(content)
+            .size(
+                ModalSizeConstraints::new()
+                    .min_width(dialog_width)
+                    .max_width(dialog_width)
+                    .min_height(dialog_height)
+                    .max_height(dialog_height),
+            )
+            .backdrop(BackdropConfig::new(theme.crust, 0.55))
+            .hit_id(HitId::new(HIT_ID_KEYBIND_HELP_DIALOG))
+            .render(area, frame);
+    }
+
     fn render_create_dialog_overlay(&self, frame: &mut Frame, area: Rect) {
         let Some(dialog) = self.create_dialog.as_ref() else {
             return;
@@ -6752,7 +6853,7 @@ impl GroveApp {
                 self.mode_label(),
                 self.focus_label()
             ),
-            "Workspaces (j/k, arrows, Tab focus, Enter preview, s start, x stop, ! unsafe toggle, Esc list, mouse enabled)"
+            "Workspaces (j/k, arrows, Tab/h/l focus, Enter preview, s/x start-stop, D delete, ? help, ! unsafe, Esc list, mouse)"
                 .to_string(),
         ];
 
@@ -7052,6 +7153,7 @@ impl Model for GroveApp {
         self.render_create_dialog_overlay(frame, area);
         self.render_launch_dialog_overlay(frame, area);
         self.render_delete_dialog_overlay(frame, area);
+        self.render_keybind_help_overlay(frame, area);
         let draw_completed_at = Instant::now();
         self.last_hit_grid.replace(frame.hit_grid.clone());
         let frame_log_started_at = Instant::now();
@@ -7154,6 +7256,7 @@ mod tests {
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
     use crate::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
     use crate::interactive::InteractiveState;
+    use crate::state::{PaneFocus, UiMode};
     use crate::workspace_lifecycle::{BranchMode, CreateWorkspaceRequest, CreateWorkspaceResult};
     use ftui::core::event::{
         Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
@@ -7672,7 +7775,13 @@ mod tests {
             let mut app = fixture_app();
             for msg in msgs {
                 let _ = ftui::Model::update(&mut app, msg);
-                let active_modals = [app.launch_dialog.is_some(), app.create_dialog.is_some(), app.delete_dialog.is_some(), app.interactive.is_some()]
+                let active_modals = [
+                    app.launch_dialog.is_some(),
+                    app.create_dialog.is_some(),
+                    app.delete_dialog.is_some(),
+                    app.keybind_help_open,
+                    app.interactive.is_some(),
+                ]
                     .iter()
                     .filter(|is_active| **is_active)
                     .count();
@@ -7930,7 +8039,7 @@ mod tests {
             let status_row = frame.height().saturating_sub(1);
             let status_text = row_text(frame, status_row, 0, frame.width());
             assert!(
-                status_text.contains("j/k move, Enter open"),
+                status_text.contains("j/k move, h/l pane, Enter open"),
                 "status row should show keybind hints, got: {status_text}"
             );
         });
@@ -8075,7 +8184,64 @@ mod tests {
             let status_row = frame.height().saturating_sub(1);
             let status_text = row_text(frame, status_row, 0, frame.width());
             assert!(!status_text.contains("Agent started"));
-            assert!(status_text.contains("j/k move, Enter open"));
+            assert!(status_text.contains("j/k move, h/l pane, Enter open"));
+        });
+    }
+
+    #[test]
+    fn status_row_shows_start_hint_in_preview_mode() {
+        let mut app = fixture_app();
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+
+        with_rendered_frame(&app, 180, 24, |frame| {
+            let status_row = frame.height().saturating_sub(1);
+            let status_text = row_text(frame, status_row, 0, frame.width());
+            assert!(status_text.contains("s start"));
+            assert!(status_text.contains("x stop"));
+            assert!(status_text.contains("D delete"));
+        });
+    }
+
+    #[test]
+    fn question_key_opens_keybind_help_modal() {
+        let mut app = fixture_app();
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('?')).with_kind(KeyEventKind::Press));
+
+        assert!(app.keybind_help_open);
+    }
+
+    #[test]
+    fn keybind_help_modal_closes_on_escape() {
+        let mut app = fixture_app();
+        app.keybind_help_open = true;
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press));
+
+        assert!(!app.keybind_help_open);
+    }
+
+    #[test]
+    fn keybind_help_modal_blocks_navigation_keys() {
+        let mut app = fixture_app();
+        app.keybind_help_open = true;
+        let selected_before = app.state.selected_index;
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press));
+
+        assert_eq!(app.state.selected_index, selected_before);
+    }
+
+    #[test]
+    fn status_row_shows_help_close_hint_when_help_modal_open() {
+        let mut app = fixture_app();
+        app.keybind_help_open = true;
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let status_row = frame.height().saturating_sub(1);
+            let status_text = row_text(frame, status_row, 0, frame.width());
+            assert!(status_text.contains("Esc/? close help"));
         });
     }
 
@@ -8973,6 +9139,27 @@ mod tests {
                 .map(|workspace| workspace.status),
             Some(WorkspaceStatus::Active)
         );
+    }
+
+    #[test]
+    fn h_and_l_switch_focus_between_workspace_and_preview_when_not_interactive() {
+        let mut app = fixture_app();
+        app.state.mode = UiMode::List;
+        app.state.focus = PaneFocus::WorkspaceList;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press)),
+        );
+        assert_eq!(app.state.mode, UiMode::Preview);
+        assert_eq!(app.state.focus, PaneFocus::Preview);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('h')).with_kind(KeyEventKind::Press)),
+        );
+        assert_eq!(app.state.mode, UiMode::List);
+        assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
     }
 
     #[test]
