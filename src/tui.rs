@@ -5708,13 +5708,9 @@ impl GroveApp {
             }
         };
         let selected_agent = dialog.agent;
-        let agent_row = |agent: AgentType, is_focus: bool| {
-            let marker = if selected_agent == agent { ">" } else { " " };
-            if is_focus && selected_agent == agent {
-                format!("{marker} {}", agent.label())
-            } else {
-                format!("  {} {}", marker, agent.label())
-            }
+        let agent_row = |agent: AgentType| {
+            let prefix = if selected_agent == agent { "> " } else { "  " };
+            format!("{prefix}{}", agent.label())
         };
 
         let mut lines = vec![
@@ -5763,14 +5759,8 @@ impl GroveApp {
 
         lines.push(String::new());
         lines.push("Agent:".to_string());
-        lines.push(agent_row(
-            AgentType::Claude,
-            focused(CreateDialogField::Agent),
-        ));
-        lines.push(agent_row(
-            AgentType::Codex,
-            focused(CreateDialogField::Agent),
-        ));
+        lines.push(agent_row(AgentType::Claude));
+        lines.push(agent_row(AgentType::Codex));
         lines.push(String::new());
         lines.push(format!(
             "{} Create   {} Cancel",
