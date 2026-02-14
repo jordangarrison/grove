@@ -9,6 +9,10 @@ use ftui::core::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
     PasteEvent,
 };
+use ftui::core::keybinding::{
+    Action as KeybindingAction, ActionConfig as KeybindingConfig, ActionMapper,
+    AppState as KeybindingAppState, SequenceConfig as KeySequenceConfig,
+};
 use ftui::core::geometry::Rect;
 use ftui::layout::{Constraint, Flex};
 use ftui::render::budget::FrameBudgetConfig;
@@ -824,6 +828,7 @@ struct GroveApp {
     preview: PreviewState,
     flash: Option<FlashMessage>,
     interactive: Option<InteractiveState>,
+    action_mapper: ActionMapper,
     launch_dialog: Option<LaunchDialogState>,
     create_dialog: Option<CreateDialogState>,
     tmux_input: Box<dyn TmuxInput>,
@@ -895,6 +900,8 @@ impl GroveApp {
         debug_record_start_ts: Option<u64>,
     ) -> Self {
         let sidebar_width_pct = load_sidebar_ratio(&sidebar_ratio_path);
+        let mapper_config = KeybindingConfig::from_env()
+            .with_sequence_config(KeySequenceConfig::from_env().disable_sequences().validated());
         let mut app = Self {
             repo_name: bootstrap.repo_name,
             state: AppState::new(bootstrap.workspaces),
@@ -902,6 +909,7 @@ impl GroveApp {
             preview: PreviewState::new(),
             flash: None,
             interactive: None,
+            action_mapper: ActionMapper::new(mapper_config),
             launch_dialog: None,
             create_dialog: None,
             tmux_input,
@@ -2112,19 +2120,76 @@ impl GroveApp {
     }
 
     fn is_quit_key(key_event: &KeyEvent) -> bool {
-        match key_event.code {
+        matches!(
+            key_event.code,
             KeyCode::Char('q')
-                if key_event.kind == KeyEventKind::Press && key_event.modifiers.is_empty() =>
-            {
-                true
+                if key_event.kind == KeyEventKind::Press && key_event.modifiers.is_empty()
+        )
+    }
+
+    fn keybinding_task_running(&self) -> bool {
+        self.refresh_in_flight || self.create_in_flight || self.start_in_flight || self.stop_in_flight
+    }
+
+    fn keybinding_input_nonempty(&self) -> bool {
+        if let Some(dialog) = self.launch_dialog.as_ref() {
+            return !dialog.prompt.is_empty();
+        }
+        if let Some(dialog) = self.create_dialog.as_ref() {
+            return !dialog.workspace_name.is_empty()
+                || !dialog.base_branch.is_empty()
+                || !dialog.existing_branch.is_empty();
+        }
+
+        false
+    }
+
+    fn keybinding_state(&self) -> KeybindingAppState {
+        KeybindingAppState::new()
+            .with_input(self.keybinding_input_nonempty())
+            .with_task(self.keybinding_task_running())
+            .with_modal(self.modal_open())
+    }
+
+    fn apply_keybinding_action(&mut self, action: KeybindingAction) -> bool {
+        match action {
+            KeybindingAction::DismissModal => {
+                if self.create_dialog.is_some() {
+                    self.log_dialog_event("create", "dialog_cancelled");
+                    self.create_dialog = None;
+                } else if self.launch_dialog.is_some() {
+                    self.log_dialog_event("launch", "dialog_cancelled");
+                    self.launch_dialog = None;
+                }
+                false
             }
-            KeyCode::Char('c')
-                if key_event.kind == KeyEventKind::Press
-                    && key_event.modifiers.contains(Modifiers::CTRL) =>
-            {
-                true
+            KeybindingAction::ClearInput => {
+                if let Some(dialog) = self.launch_dialog.as_mut() {
+                    dialog.prompt.clear();
+                    return false;
+                }
+                if let Some(dialog) = self.create_dialog.as_mut() {
+                    match dialog.focused_field {
+                        CreateDialogField::WorkspaceName => dialog.workspace_name.clear(),
+                        CreateDialogField::BranchInput => match dialog.branch_mode {
+                            CreateBranchMode::NewBranch => dialog.base_branch.clear(),
+                            CreateBranchMode::ExistingBranch => dialog.existing_branch.clear(),
+                        },
+                        CreateDialogField::Agent | CreateDialogField::BranchMode => {}
+                    }
+                }
+                false
             }
-            _ => false,
+            KeybindingAction::CancelTask => {
+                self.show_flash("cannot cancel running lifecycle task", true);
+                false
+            }
+            KeybindingAction::Quit | KeybindingAction::HardQuit => true,
+            KeybindingAction::SoftQuit => !self.keybinding_task_running(),
+            KeybindingAction::CloseOverlay
+            | KeybindingAction::ToggleTreeView
+            | KeybindingAction::Bell
+            | KeybindingAction::PassThrough => false,
         }
     }
 
@@ -3617,6 +3682,22 @@ impl GroveApp {
             return (false, Cmd::None);
         }
 
+        if self.interactive.is_some() {
+            return (false, self.handle_interactive_key(key_event));
+        }
+
+        let keybinding_state = self.keybinding_state();
+        if let Some(action) = self
+            .action_mapper
+            .map(&key_event, &keybinding_state, Instant::now())
+        {
+            if !matches!(action, KeybindingAction::PassThrough) {
+                return (self.apply_keybinding_action(action), Cmd::None);
+            }
+        } else {
+            return (false, Cmd::None);
+        }
+
         if self.create_dialog.is_some() {
             self.handle_create_dialog_key(key_event);
             return (false, Cmd::None);
@@ -3625,10 +3706,6 @@ impl GroveApp {
         if self.launch_dialog.is_some() {
             self.handle_launch_dialog_key(key_event);
             return (false, Cmd::None);
-        }
-
-        if self.interactive.is_some() {
-            return (false, self.handle_interactive_key(key_event));
         }
 
         if Self::is_quit_key(&key_event) {
@@ -5407,6 +5484,92 @@ mod tests {
             Msg::Key(KeyEvent::new(KeyCode::Char('q')).with_kind(KeyEventKind::Press)),
         );
         assert!(matches!(cmd, Cmd::Quit));
+    }
+
+    #[test]
+    fn ctrl_q_quits_via_action_mapper() {
+        let mut app = fixture_app();
+        let cmd = ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('q'))
+                    .with_modifiers(Modifiers::CTRL)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+        assert!(matches!(cmd, Cmd::Quit));
+    }
+
+    #[test]
+    fn ctrl_d_quits_when_idle_via_action_mapper() {
+        let mut app = fixture_app();
+        let cmd = ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('d'))
+                    .with_modifiers(Modifiers::CTRL)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+        assert!(matches!(cmd, Cmd::Quit));
+    }
+
+    #[test]
+    fn ctrl_c_dismisses_modal_via_action_mapper() {
+        let mut app = fixture_app();
+        app.state.selected_index = 1;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
+        );
+        assert!(app.launch_dialog.is_some());
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('c'))
+                    .with_modifiers(Modifiers::CTRL)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+
+        assert!(app.launch_dialog.is_none());
+    }
+
+    #[test]
+    fn ctrl_c_with_task_running_does_not_quit() {
+        let mut app = fixture_app();
+        app.start_in_flight = true;
+
+        let cmd = ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('c'))
+                    .with_modifiers(Modifiers::CTRL)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+
+        assert!(!matches!(cmd, Cmd::Quit));
+        assert!(app.status_bar_line().contains("cannot cancel running lifecycle task"));
+    }
+
+    #[test]
+    fn ctrl_d_with_task_running_does_not_quit() {
+        let mut app = fixture_app();
+        app.start_in_flight = true;
+
+        let cmd = ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('d'))
+                    .with_modifiers(Modifiers::CTRL)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+
+        assert!(!matches!(cmd, Cmd::Quit));
     }
 
     #[test]

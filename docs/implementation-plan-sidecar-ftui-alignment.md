@@ -266,3 +266,18 @@ local non-threaded adapters functioning.
 `background_stop_key_queues_lifecycle_task`,
 `create_workspace_completed_success_queues_refresh_task_in_background_mode`,
 plus completion-state tests for start/stop.
+
+### Workstream 6, ActionMapper Adoption (Completed)
+
+1. Added app-level ftui `ActionMapper` to non-interactive key flow.
+2. Preserved immediate single-Esc behavior by using ActionMapper with sequence
+detection disabled for Grove shell mode.
+3. Interactive mode keeps existing key forwarding map, action mapping is applied
+only to non-interactive control flow.
+4. Added policy-state wiring from Grove runtime state:
+`modal_open`, `task_running`, and dialog input nonempty.
+5. Added key-policy tests for Ctrl+C/Ctrl+D/Ctrl+Q modal/task precedence:
+`ctrl_q_quits_via_action_mapper`,
+`ctrl_c_dismisses_modal_via_action_mapper`,
+`ctrl_c_with_task_running_does_not_quit`,
+`ctrl_d_with_task_running_does_not_quit`.
