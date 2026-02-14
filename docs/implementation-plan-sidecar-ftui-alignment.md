@@ -203,3 +203,19 @@ Likely files:
 1. Introducing inline mode.
 2. Adding tmux attach feature.
 3. Plugin-architecture expansion.
+
+## Implementation Decision Log
+
+### Workstream 1, Async Poll Pipeline (Completed)
+
+1. Added async preview polling path for runtime: `poll_preview` now schedules
+background capture tasks and applies results in `Msg::PreviewPollCompleted`.
+2. Kept synchronous fallback path for non-background tmux adapters, this keeps
+deterministic unit tests and non-threaded adapters working while production uses
+the async path (`CommandTmuxInput` reports background support).
+3. Added deferred command queue (`deferred_cmds`) so existing internal call
+sites can trigger async poll work without broad signature churn.
+4. Poll capture failures now emit logs and a flash message (`preview capture failed`)
+instead of only logging.
+5. Cursor capture is also result-driven in async mode, applied via
+`apply_cursor_capture_result`.

@@ -197,8 +197,32 @@ enum Msg {
     Paste(PasteEvent),
     Tick,
     Resize { width: u16, height: u16 },
+    PreviewPollCompleted(PreviewPollCompletion),
     InteractiveSendCompleted(InteractiveSendCompletion),
     Noop,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PreviewPollCompletion {
+    generation: u64,
+    live_capture: Option<LivePreviewCapture>,
+    cursor_capture: Option<CursorCapture>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LivePreviewCapture {
+    session: String,
+    include_escape_sequences: bool,
+    capture_ms: u64,
+    total_ms: u64,
+    result: Result<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CursorCapture {
+    session: String,
+    capture_ms: u64,
+    result: Result<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -762,12 +786,14 @@ struct GroveApp {
     next_tick_interval_ms: Option<u64>,
     interactive_poll_due_at: Option<Instant>,
     interactive_poll_generation: u64,
+    preview_poll_generation: u64,
     debug_record_start_ts: Option<u64>,
     frame_render_seq: RefCell<u64>,
     input_seq_counter: u64,
     pending_interactive_inputs: VecDeque<PendingInteractiveInput>,
     pending_interactive_sends: VecDeque<QueuedInteractiveSend>,
     interactive_send_in_flight: bool,
+    deferred_cmds: Vec<Cmd<Msg>>,
 }
 
 impl GroveApp {
@@ -834,12 +860,14 @@ impl GroveApp {
             next_tick_interval_ms: None,
             interactive_poll_due_at: None,
             interactive_poll_generation: 0,
+            preview_poll_generation: 0,
             debug_record_start_ts,
             frame_render_seq: RefCell::new(0),
             input_seq_counter: 1,
             pending_interactive_inputs: VecDeque::new(),
             pending_interactive_sends: VecDeque::new(),
             interactive_send_in_flight: false,
+            deferred_cmds: Vec::new(),
         };
         app.refresh_preview_summary();
         app
@@ -1037,9 +1065,38 @@ impl GroveApp {
             Msg::Mouse(_) => "mouse",
             Msg::Paste(_) => "paste",
             Msg::Resize { .. } => "resize",
+            Msg::PreviewPollCompleted(_) => "preview_poll_completed",
             Msg::InteractiveSendCompleted(_) => "interactive_send_completed",
             Msg::Noop => "noop",
         }
+    }
+
+    fn queue_cmd(&mut self, cmd: Cmd<Msg>) {
+        if matches!(cmd, Cmd::None) {
+            return;
+        }
+
+        self.deferred_cmds.push(cmd);
+    }
+
+    fn merge_deferred_cmds(&mut self, cmd: Cmd<Msg>) -> Cmd<Msg> {
+        let deferred_cmds = std::mem::take(&mut self.deferred_cmds);
+        if deferred_cmds.is_empty() {
+            return cmd;
+        }
+
+        if matches!(cmd, Cmd::Quit) {
+            return Cmd::Quit;
+        }
+
+        if matches!(cmd, Cmd::None) {
+            return Cmd::batch(deferred_cmds);
+        }
+
+        let mut merged = Vec::with_capacity(deferred_cmds.len().saturating_add(1));
+        merged.push(cmd);
+        merged.extend(deferred_cmds);
+        Cmd::batch(merged)
     }
 
     fn next_input_seq(&mut self) -> u64 {
@@ -1442,69 +1499,18 @@ impl GroveApp {
             .map(|state| state.target_session.clone())
     }
 
-    fn poll_interactive_cursor(&mut self, target_session: &str) {
+    fn poll_interactive_cursor_sync(&mut self, target_session: &str) {
         let started_at = Instant::now();
-        let raw_metadata = match self.tmux_input.capture_cursor_metadata(target_session) {
-            Ok(raw_metadata) => raw_metadata,
-            Err(error) => {
-                self.event_log.log(
-                    LogEvent::new("preview_poll", "cursor_capture_failed")
-                        .with_data("session", Value::from(target_session.to_string()))
-                        .with_data(
-                            "duration_ms",
-                            Value::from(Self::duration_millis(
-                                Instant::now().saturating_duration_since(started_at),
-                            )),
-                        )
-                        .with_data("error", Value::from(error.to_string())),
-                );
-                return;
-            }
-        };
-        let capture_duration_ms =
-            Self::duration_millis(Instant::now().saturating_duration_since(started_at));
-        let parse_started_at = Instant::now();
-        let metadata = match parse_cursor_metadata(&raw_metadata) {
-            Some(metadata) => metadata,
-            None => {
-                self.event_log.log(
-                    LogEvent::new("preview_poll", "cursor_parse_failed")
-                        .with_data("session", Value::from(target_session.to_string()))
-                        .with_data("capture_ms", Value::from(capture_duration_ms))
-                        .with_data(
-                            "parse_ms",
-                            Value::from(Self::duration_millis(
-                                Instant::now().saturating_duration_since(parse_started_at),
-                            )),
-                        )
-                        .with_data("raw_metadata", Value::from(raw_metadata)),
-                );
-                return;
-            }
-        };
-        let Some(state) = self.interactive.as_mut() else {
-            return;
-        };
-
-        let changed = state.update_cursor(
-            metadata.cursor_row,
-            metadata.cursor_col,
-            metadata.cursor_visible,
-            metadata.pane_height,
-            metadata.pane_width,
-        );
-        let parse_duration_ms =
-            Self::duration_millis(Instant::now().saturating_duration_since(parse_started_at));
-        self.event_log.log(
-            LogEvent::new("preview_poll", "cursor_capture_completed")
-                .with_data("session", Value::from(target_session.to_string()))
-                .with_data("capture_ms", Value::from(capture_duration_ms))
-                .with_data("parse_ms", Value::from(parse_duration_ms))
-                .with_data("changed", Value::from(changed))
-                .with_data("cursor_visible", Value::from(metadata.cursor_visible))
-                .with_data("cursor_row", Value::from(metadata.cursor_row))
-                .with_data("cursor_col", Value::from(metadata.cursor_col)),
-        );
+        let result = self
+            .tmux_input
+            .capture_cursor_metadata(target_session)
+            .map_err(|error| error.to_string());
+        let capture_ms = Self::duration_millis(Instant::now().saturating_duration_since(started_at));
+        self.apply_cursor_capture_result(CursorCapture {
+            session: target_session.to_string(),
+            capture_ms,
+            result,
+        });
     }
 
     fn sync_interactive_session_geometry(&mut self) {
@@ -1542,45 +1548,30 @@ impl GroveApp {
         }
     }
 
-    fn poll_preview(&mut self) {
-        let Some((session_name, include_escape_sequences)) =
-            self.selected_session_for_live_preview()
-        else {
-            self.output_changing = false;
-            self.refresh_preview_summary();
-            if let Some(target_session) = self.interactive_target_session() {
-                self.poll_interactive_cursor(&target_session);
-            }
-            return;
-        };
-
-        let capture_started_at = Instant::now();
-        match self
-            .tmux_input
-            .capture_output(&session_name, 600, include_escape_sequences)
-        {
+    fn apply_live_preview_capture(
+        &mut self,
+        session_name: &str,
+        include_escape_sequences: bool,
+        capture_ms: u64,
+        base_total_ms: u64,
+        result: Result<String, String>,
+    ) {
+        match result {
             Ok(output) => {
-                let after_capture = Instant::now();
-                let capture_duration_ms = Self::duration_millis(
-                    after_capture.saturating_duration_since(capture_started_at),
-                );
                 let apply_started_at = Instant::now();
                 let update = self.preview.apply_capture(&output);
-                let apply_capture_ms = Self::duration_millis(
-                    Instant::now().saturating_duration_since(apply_started_at),
-                );
+                let apply_capture_ms =
+                    Self::duration_millis(Instant::now().saturating_duration_since(apply_started_at));
                 self.output_changing = update.changed_cleaned;
                 self.last_tmux_error = None;
                 self.event_log.log(
                     LogEvent::new("preview_poll", "capture_completed")
-                        .with_data("session", Value::from(session_name.clone()))
-                        .with_data("capture_ms", Value::from(capture_duration_ms))
+                        .with_data("session", Value::from(session_name.to_string()))
+                        .with_data("capture_ms", Value::from(capture_ms))
                         .with_data("apply_capture_ms", Value::from(apply_capture_ms))
                         .with_data(
                             "total_ms",
-                            Value::from(Self::duration_millis(
-                                Instant::now().saturating_duration_since(capture_started_at),
-                            )),
+                            Value::from(base_total_ms.saturating_add(apply_capture_ms)),
                         )
                         .with_data(
                             "output_bytes",
@@ -1597,8 +1588,8 @@ impl GroveApp {
                     let now = Instant::now();
                     let mut output_event = LogEvent::new("preview_update", "output_changed")
                         .with_data("line_count", Value::from(line_count))
-                        .with_data("session", Value::from(session_name.clone()));
-                    let consumed_inputs = self.drain_pending_inputs_for_session(&session_name);
+                        .with_data("session", Value::from(session_name.to_string()));
+                    let consumed_inputs = self.drain_pending_inputs_for_session(session_name);
                     if let Some(first_input) = consumed_inputs.first() {
                         let last_index = consumed_inputs.len().saturating_sub(1);
                         let last_input = &consumed_inputs[last_index];
@@ -1642,7 +1633,7 @@ impl GroveApp {
                             "interactive_input_to_preview",
                             consumed_seq_first,
                             vec![
-                                ("session".to_string(), Value::from(session_name.clone())),
+                                ("session".to_string(), Value::from(session_name.to_string())),
                                 (
                                     "input_to_preview_ms".to_string(),
                                     Value::from(oldest_input_to_preview_ms),
@@ -1682,7 +1673,7 @@ impl GroveApp {
                                 "interactive_inputs_coalesced",
                                 consumed_seq_first,
                                 vec![
-                                    ("session".to_string(), Value::from(session_name.clone())),
+                                    ("session".to_string(), Value::from(session_name.to_string())),
                                     (
                                         "consumed_input_count".to_string(),
                                         Value::from(consumed_count),
@@ -1698,30 +1689,196 @@ impl GroveApp {
                     self.event_log.log(output_event);
                 }
             }
-            Err(error) => {
-                let capture_duration_ms = Self::duration_millis(
-                    Instant::now().saturating_duration_since(capture_started_at),
-                );
+            Err(message) => {
                 self.output_changing = false;
-                let message = error.to_string();
                 self.last_tmux_error = Some(message.clone());
                 self.event_log.log(
                     LogEvent::new("preview_poll", "capture_failed")
-                        .with_data("session", Value::from(session_name))
-                        .with_data("capture_ms", Value::from(capture_duration_ms))
+                        .with_data("session", Value::from(session_name.to_string()))
+                        .with_data("capture_ms", Value::from(capture_ms))
                         .with_data(
                             "include_escape_sequences",
                             Value::from(include_escape_sequences),
                         )
                         .with_data("error", Value::from(message.clone())),
                 );
-                self.log_tmux_error(message);
+                self.log_tmux_error(message.clone());
+                self.show_flash("preview capture failed", true);
                 self.refresh_preview_summary();
             }
         }
+    }
 
-        if let Some(target_session) = self.interactive_target_session() {
-            self.poll_interactive_cursor(&target_session);
+    fn apply_cursor_capture_result(&mut self, cursor_capture: CursorCapture) {
+        let parse_started_at = Instant::now();
+        let raw_metadata = match cursor_capture.result {
+            Ok(raw_metadata) => raw_metadata,
+            Err(error) => {
+                self.event_log.log(
+                    LogEvent::new("preview_poll", "cursor_capture_failed")
+                        .with_data("session", Value::from(cursor_capture.session))
+                        .with_data("duration_ms", Value::from(cursor_capture.capture_ms))
+                        .with_data("error", Value::from(error)),
+                );
+                return;
+            }
+        };
+        let metadata = match parse_cursor_metadata(&raw_metadata) {
+            Some(metadata) => metadata,
+            None => {
+                self.event_log.log(
+                    LogEvent::new("preview_poll", "cursor_parse_failed")
+                        .with_data("session", Value::from(cursor_capture.session))
+                        .with_data("capture_ms", Value::from(cursor_capture.capture_ms))
+                        .with_data(
+                            "parse_ms",
+                            Value::from(Self::duration_millis(
+                                Instant::now().saturating_duration_since(parse_started_at),
+                            )),
+                        )
+                        .with_data("raw_metadata", Value::from(raw_metadata)),
+                );
+                return;
+            }
+        };
+        let Some(state) = self.interactive.as_mut() else {
+            return;
+        };
+
+        let changed = state.update_cursor(
+            metadata.cursor_row,
+            metadata.cursor_col,
+            metadata.cursor_visible,
+            metadata.pane_height,
+            metadata.pane_width,
+        );
+        let parse_duration_ms =
+            Self::duration_millis(Instant::now().saturating_duration_since(parse_started_at));
+        self.event_log.log(
+            LogEvent::new("preview_poll", "cursor_capture_completed")
+                .with_data("session", Value::from(cursor_capture.session))
+                .with_data("capture_ms", Value::from(cursor_capture.capture_ms))
+                .with_data("parse_ms", Value::from(parse_duration_ms))
+                .with_data("changed", Value::from(changed))
+                .with_data("cursor_visible", Value::from(metadata.cursor_visible))
+                .with_data("cursor_row", Value::from(metadata.cursor_row))
+                .with_data("cursor_col", Value::from(metadata.cursor_col)),
+        );
+    }
+
+    fn poll_preview_sync(&mut self) {
+        let live_preview = self.selected_session_for_live_preview();
+        let cursor_session = self.interactive_target_session();
+
+        if let Some((session_name, include_escape_sequences)) = live_preview {
+            let capture_started_at = Instant::now();
+            let result = self
+                .tmux_input
+                .capture_output(&session_name, 600, include_escape_sequences)
+                .map_err(|error| error.to_string());
+            let capture_ms =
+                Self::duration_millis(Instant::now().saturating_duration_since(capture_started_at));
+            self.apply_live_preview_capture(
+                &session_name,
+                include_escape_sequences,
+                capture_ms,
+                capture_ms,
+                result,
+            );
+        } else {
+            self.output_changing = false;
+            self.refresh_preview_summary();
+        }
+
+        if let Some(target_session) = cursor_session {
+            self.poll_interactive_cursor_sync(&target_session);
+        }
+    }
+
+    fn schedule_async_preview_poll(
+        &self,
+        generation: u64,
+        live_preview: Option<(String, bool)>,
+        cursor_session: Option<String>,
+    ) -> Cmd<Msg> {
+        Cmd::task(move || {
+            let live_capture = live_preview.map(|(session, include_escape_sequences)| {
+                let capture_started_at = Instant::now();
+                let result =
+                    CommandTmuxInput::capture_session_output(&session, 600, include_escape_sequences)
+                        .map_err(|error| error.to_string());
+                let capture_ms = GroveApp::duration_millis(
+                    Instant::now().saturating_duration_since(capture_started_at),
+                );
+                LivePreviewCapture {
+                    session,
+                    include_escape_sequences,
+                    capture_ms,
+                    total_ms: capture_ms,
+                    result,
+                }
+            });
+
+            let cursor_capture = cursor_session.map(|session| {
+                let started_at = Instant::now();
+                let result = CommandTmuxInput::capture_session_cursor_metadata(&session)
+                    .map_err(|error| error.to_string());
+                let capture_ms =
+                    GroveApp::duration_millis(Instant::now().saturating_duration_since(started_at));
+                CursorCapture {
+                    session,
+                    capture_ms,
+                    result,
+                }
+            });
+
+            Msg::PreviewPollCompleted(PreviewPollCompletion {
+                generation,
+                live_capture,
+                cursor_capture,
+            })
+        })
+    }
+
+    fn poll_preview(&mut self) {
+        if !self.tmux_input.supports_background_send() {
+            self.poll_preview_sync();
+            return;
+        }
+
+        let live_preview = self.selected_session_for_live_preview();
+        let cursor_session = self.interactive_target_session();
+
+        if live_preview.is_none() && cursor_session.is_none() {
+            self.output_changing = false;
+            self.refresh_preview_summary();
+            return;
+        }
+
+        self.preview_poll_generation = self.preview_poll_generation.saturating_add(1);
+        self.queue_cmd(self.schedule_async_preview_poll(
+            self.preview_poll_generation,
+            live_preview,
+            cursor_session,
+        ));
+    }
+
+    fn handle_preview_poll_completed(&mut self, completion: PreviewPollCompletion) {
+        if let Some(live_capture) = completion.live_capture {
+            self.apply_live_preview_capture(
+                &live_capture.session,
+                live_capture.include_escape_sequences,
+                live_capture.capture_ms,
+                live_capture.total_ms,
+                live_capture.result,
+            );
+        } else {
+            self.output_changing = false;
+            self.refresh_preview_summary();
+        }
+
+        if let Some(cursor_capture) = completion.cursor_capture {
+            self.apply_cursor_capture_result(cursor_capture);
         }
     }
 
@@ -3643,10 +3800,9 @@ impl Model for GroveApp {
 
     fn init(&mut self) -> Cmd<Self::Message> {
         self.poll_preview();
-        Cmd::batch(vec![
-            self.schedule_next_tick(),
-            Cmd::set_mouse_capture(true),
-        ])
+        let next_tick_cmd = self.schedule_next_tick();
+        let init_cmd = Cmd::batch(vec![next_tick_cmd, Cmd::set_mouse_capture(true)]);
+        self.merge_deferred_cmds(init_cmd)
     }
 
     fn update(&mut self, msg: Msg) -> Cmd<Self::Message> {
@@ -3750,6 +3906,10 @@ impl Model for GroveApp {
                 self.sync_interactive_session_geometry();
                 Cmd::None
             }
+            Msg::PreviewPollCompleted(completion) => {
+                self.handle_preview_poll_completed(completion);
+                Cmd::None
+            }
             Msg::InteractiveSendCompleted(completion) => {
                 self.handle_interactive_send_completed(completion)
             }
@@ -3767,7 +3927,7 @@ impl Model for GroveApp {
                 )
                 .with_data("pending_depth", Value::from(self.pending_input_depth())),
         );
-        cmd
+        self.merge_deferred_cmds(cmd)
     }
 
     fn view(&self, frame: &mut Frame) {
@@ -3878,8 +4038,9 @@ mod tests {
     };
     use super::{
         CreateBranchMode, CreateDialogField, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW,
-        HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogState, Msg, TmuxInput,
-        WORKSPACE_ITEM_HEIGHT, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
+        HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogState, LivePreviewCapture, Msg,
+        PreviewPollCompletion, TmuxInput, WORKSPACE_ITEM_HEIGHT, ansi_16_color,
+        ansi_line_to_styled_line, parse_cursor_metadata,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -4007,6 +4168,41 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
+    struct BackgroundOnlyTmuxInput;
+
+    impl TmuxInput for BackgroundOnlyTmuxInput {
+        fn execute(&self, _command: &[String]) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn capture_output(
+            &self,
+            _target_session: &str,
+            _scrollback_lines: usize,
+            _include_escape_sequences: bool,
+        ) -> std::io::Result<String> {
+            panic!("sync preview capture should not run when background mode is enabled")
+        }
+
+        fn capture_cursor_metadata(&self, _target_session: &str) -> std::io::Result<String> {
+            panic!("sync cursor capture should not run when background mode is enabled")
+        }
+
+        fn resize_session(
+            &self,
+            _target_session: &str,
+            _target_width: u16,
+            _target_height: u16,
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn supports_background_send(&self) -> bool {
+            true
+        }
+    }
+
     fn fixture_bootstrap(status: WorkspaceStatus) -> BootstrapData {
         BootstrapData {
             repo_name: "grove".to_string(),
@@ -4096,6 +4292,14 @@ mod tests {
 
     fn force_tick_due(app: &mut GroveApp) {
         app.next_tick_due_at = Some(Instant::now());
+    }
+
+    fn cmd_contains_task(cmd: &Cmd<Msg>) -> bool {
+        match cmd {
+            Cmd::Task(_, _) => true,
+            Cmd::Batch(commands) | Cmd::Sequence(commands) => commands.iter().any(cmd_contains_task),
+            _ => false,
+        }
     }
 
     fn arb_key_event() -> impl Strategy<Value = KeyEvent> {
@@ -4544,6 +4748,46 @@ mod tests {
 
         let kinds = event_kinds(&events);
         assert!(kinds.iter().any(|kind| kind == "output_changed"));
+    }
+
+    #[test]
+    fn tick_queues_async_preview_poll_with_background_io() {
+        let sidebar_ratio_path = unique_sidebar_ratio_path("background-poll");
+        let mut app = GroveApp::from_parts(
+            fixture_bootstrap(WorkspaceStatus::Active),
+            Box::new(BackgroundOnlyTmuxInput),
+            sidebar_ratio_path,
+            Box::new(NullEventLogger),
+            None,
+        );
+        app.state.selected_index = 1;
+        force_tick_due(&mut app);
+
+        let cmd = ftui::Model::update(&mut app, Msg::Tick);
+        assert!(cmd_contains_task(&cmd));
+    }
+
+    #[test]
+    fn async_preview_capture_failure_sets_flash_message() {
+        let mut app = fixture_app();
+        app.state.selected_index = 1;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewPollCompleted(PreviewPollCompletion {
+                generation: 1,
+                live_capture: Some(LivePreviewCapture {
+                    session: "grove-ws-feature-a".to_string(),
+                    include_escape_sequences: false,
+                    capture_ms: 2,
+                    total_ms: 2,
+                    result: Err("capture failed".to_string()),
+                }),
+                cursor_capture: None,
+            }),
+        );
+
+        assert!(app.status_bar_line().contains("preview capture failed"));
     }
 
     #[test]
