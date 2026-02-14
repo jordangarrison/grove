@@ -43,7 +43,7 @@ use crate::preview::{FlashMessage, PreviewState, clear_expired_flash_message, ne
 use crate::state::{Action, AppState, PaneFocus, UiMode, reduce};
 use crate::workspace_lifecycle::{
     BranchMode, CommandGitRunner, CommandSetupScriptRunner, CreateWorkspaceRequest,
-    WorkspaceLifecycleError, create_workspace,
+    CreateWorkspaceResult, WorkspaceLifecycleError, create_workspace,
 };
 
 const DEFAULT_SIDEBAR_WIDTH_PCT: u16 = 33;
@@ -198,6 +198,10 @@ enum Msg {
     Tick,
     Resize { width: u16, height: u16 },
     PreviewPollCompleted(PreviewPollCompletion),
+    RefreshWorkspacesCompleted(RefreshWorkspacesCompletion),
+    CreateWorkspaceCompleted(CreateWorkspaceCompletion),
+    StartAgentCompleted(StartAgentCompletion),
+    StopAgentCompleted(StopAgentCompletion),
     InteractiveSendCompleted(InteractiveSendCompletion),
     Noop,
 }
@@ -223,6 +227,32 @@ struct CursorCapture {
     session: String,
     capture_ms: u64,
     result: Result<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RefreshWorkspacesCompletion {
+    preferred_workspace_name: Option<String>,
+    bootstrap: BootstrapData,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CreateWorkspaceCompletion {
+    request: CreateWorkspaceRequest,
+    result: Result<CreateWorkspaceResult, WorkspaceLifecycleError>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StartAgentCompletion {
+    workspace_name: String,
+    session_name: String,
+    result: Result<(), String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StopAgentCompletion {
+    workspace_name: String,
+    session_name: String,
+    result: Result<(), String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -819,6 +849,10 @@ struct GroveApp {
     pending_interactive_sends: VecDeque<QueuedInteractiveSend>,
     interactive_send_in_flight: bool,
     pending_resize_verification: Option<PendingResizeVerification>,
+    refresh_in_flight: bool,
+    create_in_flight: bool,
+    start_in_flight: bool,
+    stop_in_flight: bool,
     deferred_cmds: Vec<Cmd<Msg>>,
 }
 
@@ -893,6 +927,10 @@ impl GroveApp {
             pending_interactive_sends: VecDeque::new(),
             interactive_send_in_flight: false,
             pending_resize_verification: None,
+            refresh_in_flight: false,
+            create_in_flight: false,
+            start_in_flight: false,
+            stop_in_flight: false,
             deferred_cmds: Vec::new(),
         };
         app.refresh_preview_summary();
@@ -1093,6 +1131,10 @@ impl GroveApp {
             Msg::Paste(_) => "paste",
             Msg::Resize { .. } => "resize",
             Msg::PreviewPollCompleted(_) => "preview_poll_completed",
+            Msg::RefreshWorkspacesCompleted(_) => "refresh_workspaces_completed",
+            Msg::CreateWorkspaceCompleted(_) => "create_workspace_completed",
+            Msg::StartAgentCompleted(_) => "start_agent_completed",
+            Msg::StopAgentCompleted(_) => "stop_agent_completed",
             Msg::InteractiveSendCompleted(_) => "interactive_send_completed",
             Msg::Noop => "noop",
         }
@@ -2121,6 +2163,10 @@ impl GroveApp {
     }
 
     fn can_start_selected_workspace(&self) -> bool {
+        if self.start_in_flight {
+            return false;
+        }
+
         let Some(workspace) = self.state.selected_workspace() else {
             return false;
         };
@@ -2138,6 +2184,11 @@ impl GroveApp {
     }
 
     fn open_start_dialog(&mut self) {
+        if self.start_in_flight {
+            self.show_flash("agent start already in progress", true);
+            return;
+        }
+
         let Some(workspace) = self.state.selected_workspace() else {
             self.show_flash("no workspace selected", true);
             return;
@@ -2265,6 +2316,35 @@ impl GroveApp {
     }
 
     fn refresh_workspaces(&mut self, preferred_workspace_name: Option<String>) {
+        if !self.tmux_input.supports_background_send() {
+            self.refresh_workspaces_sync(preferred_workspace_name);
+            return;
+        }
+
+        if self.refresh_in_flight {
+            return;
+        }
+
+        let fallback_name = self
+            .state
+            .selected_workspace()
+            .map(|workspace| workspace.name.clone());
+        let target_name = preferred_workspace_name.or(fallback_name);
+        self.refresh_in_flight = true;
+        self.queue_cmd(Cmd::task(move || {
+            let bootstrap = bootstrap_data(
+                &CommandGitAdapter,
+                &CommandTmuxAdapter,
+                &CommandSystemAdapter,
+            );
+            Msg::RefreshWorkspacesCompleted(RefreshWorkspacesCompletion {
+                preferred_workspace_name: target_name,
+                bootstrap,
+            })
+        }));
+    }
+
+    fn refresh_workspaces_sync(&mut self, preferred_workspace_name: Option<String>) {
         let fallback_name = self
             .state
             .selected_workspace()
@@ -2295,7 +2375,33 @@ impl GroveApp {
         self.poll_preview();
     }
 
+    fn apply_refresh_workspaces_completion(&mut self, completion: RefreshWorkspacesCompletion) {
+        let previous_mode = self.state.mode;
+        let previous_focus = self.state.focus;
+
+        self.repo_name = completion.bootstrap.repo_name;
+        self.discovery_state = completion.bootstrap.discovery_state;
+        self.state = AppState::new(completion.bootstrap.workspaces);
+        if let Some(name) = completion.preferred_workspace_name
+            && let Some(index) = self
+                .state
+                .workspaces
+                .iter()
+                .position(|workspace| workspace.name == name)
+        {
+            self.state.selected_index = index;
+        }
+        self.state.mode = previous_mode;
+        self.state.focus = previous_focus;
+        self.refresh_in_flight = false;
+        self.poll_preview();
+    }
+
     fn confirm_create_dialog(&mut self) {
+        if self.create_in_flight {
+            return;
+        }
+
         let Some(dialog) = self.create_dialog.as_ref().cloned() else {
             return;
         };
@@ -2340,13 +2446,41 @@ impl GroveApp {
             return;
         }
 
-        let Ok(repo_root) = std::env::current_dir() else {
-            self.show_flash("cannot resolve current directory", true);
+        if !self.tmux_input.supports_background_send() {
+            let result = match std::env::current_dir() {
+                Ok(repo_root) => {
+                    let git = CommandGitRunner;
+                    let setup = CommandSetupScriptRunner;
+                    create_workspace(&repo_root, &request, &git, &setup)
+                }
+                Err(_) => Err(WorkspaceLifecycleError::Io(
+                    "cannot resolve current directory".to_string(),
+                )),
+            };
+            self.apply_create_workspace_completion(CreateWorkspaceCompletion { request, result });
             return;
-        };
-        let git = CommandGitRunner;
-        let setup = CommandSetupScriptRunner;
-        match create_workspace(&repo_root, &request, &git, &setup) {
+        }
+
+        self.create_in_flight = true;
+        self.queue_cmd(Cmd::task(move || {
+            let result = match std::env::current_dir() {
+                Ok(repo_root) => {
+                    let git = CommandGitRunner;
+                    let setup = CommandSetupScriptRunner;
+                    create_workspace(&repo_root, &request, &git, &setup)
+                }
+                Err(_) => Err(WorkspaceLifecycleError::Io(
+                    "cannot resolve current directory".to_string(),
+                )),
+            };
+            Msg::CreateWorkspaceCompleted(CreateWorkspaceCompletion { request, result })
+        }));
+    }
+
+    fn apply_create_workspace_completion(&mut self, completion: CreateWorkspaceCompletion) {
+        self.create_in_flight = false;
+        let workspace_name = completion.request.workspace_name;
+        match completion.result {
             Ok(result) => {
                 self.create_dialog = None;
                 self.refresh_workspaces(Some(workspace_name.clone()));
@@ -2377,6 +2511,10 @@ impl GroveApp {
     }
 
     fn handle_create_dialog_key(&mut self, key_event: KeyEvent) {
+        if self.create_in_flight {
+            return;
+        }
+
         match key_event.code {
             KeyCode::Escape => {
                 self.log_dialog_event("create", "dialog_cancelled");
@@ -2469,6 +2607,10 @@ impl GroveApp {
         prompt: Option<String>,
         skip_permissions: bool,
     ) {
+        if self.start_in_flight {
+            return;
+        }
+
         if !self.can_start_selected_workspace() {
             self.show_flash("workspace cannot be started", true);
             return;
@@ -2486,44 +2628,91 @@ impl GroveApp {
             skip_permissions,
         };
         let launch_plan = build_launch_plan(&request);
+        let workspace_name = request.workspace_name.clone();
+        let session_name = session_name_for_workspace(&request.workspace_name);
 
-        if let Some(script) = &launch_plan.launcher_script
-            && let Err(error) = fs::write(&script.path, &script.contents)
-        {
-            self.last_tmux_error = Some(format!("launcher script write failed: {error}"));
-            self.show_flash("launcher script write failed", true);
-            return;
-        }
+        if !self.tmux_input.supports_background_send() {
+            if let Some(script) = &launch_plan.launcher_script
+                && let Err(error) = fs::write(&script.path, &script.contents)
+            {
+                self.last_tmux_error = Some(format!("launcher script write failed: {error}"));
+                self.show_flash("launcher script write failed", true);
+                return;
+            }
 
-        for command in &launch_plan.pre_launch_cmds {
-            if let Err(error) = self.execute_tmux_command(command) {
+            for command in &launch_plan.pre_launch_cmds {
+                if let Err(error) = self.execute_tmux_command(command) {
+                    self.last_tmux_error = Some(error.to_string());
+                    self.show_flash("agent start failed", true);
+                    return;
+                }
+            }
+
+            if let Err(error) = self.execute_tmux_command(&launch_plan.launch_cmd) {
                 self.last_tmux_error = Some(error.to_string());
                 self.show_flash("agent start failed", true);
                 return;
             }
-        }
 
-        if let Err(error) = self.execute_tmux_command(&launch_plan.launch_cmd) {
-            self.last_tmux_error = Some(error.to_string());
-            self.show_flash("agent start failed", true);
+            self.apply_start_agent_completion(StartAgentCompletion {
+                workspace_name,
+                session_name,
+                result: Ok(()),
+            });
             return;
         }
 
-        if let Some(selected) = self.state.selected_workspace_mut() {
-            selected.status = WorkspaceStatus::Active;
-            selected.is_orphaned = false;
+        self.start_in_flight = true;
+        self.queue_cmd(Cmd::task(move || {
+            let result = Self::run_start_agent_plan(launch_plan).map_err(|error| error.to_string());
+            Msg::StartAgentCompleted(StartAgentCompletion {
+                workspace_name,
+                session_name,
+                result,
+            })
+        }));
+    }
+
+    fn run_start_agent_plan(launch_plan: crate::agent_runtime::LaunchPlan) -> std::io::Result<()> {
+        if let Some(script) = &launch_plan.launcher_script {
+            fs::write(&script.path, &script.contents)?;
         }
-        self.event_log.log(
-            LogEvent::new("agent_lifecycle", "agent_started")
-                .with_data("workspace", Value::from(request.workspace_name.clone()))
-                .with_data(
-                    "session",
-                    Value::from(session_name_for_workspace(&request.workspace_name)),
-                ),
-        );
-        self.last_tmux_error = None;
-        self.show_flash("agent started", false);
-        self.poll_preview();
+
+        for command in &launch_plan.pre_launch_cmds {
+            CommandTmuxInput::execute_command(command)?;
+        }
+
+        CommandTmuxInput::execute_command(&launch_plan.launch_cmd)
+    }
+
+    fn apply_start_agent_completion(&mut self, completion: StartAgentCompletion) {
+        self.start_in_flight = false;
+        match completion.result {
+            Ok(()) => {
+                if let Some(workspace) = self
+                    .state
+                    .workspaces
+                    .iter_mut()
+                    .find(|workspace| workspace.name == completion.workspace_name)
+                {
+                    workspace.status = WorkspaceStatus::Active;
+                    workspace.is_orphaned = false;
+                }
+                self.event_log.log(
+                    LogEvent::new("agent_lifecycle", "agent_started")
+                        .with_data("workspace", Value::from(completion.workspace_name))
+                        .with_data("session", Value::from(completion.session_name)),
+                );
+                self.last_tmux_error = None;
+                self.show_flash("agent started", false);
+                self.poll_preview();
+            }
+            Err(error) => {
+                self.last_tmux_error = Some(error.clone());
+                self.log_tmux_error(error);
+                self.show_flash("agent start failed", true);
+            }
+        }
     }
 
     fn confirm_start_dialog(&mut self) {
@@ -2585,6 +2774,10 @@ impl GroveApp {
     }
 
     fn can_stop_selected_workspace(&self) -> bool {
+        if self.stop_in_flight {
+            return false;
+        }
+
         let Some(workspace) = self.state.selected_workspace() else {
             return false;
         };
@@ -2592,6 +2785,10 @@ impl GroveApp {
     }
 
     fn stop_selected_workspace_agent(&mut self) {
+        if self.stop_in_flight {
+            return;
+        }
+
         if !self.can_stop_selected_workspace() {
             self.show_flash("no agent running", true);
             return;
@@ -2604,34 +2801,78 @@ impl GroveApp {
         let workspace_name = workspace.name.clone();
         let session_name = session_name_for_workspace(&workspace_name);
         let stop_commands = stop_plan(&session_name);
-        for command in &stop_commands {
-            if let Err(error) = self.execute_tmux_command(command) {
-                self.last_tmux_error = Some(error.to_string());
+
+        if !self.tmux_input.supports_background_send() {
+            for command in &stop_commands {
+                if let Err(error) = self.execute_tmux_command(command) {
+                    self.last_tmux_error = Some(error.to_string());
+                    self.show_flash("agent stop failed", true);
+                    return;
+                }
+            }
+
+            self.apply_stop_agent_completion(StopAgentCompletion {
+                workspace_name,
+                session_name,
+                result: Ok(()),
+            });
+            return;
+        }
+
+        self.stop_in_flight = true;
+        self.queue_cmd(Cmd::task(move || {
+            let result = Self::run_stop_commands(&stop_commands).map_err(|error| error.to_string());
+            Msg::StopAgentCompleted(StopAgentCompletion {
+                workspace_name,
+                session_name,
+                result,
+            })
+        }));
+    }
+
+    fn run_stop_commands(commands: &[Vec<String>]) -> std::io::Result<()> {
+        for command in commands {
+            CommandTmuxInput::execute_command(command)?;
+        }
+        Ok(())
+    }
+
+    fn apply_stop_agent_completion(&mut self, completion: StopAgentCompletion) {
+        self.stop_in_flight = false;
+        match completion.result {
+            Ok(()) => {
+                if self
+                    .interactive
+                    .as_ref()
+                    .is_some_and(|state| state.target_session == completion.session_name)
+                {
+                    self.interactive = None;
+                }
+
+                if let Some(workspace) = self
+                    .state
+                    .workspaces
+                    .iter_mut()
+                    .find(|workspace| workspace.name == completion.workspace_name)
+                {
+                    workspace.status = WorkspaceStatus::Idle;
+                    workspace.is_orphaned = false;
+                }
+                self.event_log.log(
+                    LogEvent::new("agent_lifecycle", "agent_stopped")
+                        .with_data("workspace", Value::from(completion.workspace_name))
+                        .with_data("session", Value::from(completion.session_name)),
+                );
+                self.last_tmux_error = None;
+                self.show_flash("agent stopped", false);
+                self.poll_preview();
+            }
+            Err(error) => {
+                self.last_tmux_error = Some(error.clone());
+                self.log_tmux_error(error);
                 self.show_flash("agent stop failed", true);
-                return;
             }
         }
-
-        if self
-            .interactive
-            .as_ref()
-            .is_some_and(|state| state.target_session == session_name)
-        {
-            self.interactive = None;
-        }
-
-        if let Some(selected) = self.state.selected_workspace_mut() {
-            selected.status = WorkspaceStatus::Idle;
-            selected.is_orphaned = false;
-        }
-        self.event_log.log(
-            LogEvent::new("agent_lifecycle", "agent_stopped")
-                .with_data("workspace", Value::from(workspace_name))
-                .with_data("session", Value::from(session_name)),
-        );
-        self.last_tmux_error = None;
-        self.show_flash("agent stopped", false);
-        self.poll_preview();
     }
 
     fn map_interactive_key(key_event: KeyEvent) -> Option<InteractiveKey> {
@@ -4023,6 +4264,22 @@ impl Model for GroveApp {
                 self.handle_preview_poll_completed(completion);
                 Cmd::None
             }
+            Msg::RefreshWorkspacesCompleted(completion) => {
+                self.apply_refresh_workspaces_completion(completion);
+                Cmd::None
+            }
+            Msg::CreateWorkspaceCompleted(completion) => {
+                self.apply_create_workspace_completion(completion);
+                Cmd::None
+            }
+            Msg::StartAgentCompleted(completion) => {
+                self.apply_start_agent_completion(completion);
+                Cmd::None
+            }
+            Msg::StopAgentCompleted(completion) => {
+                self.apply_stop_agent_completion(completion);
+                Cmd::None
+            }
             Msg::InteractiveSendCompleted(completion) => {
                 self.handle_interactive_send_completed(completion)
             }
@@ -4150,15 +4407,17 @@ mod tests {
         assert_cell_style, assert_row_fg, find_cell_with_char, find_row_containing, row_text,
     };
     use super::{
-        CreateBranchMode, CreateDialogField, CursorCapture, GroveApp, HIT_ID_HEADER,
-        HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogState,
-        LivePreviewCapture, Msg, PendingResizeVerification, PreviewPollCompletion, TmuxInput,
-        WORKSPACE_ITEM_HEIGHT, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
+        CreateBranchMode, CreateDialogField, CreateWorkspaceCompletion, CursorCapture, GroveApp,
+        HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogState,
+        LivePreviewCapture, Msg, PendingResizeVerification, PreviewPollCompletion,
+        StartAgentCompletion, StopAgentCompletion, TmuxInput, WORKSPACE_ITEM_HEIGHT,
+        ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
     };
     use crate::interactive::InteractiveState;
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
     use crate::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
+    use crate::workspace_lifecycle::{BranchMode, CreateWorkspaceRequest, CreateWorkspaceResult};
     use ftui::core::event::{
         Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
         PasteEvent,
@@ -4575,6 +4834,16 @@ mod tests {
             captures,
             cursor_captures,
             events,
+        )
+    }
+
+    fn fixture_background_app(status: WorkspaceStatus) -> GroveApp {
+        GroveApp::from_parts(
+            fixture_bootstrap(status),
+            Box::new(BackgroundOnlyTmuxInput),
+            unique_sidebar_ratio_path("background"),
+            Box::new(NullEventLogger),
+            None,
         )
     }
 
@@ -5023,6 +5292,34 @@ mod tests {
     }
 
     #[test]
+    fn create_workspace_completed_success_queues_refresh_task_in_background_mode() {
+        let mut app = fixture_background_app(WorkspaceStatus::Idle);
+        let request = CreateWorkspaceRequest {
+            workspace_name: "feature-x".to_string(),
+            branch_mode: BranchMode::NewBranch {
+                base_branch: "main".to_string(),
+            },
+            agent: AgentType::Claude,
+        };
+        let result = CreateWorkspaceResult {
+            workspace_path: PathBuf::from("/repos/grove-feature-x"),
+            branch: "feature-x".to_string(),
+            warnings: Vec::new(),
+        };
+
+        let cmd = ftui::Model::update(
+            &mut app,
+            Msg::CreateWorkspaceCompleted(CreateWorkspaceCompletion {
+                request,
+                result: Ok(result),
+            }),
+        );
+
+        assert!(cmd_contains_task(&cmd));
+        assert!(app.refresh_in_flight);
+    }
+
+    #[test]
     fn interactive_enter_and_exit_emit_mode_events() {
         let (mut app, _commands, _captures, _cursor_captures, events) =
             fixture_app_with_tmux_and_events(WorkspaceStatus::Active, Vec::new(), Vec::new());
@@ -5162,6 +5459,45 @@ mod tests {
                 ],
             ]
         );
+        assert_eq!(
+            app.state
+                .selected_workspace()
+                .map(|workspace| workspace.status),
+            Some(WorkspaceStatus::Active)
+        );
+    }
+
+    #[test]
+    fn background_start_confirm_queues_lifecycle_task() {
+        let mut app = fixture_background_app(WorkspaceStatus::Idle);
+        app.state.selected_index = 1;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
+        );
+        let cmd = ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(cmd_contains_task(&cmd));
+    }
+
+    #[test]
+    fn start_agent_completed_updates_workspace_status() {
+        let mut app = fixture_app();
+        app.state.selected_index = 1;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::StartAgentCompleted(StartAgentCompletion {
+                workspace_name: "feature-a".to_string(),
+                session_name: "grove-ws-feature-a".to_string(),
+                result: Ok(()),
+            }),
+        );
+
         assert_eq!(
             app.state
                 .selected_workspace()
@@ -5586,6 +5922,49 @@ mod tests {
                 .map(|workspace| workspace.status),
             Some(WorkspaceStatus::Idle)
         );
+    }
+
+    #[test]
+    fn background_stop_key_queues_lifecycle_task() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.selected_index = 1;
+
+        let cmd = ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(cmd_contains_task(&cmd));
+    }
+
+    #[test]
+    fn stop_agent_completed_updates_workspace_status_and_exits_interactive() {
+        let mut app = fixture_app();
+        app.state.selected_index = 1;
+        app.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            "grove-ws-feature-a".to_string(),
+            Instant::now(),
+            34,
+            78,
+        ));
+
+        ftui::Model::update(
+            &mut app,
+            Msg::StopAgentCompleted(StopAgentCompletion {
+                workspace_name: "feature-a".to_string(),
+                session_name: "grove-ws-feature-a".to_string(),
+                result: Ok(()),
+            }),
+        );
+
+        assert_eq!(
+            app.state
+                .selected_workspace()
+                .map(|workspace| workspace.status),
+            Some(WorkspaceStatus::Idle)
+        );
+        assert!(app.interactive.is_none());
     }
 
     #[test]

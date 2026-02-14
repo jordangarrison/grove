@@ -249,3 +249,20 @@ verify-and-retry-once flow:
 `enter_interactive_immediately_polls_preview_and_cursor`,
 `resize_in_interactive_mode_immediately_resizes_and_polls`,
 `resize_verify_retries_once_then_stops`.
+
+### Workstream 2, Async Lifecycle Commands (Completed)
+
+1. Added lifecycle completion messages:
+`RefreshWorkspacesCompleted`, `CreateWorkspaceCompleted`,
+`StartAgentCompleted`, `StopAgentCompleted`.
+2. Runtime path (`CommandTmuxInput` background-capable) now runs refresh/create/start/stop
+operations in `Cmd::task` and applies state only in completion handlers.
+3. Sync fallback remains for non-background adapters to keep deterministic tests and
+local non-threaded adapters functioning.
+4. Added in-flight guards (`refresh_in_flight`, `create_in_flight`, `start_in_flight`,
+`stop_in_flight`) to prevent duplicate lifecycle dispatch while commands are running.
+5. Added lifecycle async tests:
+`background_start_confirm_queues_lifecycle_task`,
+`background_stop_key_queues_lifecycle_task`,
+`create_workspace_completed_success_queues_refresh_task_in_background_mode`,
+plus completion-state tests for start/stop.
