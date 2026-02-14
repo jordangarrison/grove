@@ -401,6 +401,8 @@ enum CreateDialogField {
     ExistingBranch,
     Agent,
     BranchMode,
+    CreateButton,
+    CancelButton,
 }
 
 impl CreateDialogField {
@@ -410,17 +412,21 @@ impl CreateDialogField {
             Self::BaseBranch => Self::ExistingBranch,
             Self::ExistingBranch => Self::Agent,
             Self::Agent => Self::BranchMode,
-            Self::BranchMode => Self::WorkspaceName,
+            Self::BranchMode => Self::CreateButton,
+            Self::CreateButton => Self::CancelButton,
+            Self::CancelButton => Self::WorkspaceName,
         }
     }
 
     fn previous(self) -> Self {
         match self {
-            Self::WorkspaceName => Self::BranchMode,
+            Self::WorkspaceName => Self::CancelButton,
             Self::BaseBranch => Self::WorkspaceName,
             Self::ExistingBranch => Self::BaseBranch,
             Self::Agent => Self::ExistingBranch,
             Self::BranchMode => Self::Agent,
+            Self::CreateButton => Self::BranchMode,
+            Self::CancelButton => Self::CreateButton,
         }
     }
 
@@ -431,6 +437,8 @@ impl CreateDialogField {
             Self::ExistingBranch => "existing_branch",
             Self::Agent => "agent",
             Self::BranchMode => "mode",
+            Self::CreateButton => "create",
+            Self::CancelButton => "cancel",
         }
     }
 }
@@ -2156,7 +2164,7 @@ impl GroveApp {
 
     fn keybind_hints_line(&self) -> &'static str {
         if self.create_dialog.is_some() {
-            return "Tab/Shift+Tab field, Up/Down base branch, Left/Right toggle, Enter create, Esc cancel";
+            return "Tab/Shift+Tab field, Up/Down base branch, Left/Right toggle, Enter select/create, Esc cancel";
         }
         if self.launch_dialog.is_some() {
             return "Type prompt, Tab unsafe, Enter start, Esc cancel";
@@ -2857,7 +2865,10 @@ impl GroveApp {
                             refresh_base_branch = true;
                         }
                         CreateDialogField::ExistingBranch => dialog.existing_branch.clear(),
-                        CreateDialogField::Agent | CreateDialogField::BranchMode => {}
+                        CreateDialogField::Agent
+                        | CreateDialogField::BranchMode
+                        | CreateDialogField::CreateButton
+                        | CreateDialogField::CancelButton => {}
                     }
                     if refresh_base_branch {
                         self.refresh_create_branch_filtered();
@@ -3338,7 +3349,40 @@ impl GroveApp {
                     self.refresh_create_branch_filtered();
                     return;
                 }
-                self.confirm_create_dialog();
+
+                enum EnterAction {
+                    ConfirmCreate,
+                    CancelDialog,
+                    AdvanceField,
+                }
+
+                let action = self
+                    .create_dialog
+                    .as_ref()
+                    .map(|dialog| match dialog.focused_field {
+                        CreateDialogField::CreateButton => EnterAction::ConfirmCreate,
+                        CreateDialogField::CancelButton => EnterAction::CancelDialog,
+                        CreateDialogField::WorkspaceName
+                        | CreateDialogField::BaseBranch
+                        | CreateDialogField::ExistingBranch
+                        | CreateDialogField::Agent
+                        | CreateDialogField::BranchMode => EnterAction::AdvanceField,
+                    });
+
+                match action {
+                    Some(EnterAction::ConfirmCreate) => self.confirm_create_dialog(),
+                    Some(EnterAction::CancelDialog) => {
+                        self.log_dialog_event("create", "dialog_cancelled");
+                        self.create_dialog = None;
+                        self.clear_create_branch_picker();
+                    }
+                    Some(EnterAction::AdvanceField) => {
+                        if let Some(dialog) = self.create_dialog.as_mut() {
+                            dialog.focused_field = dialog.focused_field.next();
+                        }
+                    }
+                    None => {}
+                }
             }
             KeyCode::Tab => {
                 if let Some(dialog) = self.create_dialog.as_mut() {
@@ -3359,7 +3403,9 @@ impl GroveApp {
                         }
                         CreateDialogField::WorkspaceName
                         | CreateDialogField::BaseBranch
-                        | CreateDialogField::ExistingBranch => {}
+                        | CreateDialogField::ExistingBranch
+                        | CreateDialogField::CreateButton
+                        | CreateDialogField::CancelButton => {}
                     }
                 }
             }
@@ -3390,7 +3436,10 @@ impl GroveApp {
                         CreateDialogField::ExistingBranch => {
                             dialog.existing_branch.pop();
                         }
-                        CreateDialogField::Agent | CreateDialogField::BranchMode => {}
+                        CreateDialogField::Agent
+                        | CreateDialogField::BranchMode
+                        | CreateDialogField::CreateButton
+                        | CreateDialogField::CancelButton => {}
                     }
                 }
                 if refresh_base_branch {
@@ -3430,6 +3479,7 @@ impl GroveApp {
                                 Self::toggle_create_dialog_branch_mode(dialog);
                             }
                         }
+                        CreateDialogField::CreateButton | CreateDialogField::CancelButton => {}
                     }
                 }
                 if refresh_base_branch {
@@ -5672,12 +5722,26 @@ impl GroveApp {
         let dialog_height = 14u16;
         let theme = ui_theme();
 
+        let field_marker = |field| {
+            if dialog.focused_field == field {
+                ">"
+            } else {
+                " "
+            }
+        };
         let mut lines = vec![
-            "Create workspace: [Tab/Shift+Tab] field, [Up/Down] base branch, [Left/Right] toggle mode/agent, [Enter] create".to_string(),
+            "Create workspace: [Tab/Shift+Tab] field, [Up/Down] base branch, [Left/Right] toggle mode/agent, [Enter] select/create".to_string(),
             format!("Focus: {}", dialog.focused_field.label()),
-            format!("Name (new branch): {}", dialog.workspace_name),
-            format!("Branch mode: {}", dialog.branch_mode.label()),
-            format!("Base branch: {}", dialog.base_branch),
+            format!(
+                "{} Name (new branch): {}",
+                field_marker(CreateDialogField::WorkspaceName),
+                dialog.workspace_name
+            ),
+            format!(
+                "{} Base branch: {}",
+                field_marker(CreateDialogField::BaseBranch),
+                dialog.base_branch
+            ),
         ];
         if dialog.focused_field == CreateDialogField::BaseBranch {
             if self.create_branch_all.is_empty() {
@@ -5706,8 +5770,27 @@ impl GroveApp {
                 }
             }
         }
-        lines.push(format!("Existing branch: {}", dialog.existing_branch));
-        lines.push(format!("Agent: {}", dialog.agent.label()));
+        lines.push(format!(
+            "{} Existing branch: {}",
+            field_marker(CreateDialogField::ExistingBranch),
+            dialog.existing_branch
+        ));
+        lines.push(format!(
+            "{} Agent: {}",
+            field_marker(CreateDialogField::Agent),
+            dialog.agent.label()
+        ));
+        lines.push(format!(
+            "{} Branch mode: {}",
+            field_marker(CreateDialogField::BranchMode),
+            dialog.branch_mode.label()
+        ));
+        lines.push(String::new());
+        lines.push(format!(
+            "{} [Create]   {} [Cancel]",
+            field_marker(CreateDialogField::CreateButton),
+            field_marker(CreateDialogField::CancelButton)
+        ));
         let body = lines.join("\n");
         let content = OverlayModalContent {
             title: "New Workspace",
@@ -6946,7 +7029,7 @@ mod tests {
             let status_row = frame.height().saturating_sub(1);
             let status_text = row_text(frame, status_row, 0, frame.width());
             assert!(status_text.contains("Tab/Shift+Tab field"));
-            assert!(status_text.contains("Enter create"));
+            assert!(status_text.contains("Enter select/create"));
         });
     }
 
@@ -7322,6 +7405,10 @@ mod tests {
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Right).with_kind(KeyEventKind::Press)),
+        );
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
         );
         ftui::Model::update(
             &mut app,
@@ -8080,6 +8167,12 @@ mod tests {
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
         );
+        for _ in 0..5 {
+            ftui::Model::update(
+                &mut app,
+                Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+            );
+        }
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
@@ -8113,6 +8206,12 @@ mod tests {
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Right).with_kind(KeyEventKind::Press)),
         );
+        for _ in 0..1 {
+            ftui::Model::update(
+                &mut app,
+                Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+            );
+        }
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
