@@ -281,3 +281,12 @@ only to non-interactive control flow.
 `ctrl_c_dismisses_modal_via_action_mapper`,
 `ctrl_c_with_task_running_does_not_quit`,
 `ctrl_d_with_task_running_does_not_quit`.
+
+### Workstream 7, Output Trust Model, Keep Current (Completed)
+
+1. Kept dual-lane output behavior unchanged:
+render lane from raw/SRG-safe output, logic lane from cleaned output diffs.
+2. Added app-level regression coverage:
+`preview_poll_uses_cleaned_change_for_status_lane`.
+3. Verified existing lower-layer protections still pass:
+preview + agent runtime cleaned/raw diff tests remain green.

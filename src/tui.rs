@@ -5294,6 +5294,52 @@ mod tests {
     }
 
     #[test]
+    fn preview_poll_uses_cleaned_change_for_status_lane() {
+        let mut app = fixture_app();
+        app.state.selected_index = 1;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewPollCompleted(PreviewPollCompletion {
+                generation: 1,
+                live_capture: Some(LivePreviewCapture {
+                    session: "grove-ws-feature-a".to_string(),
+                    include_escape_sequences: true,
+                    capture_ms: 1,
+                    total_ms: 1,
+                    result: Ok("hello\u{1b}[?1000h\u{1b}[<35;192;47M".to_string()),
+                }),
+                cursor_capture: None,
+            }),
+        );
+        assert!(app.output_changing);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewPollCompleted(PreviewPollCompletion {
+                generation: 2,
+                live_capture: Some(LivePreviewCapture {
+                    session: "grove-ws-feature-a".to_string(),
+                    include_escape_sequences: true,
+                    capture_ms: 1,
+                    total_ms: 1,
+                    result: Ok("hello\u{1b}[?1000l".to_string()),
+                }),
+                cursor_capture: None,
+            }),
+        );
+
+        assert!(!app.output_changing);
+        let capture = app
+            .preview
+            .recent_captures
+            .back()
+            .expect("capture record should exist");
+        assert!(capture.changed_raw);
+        assert!(!capture.changed_cleaned);
+    }
+
+    #[test]
     fn preview_scroll_emits_scrolled_and_autoscroll_events() {
         let (mut app, _commands, _captures, _cursor_captures, events) =
             fixture_app_with_tmux_and_events(WorkspaceStatus::Idle, Vec::new(), Vec::new());
