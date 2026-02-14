@@ -3957,6 +3957,14 @@ impl GroveApp {
         status.icon()
     }
 
+    fn activity_spinner_slot(&self, status: WorkspaceStatus, is_selected: bool) -> &'static str {
+        if self.status_is_visually_working(status, is_selected) {
+            return FAST_SPINNER_FRAMES[self.fast_animation_frame % FAST_SPINNER_FRAMES.len()];
+        }
+
+        " "
+    }
+
     fn relative_age_label(&self, unix_secs: Option<i64>) -> String {
         let Some(unix_secs) = unix_secs else {
             return String::new();
@@ -3996,18 +4004,15 @@ impl GroveApp {
             self.selected_status_hint()
         );
 
-        let mut header = StatusLine::new()
+        let header = StatusLine::new()
             .separator("  ")
             .style(Style::new().bg(theme.crust).fg(theme.text))
             .left(StatusItem::text("Grove"))
             .left(StatusItem::text(self.repo_name.as_str()))
             .center(StatusItem::text(mode_chip.as_str()))
             .center(StatusItem::text(focus_chip.as_str()))
-            .right(StatusItem::text(activity_chip.as_str()));
-
-        if self.status_is_visually_working(selected_status, true) {
-            header = header.right(StatusItem::Spinner(self.fast_animation_frame));
-        }
+            .right(StatusItem::text(activity_chip.as_str()))
+            .right(StatusItem::text(self.activity_spinner_slot(selected_status, true)));
 
         header.render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_HEADER));
@@ -4284,15 +4289,15 @@ impl GroveApp {
             "j/k move, Enter open, n new, s start, x stop, q quit"
         };
 
-        let mut status = StatusLine::new()
+        let status = StatusLine::new()
             .separator("  ")
             .style(Style::new().bg(theme.mantle).fg(theme.text))
             .left(StatusItem::text(summary.as_str()))
             .center(StatusItem::text(center.as_str()))
-            .right(StatusItem::text(hints));
-        if self.status_is_visually_working(self.selected_workspace_status(), true) {
-            status = status.right(StatusItem::Spinner(self.fast_animation_frame));
-        }
+            .right(StatusItem::text(hints))
+            .right(StatusItem::text(
+                self.activity_spinner_slot(self.selected_workspace_status(), true),
+            ));
         status.render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_STATUS));
     }
@@ -5403,6 +5408,48 @@ mod tests {
                 contains_spinner_frame(&status_text),
                 "status bar should animate when output is changing, got: {status_text}"
             );
+        });
+    }
+
+    #[test]
+    fn activity_spinner_does_not_shift_header_or_status_layout() {
+        let (mut idle_app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        idle_app.state.selected_index = 1;
+        idle_app.output_changing = false;
+
+        let (mut active_app, _commands2, _captures2, _cursor_captures2) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        active_app.state.selected_index = 1;
+        active_app.output_changing = true;
+
+        with_rendered_frame(&idle_app, 80, 24, |idle_frame| {
+            with_rendered_frame(&active_app, 80, 24, |active_frame| {
+                let idle_header = row_text(idle_frame, 0, 0, idle_frame.width());
+                let active_header = row_text(active_frame, 0, 0, active_frame.width());
+                assert_eq!(
+                    idle_header.find("[List]"),
+                    active_header.find("[List]"),
+                    "header mode chip column should remain stable when spinner state changes"
+                );
+                assert_eq!(
+                    idle_header.find("[WorkspaceList]"),
+                    active_header.find("[WorkspaceList]"),
+                    "header focus chip column should remain stable when spinner state changes"
+                );
+
+                let idle_status_row = idle_frame.height().saturating_sub(1);
+                let active_status_row = active_frame.height().saturating_sub(1);
+                let idle_status =
+                    row_text(idle_frame, idle_status_row, 0, idle_frame.width());
+                let active_status =
+                    row_text(active_frame, active_status_row, 0, active_frame.width());
+                assert_eq!(
+                    idle_status.find("ws=feature-a"),
+                    active_status.find("ws=feature-a"),
+                    "status center label should remain stable when spinner state changes"
+                );
+            });
         });
     }
 
