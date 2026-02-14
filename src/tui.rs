@@ -4470,6 +4470,7 @@ impl GroveApp {
         let mut lines = selected_lines.unwrap_or_else(|| self.visible_preview_output_lines());
         if lines.is_empty() {
             self.last_tmux_error = Some("no output to copy".to_string());
+            self.show_flash("No output to copy", true);
             return;
         }
 
@@ -4478,6 +4479,7 @@ impl GroveApp {
         }
         if lines.is_empty() {
             self.last_tmux_error = Some("no output to copy".to_string());
+            self.show_flash("No output to copy", true);
             return;
         }
         let text = lines.join("\n");
@@ -4498,9 +4500,11 @@ impl GroveApp {
         match self.clipboard.write_text(&text) {
             Ok(()) => {
                 self.last_tmux_error = None;
+                self.show_flash(format!("Copied {} line(s)", lines.len()), false);
             }
             Err(error) => {
                 self.last_tmux_error = Some(format!("clipboard write failed: {error}"));
+                self.show_flash(format!("Copy failed: {error}"), true);
             }
         }
         self.clear_preview_selection();
@@ -4917,20 +4921,34 @@ impl GroveApp {
             self.selected_status_hint()
         );
 
-        let header = StatusLine::new()
+        let base_header = StatusLine::new()
             .separator("  ")
             .style(Style::new().bg(theme.crust).fg(theme.text))
             .left(StatusItem::text("Grove"))
             .left(StatusItem::text(self.repo_name.as_str()))
             .center(StatusItem::text(mode_chip.as_str()))
-            .center(StatusItem::text(focus_chip.as_str()))
-            .right(StatusItem::text(activity_chip.as_str()))
-            .right(StatusItem::text(
-                self.activity_spinner_slot(selected_status, true),
-            ));
+            .center(StatusItem::text(focus_chip.as_str()));
 
-        header.render(area, frame);
-        let _ = frame.register_hit_region(area, HitId::new(HIT_ID_HEADER));
+        if let Some(flash) = &self.flash {
+            let flash_chip = if flash.is_error {
+                format!("error: {}", flash.text)
+            } else {
+                flash.text.clone()
+            };
+            let header = base_header.right(StatusItem::text(flash_chip.as_str()));
+            header.render(area, frame);
+            let _ = frame.register_hit_region(area, HitId::new(HIT_ID_HEADER));
+            return;
+        } else {
+            let header = base_header
+                .right(StatusItem::text(activity_chip.as_str()))
+                .right(StatusItem::text(
+                    self.activity_spinner_slot(selected_status, true),
+                ));
+            header.render(area, frame);
+            let _ = frame.register_hit_region(area, HitId::new(HIT_ID_HEADER));
+            return;
+        }
     }
 
     fn render_sidebar(&self, frame: &mut Frame, area: Rect) {
@@ -6510,6 +6528,32 @@ mod tests {
             assert!(!status_text.contains("Agent started"));
             assert!(status_text.contains("j/k move, Enter open"));
         });
+    }
+
+    #[test]
+    fn header_row_renders_flash_message() {
+        let mut app = fixture_app();
+        app.show_flash("Copied 2 line(s)", false);
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let header_text = row_text(frame, 0, 0, frame.width());
+            assert!(header_text.contains("Copied 2 line(s)"));
+        });
+    }
+
+    #[test]
+    fn interactive_copy_sets_success_flash_message() {
+        let mut app = fixture_app();
+        app.preview.lines = vec!["alpha".to_string()];
+        app.preview.render_lines = app.preview.lines.clone();
+
+        app.copy_interactive_selection_or_visible();
+
+        let Some(flash) = app.flash.as_ref() else {
+            panic!("copy should set flash message");
+        };
+        assert!(!flash.is_error);
+        assert_eq!(flash.text, "Copied 1 line(s)");
     }
 
     #[test]
