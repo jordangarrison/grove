@@ -4,6 +4,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
 pub const TMUX_SESSION_PREFIX: &str = "grove-ws-";
@@ -127,10 +128,25 @@ pub fn session_name_for_workspace(workspace_name: &str) -> String {
     )
 }
 
-pub fn build_launch_plan(request: &LaunchRequest) -> LaunchPlan {
+pub fn build_launch_plan(request: &LaunchRequest, multiplexer: MultiplexerKind) -> LaunchPlan {
     let session_name = session_name_for_workspace(&request.workspace_name);
-    let session_target = session_name.clone();
+    let agent_cmd = build_agent_command(request.agent, request.skip_permissions);
+    let pre_launch_command = normalized_pre_launch_command(request.pre_launch_command.as_deref());
+    let launch_agent_cmd =
+        launch_command_with_pre_launch(&agent_cmd, pre_launch_command.as_deref());
 
+    match multiplexer {
+        MultiplexerKind::Tmux => tmux_launch_plan(request, session_name, launch_agent_cmd),
+        MultiplexerKind::Zellij => zellij_launch_plan(request, session_name, launch_agent_cmd),
+    }
+}
+
+fn tmux_launch_plan(
+    request: &LaunchRequest,
+    session_name: String,
+    launch_agent_cmd: String,
+) -> LaunchPlan {
+    let session_target = session_name.clone();
     let pre_launch_cmds = vec![
         vec![
             "tmux".to_string(),
@@ -150,7 +166,6 @@ pub fn build_launch_plan(request: &LaunchRequest) -> LaunchPlan {
             "10000".to_string(),
         ],
     ];
-
     let pane_lookup_cmd = vec![
         "tmux".to_string(),
         "list-panes".to_string(),
@@ -159,11 +174,6 @@ pub fn build_launch_plan(request: &LaunchRequest) -> LaunchPlan {
         "-F".to_string(),
         "#{pane_id}".to_string(),
     ];
-
-    let agent_cmd = build_agent_command(request.agent, request.skip_permissions);
-    let pre_launch_command = normalized_pre_launch_command(request.pre_launch_command.as_deref());
-    let launch_agent_cmd =
-        launch_command_with_pre_launch(&agent_cmd, pre_launch_command.as_deref());
 
     match &request.prompt {
         None => LaunchPlan {
@@ -205,22 +215,122 @@ pub fn build_launch_plan(request: &LaunchRequest) -> LaunchPlan {
     }
 }
 
-pub fn stop_plan(session_name: &str) -> Vec<Vec<String>> {
-    vec![
+fn zellij_launch_plan(
+    request: &LaunchRequest,
+    session_name: String,
+    launch_agent_cmd: String,
+) -> LaunchPlan {
+    let pre_launch_cmds = vec![
         vec![
-            "tmux".to_string(),
-            "send-keys".to_string(),
-            "-t".to_string(),
-            session_name.to_string(),
-            "C-c".to_string(),
+            "sh".to_string(),
+            "-lc".to_string(),
+            format!(
+                "if ! zellij list-sessions --short --no-formatting | grep -Fxq {session}; then zellij attach {session} --create --create-background; fi",
+                session = shell_single_quote(&session_name),
+            ),
         ],
         vec![
-            "tmux".to_string(),
-            "kill-session".to_string(),
-            "-t".to_string(),
-            session_name.to_string(),
+            "sh".to_string(),
+            "-lc".to_string(),
+            format!(
+                "nohup script -q /dev/null -c \"zellij attach {}\" >/dev/null 2>&1 &",
+                session_name
+            ),
         ],
-    ]
+    ];
+
+    match &request.prompt {
+        None => LaunchPlan {
+            session_name: session_name.clone(),
+            pane_lookup_cmd: Vec::new(),
+            pre_launch_cmds,
+            launch_cmd: vec![
+                "zellij".to_string(),
+                "--session".to_string(),
+                session_name,
+                "run".to_string(),
+                "--in-place".to_string(),
+                "--cwd".to_string(),
+                request.workspace_path.to_string_lossy().to_string(),
+                "--".to_string(),
+                "bash".to_string(),
+                "-lc".to_string(),
+                launch_agent_cmd,
+            ],
+            launcher_script: None,
+        },
+        Some(prompt) => {
+            let launcher_path = request.workspace_path.join(".grove-start.sh");
+            let launcher_contents =
+                build_launcher_script(&launch_agent_cmd, prompt, &launcher_path);
+            let launcher_exec = format!(
+                "bash {}",
+                shell_single_quote(&launcher_path.to_string_lossy())
+            );
+            LaunchPlan {
+                session_name: session_name.clone(),
+                pane_lookup_cmd: Vec::new(),
+                pre_launch_cmds,
+                launch_cmd: vec![
+                    "zellij".to_string(),
+                    "--session".to_string(),
+                    session_name,
+                    "run".to_string(),
+                    "--in-place".to_string(),
+                    "--cwd".to_string(),
+                    request.workspace_path.to_string_lossy().to_string(),
+                    "--".to_string(),
+                    "bash".to_string(),
+                    "-lc".to_string(),
+                    launcher_exec,
+                ],
+                launcher_script: Some(LauncherScript {
+                    path: launcher_path,
+                    contents: launcher_contents,
+                }),
+            }
+        }
+    }
+}
+
+fn shell_single_quote(value: &str) -> String {
+    let escaped = value.replace('\'', "'\"'\"'");
+    format!("'{escaped}'")
+}
+
+pub fn stop_plan(session_name: &str, multiplexer: MultiplexerKind) -> Vec<Vec<String>> {
+    match multiplexer {
+        MultiplexerKind::Tmux => vec![
+            vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                session_name.to_string(),
+                "C-c".to_string(),
+            ],
+            vec![
+                "tmux".to_string(),
+                "kill-session".to_string(),
+                "-t".to_string(),
+                session_name.to_string(),
+            ],
+        ],
+        MultiplexerKind::Zellij => vec![
+            vec![
+                "zellij".to_string(),
+                "--session".to_string(),
+                session_name.to_string(),
+                "action".to_string(),
+                "write".to_string(),
+                "3".to_string(),
+            ],
+            vec![
+                "zellij".to_string(),
+                "kill-session".to_string(),
+                session_name.to_string(),
+            ],
+        ],
+    }
 }
 
 pub(crate) fn build_agent_command(agent: AgentType, skip_permissions: bool) -> String {
@@ -335,11 +445,7 @@ pub(crate) fn detect_status(
     let tail_lower = tail_text.to_ascii_lowercase();
 
     if has_unclosed_tag(&tail_lower, "<thinking>", "</thinking>")
-        || has_unclosed_tag(
-            &tail_lower,
-            "<internal_monologue>",
-            "</internal_monologue>",
-        )
+        || has_unclosed_tag(&tail_lower, "<internal_monologue>", "</internal_monologue>")
         || tail_lower.contains("thinking...")
         || tail_lower.contains("reasoning about")
     {
@@ -713,6 +819,7 @@ mod tests {
         normalized_agent_command_override, poll_interval, reconcile_with_sessions,
         sanitize_workspace_name, session_name_for_workspace, stop_plan, strip_mouse_fragments,
     };
+    use crate::config::MultiplexerKind;
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
     fn fixture_workspace(name: &str, is_main: bool) -> Workspace {
@@ -783,7 +890,7 @@ mod tests {
             skip_permissions: true,
         };
 
-        let plan = build_launch_plan(&request);
+        let plan = build_launch_plan(&request, MultiplexerKind::Tmux);
 
         assert_eq!(plan.session_name, "grove-ws-auth-flow");
         assert!(plan.launcher_script.is_none());
@@ -811,7 +918,7 @@ mod tests {
             skip_permissions: false,
         };
 
-        let plan = build_launch_plan(&request);
+        let plan = build_launch_plan(&request, MultiplexerKind::Tmux);
 
         let script = plan.launcher_script.expect("script should be present");
         assert!(script.contents.contains("codex"));
@@ -832,7 +939,7 @@ mod tests {
 
     #[test]
     fn stop_plan_uses_ctrl_c_then_kill_session() {
-        let plan = stop_plan("grove-ws-auth-flow");
+        let plan = stop_plan("grove-ws-auth-flow", MultiplexerKind::Tmux);
         assert_eq!(plan.len(), 2);
         assert_eq!(
             plan[0],
@@ -841,6 +948,67 @@ mod tests {
         assert_eq!(
             plan[1],
             vec!["tmux", "kill-session", "-t", "grove-ws-auth-flow"]
+        );
+    }
+
+    #[test]
+    fn zellij_launch_plan_creates_background_session_and_runs_agent() {
+        let request = LaunchRequest {
+            workspace_name: "auth-flow".to_string(),
+            workspace_path: PathBuf::from("/repos/grove-auth-flow"),
+            agent: AgentType::Codex,
+            prompt: None,
+            pre_launch_command: None,
+            skip_permissions: false,
+        };
+
+        let plan = build_launch_plan(&request, MultiplexerKind::Zellij);
+
+        assert_eq!(plan.session_name, "grove-ws-auth-flow");
+        assert_eq!(
+            plan.pre_launch_cmds[0],
+            vec![
+                "sh",
+                "-lc",
+                "if ! zellij list-sessions --short --no-formatting | grep -Fxq 'grove-ws-auth-flow'; then zellij attach 'grove-ws-auth-flow' --create --create-background; fi",
+            ]
+        );
+        assert_eq!(
+            plan.launch_cmd,
+            vec![
+                "zellij",
+                "--session",
+                "grove-ws-auth-flow",
+                "run",
+                "--in-place",
+                "--cwd",
+                "/repos/grove-auth-flow",
+                "--",
+                "bash",
+                "-lc",
+                "codex",
+            ]
+        );
+    }
+
+    #[test]
+    fn zellij_stop_plan_uses_ctrl_c_then_kill_session() {
+        let plan = stop_plan("grove-ws-auth-flow", MultiplexerKind::Zellij);
+        assert_eq!(plan.len(), 2);
+        assert_eq!(
+            plan[0],
+            vec![
+                "zellij",
+                "--session",
+                "grove-ws-auth-flow",
+                "action",
+                "write",
+                "3",
+            ]
+        );
+        assert_eq!(
+            plan[1],
+            vec!["zellij", "kill-session", "grove-ws-auth-flow"]
         );
     }
 
@@ -855,7 +1023,7 @@ mod tests {
             skip_permissions: true,
         };
 
-        let plan = build_launch_plan(&request);
+        let plan = build_launch_plan(&request, MultiplexerKind::Tmux);
         assert_eq!(
             plan.launch_cmd,
             vec![

@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::agent_runtime::{TMUX_SESSION_PREFIX, reconcile_with_sessions};
+use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::workspace_lifecycle::{WorkspaceMarkerError, read_workspace_markers};
 
@@ -11,7 +12,7 @@ pub trait GitAdapter {
     fn list_workspaces(&self) -> Result<Vec<Workspace>, GitAdapterError>;
 }
 
-pub trait TmuxAdapter {
+pub trait MultiplexerAdapter {
     fn running_sessions(&self) -> HashSet<String>;
 }
 
@@ -53,7 +54,7 @@ pub(crate) struct BootstrapData {
 
 pub(crate) fn bootstrap_data(
     git: &impl GitAdapter,
-    tmux: &impl TmuxAdapter,
+    multiplexer: &impl MultiplexerAdapter,
     system: &impl SystemAdapter,
 ) -> BootstrapData {
     let repo_name = system.repo_name();
@@ -66,7 +67,7 @@ pub(crate) fn bootstrap_data(
             orphaned_sessions: Vec::new(),
         },
         Ok(workspaces) => {
-            let running_sessions = tmux.running_sessions();
+            let running_sessions = multiplexer.running_sessions();
             let reconciled =
                 reconcile_with_sessions(&workspaces, &running_sessions, &HashSet::new());
 
@@ -141,13 +142,20 @@ impl GitAdapter for CommandGitAdapter {
     }
 }
 
-pub struct CommandTmuxAdapter;
+pub struct CommandMultiplexerAdapter {
+    pub multiplexer: MultiplexerKind,
+}
 
-impl TmuxAdapter for CommandTmuxAdapter {
+impl MultiplexerAdapter for CommandMultiplexerAdapter {
     fn running_sessions(&self) -> HashSet<String> {
-        let output = Command::new("tmux")
-            .args(["list-sessions", "-F", "#{session_name}"])
-            .output();
+        let output = match self.multiplexer {
+            MultiplexerKind::Tmux => Command::new("tmux")
+                .args(["list-sessions", "-F", "#{session_name}"])
+                .output(),
+            MultiplexerKind::Zellij => Command::new("zellij")
+                .args(["list-sessions", "--short", "--no-formatting"])
+                .output(),
+        };
 
         match output {
             Ok(output) if output.status.success() => {
@@ -454,9 +462,9 @@ mod tests {
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use super::{
-        BootstrapData, DiscoveryState, GitAdapter, GitAdapterError, SystemAdapter, TmuxAdapter,
-        bootstrap_data, build_workspaces, parse_branch_activity, parse_worktree_porcelain,
-        workspace_name_from_path,
+        BootstrapData, DiscoveryState, GitAdapter, GitAdapterError, MultiplexerAdapter,
+        SystemAdapter, bootstrap_data, build_workspaces, parse_branch_activity,
+        parse_worktree_porcelain, workspace_name_from_path,
     };
 
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -487,11 +495,11 @@ mod tests {
         }
     }
 
-    struct FakeTmuxAdapter {
+    struct FakeMultiplexerAdapter {
         running: HashSet<String>,
     }
 
-    impl TmuxAdapter for FakeTmuxAdapter {
+    impl MultiplexerAdapter for FakeMultiplexerAdapter {
         fn running_sessions(&self) -> HashSet<String> {
             self.running.clone()
         }
@@ -646,7 +654,7 @@ mod tests {
     fn bootstrap_data_reports_ready_for_successful_discovery() {
         let data: BootstrapData = bootstrap_data(
             &FakeGitSuccess,
-            &FakeTmuxAdapter {
+            &FakeMultiplexerAdapter {
                 running: HashSet::from(["grove-ws-feature-a".to_string()]),
             },
             &FakeSystemAdapter,
@@ -662,7 +670,7 @@ mod tests {
     fn bootstrap_data_reports_empty_state() {
         let data = bootstrap_data(
             &FakeGitEmpty,
-            &FakeTmuxAdapter {
+            &FakeMultiplexerAdapter {
                 running: HashSet::new(),
             },
             &FakeSystemAdapter,
@@ -674,7 +682,7 @@ mod tests {
     fn bootstrap_data_reports_error_state() {
         let data = bootstrap_data(
             &FakeGitError,
-            &FakeTmuxAdapter {
+            &FakeMultiplexerAdapter {
                 running: HashSet::new(),
             },
             &FakeSystemAdapter,

@@ -1,5 +1,6 @@
 pub mod adapters;
 pub mod agent_runtime;
+pub mod config;
 pub mod domain;
 pub mod event_log;
 pub mod hardening;

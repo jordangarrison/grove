@@ -1,10 +1,11 @@
 use std::cell::RefCell;
-use std::collections::{VecDeque, hash_map::DefaultHasher};
+use std::collections::{HashMap, VecDeque, hash_map::DefaultHasher};
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use arboard::Clipboard;
@@ -35,20 +36,21 @@ use ftui::{App, Cmd, Model, PackedRgba, ScreenMode, Style};
 use serde_json::Value;
 
 use crate::adapters::{
-    BootstrapData, CommandGitAdapter, CommandSystemAdapter, CommandTmuxAdapter, DiscoveryState,
-    bootstrap_data,
+    BootstrapData, CommandGitAdapter, CommandMultiplexerAdapter, CommandSystemAdapter,
+    DiscoveryState, bootstrap_data,
 };
 use crate::agent_runtime::{
     LaunchRequest, SessionActivity, build_launch_plan, detect_status, poll_interval,
     session_name_for_workspace, stop_plan,
 };
+use crate::config::{GroveConfig, MultiplexerKind};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::event_log::{Event as LogEvent, EventLogger, FileEventLogger, NullEventLogger};
 #[cfg(test)]
 use crate::interactive::render_cursor_overlay;
 use crate::interactive::{
     InteractiveAction, InteractiveKey, InteractiveState, encode_paste_payload,
-    render_cursor_overlay_ansi, tmux_send_keys_command,
+    multiplexer_send_input_command, render_cursor_overlay_ansi,
 };
 use crate::mouse::{
     clamp_sidebar_ratio, parse_sidebar_ratio, ratio_from_drag, serialize_sidebar_ratio,
@@ -79,6 +81,7 @@ const HIT_ID_CREATE_DIALOG: u32 = 7;
 const HIT_ID_LAUNCH_DIALOG: u32 = 8;
 const HIT_ID_DELETE_DIALOG: u32 = 9;
 const HIT_ID_KEYBIND_HELP_DIALOG: u32 = 10;
+const HIT_ID_SETTINGS_DIALOG: u32 = 11;
 const MAX_PENDING_INPUT_TRACES: usize = 256;
 const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 const FAST_ANIMATION_INTERVAL_MS: u64 = 100;
@@ -433,6 +436,7 @@ impl LaunchDialogField {
         }
     }
 
+    #[cfg(test)]
     fn label(self) -> &'static str {
         match self {
             Self::Prompt => "prompt",
@@ -450,6 +454,37 @@ struct CreateDialogState {
     agent: AgentType,
     base_branch: String,
     focused_field: CreateDialogField,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SettingsDialogState {
+    multiplexer: MultiplexerKind,
+    focused_field: SettingsDialogField,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SettingsDialogField {
+    Multiplexer,
+    SaveButton,
+    CancelButton,
+}
+
+impl SettingsDialogField {
+    fn next(self) -> Self {
+        match self {
+            Self::Multiplexer => Self::SaveButton,
+            Self::SaveButton => Self::CancelButton,
+            Self::CancelButton => Self::Multiplexer,
+        }
+    }
+
+    fn previous(self) -> Self {
+        match self {
+            Self::Multiplexer => Self::CancelButton,
+            Self::SaveButton => Self::Multiplexer,
+            Self::CancelButton => Self::SaveButton,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -891,7 +926,125 @@ impl TmuxInput for CommandTmuxInput {
     }
 
     fn supports_background_send(&self) -> bool {
-        true
+        false
+    }
+}
+
+#[derive(Default)]
+struct CommandZellijInput {
+    pane_sizes: Mutex<HashMap<String, (u16, u16)>>,
+}
+
+impl TmuxInput for CommandZellijInput {
+    fn execute(&self, command: &[String]) -> std::io::Result<()> {
+        CommandTmuxInput::execute_command(command)
+    }
+
+    fn capture_output(
+        &self,
+        target_session: &str,
+        scrollback_lines: usize,
+        _include_escape_sequences: bool,
+    ) -> std::io::Result<String> {
+        self.capture_session_output(target_session, scrollback_lines)
+    }
+
+    fn capture_cursor_metadata(&self, target_session: &str) -> std::io::Result<String> {
+        let (pane_width, pane_height) = self
+            .pane_sizes
+            .lock()
+            .ok()
+            .and_then(|sizes| sizes.get(target_session).copied())
+            .unwrap_or((120, 40));
+        Ok(format!("0 0 0 {pane_width} {pane_height}"))
+    }
+
+    fn resize_session(
+        &self,
+        target_session: &str,
+        target_width: u16,
+        target_height: u16,
+    ) -> std::io::Result<()> {
+        let mut sizes = self
+            .pane_sizes
+            .lock()
+            .map_err(|_| std::io::Error::other("zellij pane size lock poisoned"))?;
+        sizes.insert(target_session.to_string(), (target_width, target_height));
+        Ok(())
+    }
+
+    fn paste_buffer(&self, target_session: &str, text: &str) -> std::io::Result<()> {
+        let output = Command::new("zellij")
+            .args(["--session", target_session, "action", "write-chars", text])
+            .output()?;
+        if output.status.success() {
+            return Ok(());
+        }
+
+        Err(std::io::Error::other(format!(
+            "zellij paste failed: {}",
+            CommandTmuxInput::stderr_or_status(&output),
+        )))
+    }
+
+    fn supports_background_send(&self) -> bool {
+        false
+    }
+}
+
+impl CommandZellijInput {
+    fn capture_path(target_session: &str) -> PathBuf {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or(Duration::ZERO);
+        let millis = now.as_millis();
+        let pid = std::process::id();
+        std::env::temp_dir().join(format!(
+            "grove-zellij-capture-{target_session}-{pid}-{millis}.txt"
+        ))
+    }
+
+    fn capture_session_output(
+        &self,
+        target_session: &str,
+        scrollback_lines: usize,
+    ) -> std::io::Result<String> {
+        let path = Self::capture_path(target_session);
+        let output = Command::new("zellij")
+            .args([
+                "--session",
+                target_session,
+                "action",
+                "dump-screen",
+                "--full",
+                path.to_string_lossy().as_ref(),
+            ])
+            .output()?;
+
+        if !output.status.success() {
+            let message = CommandTmuxInput::stderr_or_status(&output);
+            return Err(std::io::Error::other(format!(
+                "zellij dump-screen failed for '{target_session}': {message}"
+            )));
+        }
+
+        let raw = fs::read_to_string(&path).map_err(|error| {
+            std::io::Error::other(format!(
+                "zellij capture read failed for '{target_session}': {error}"
+            ))
+        })?;
+        let _ = fs::remove_file(path);
+
+        if scrollback_lines == 0 {
+            return Ok(String::new());
+        }
+
+        let mut lines: Vec<&str> = raw.lines().collect();
+        if lines.len() > scrollback_lines {
+            let keep_from = lines.len().saturating_sub(scrollback_lines);
+            lines = lines.split_off(keep_from);
+        }
+        Ok(lines.join("\n"))
     }
 }
 
@@ -919,7 +1072,7 @@ impl CommandTmuxInput {
         }
 
         Err(std::io::Error::other(format!(
-            "tmux command failed: {}; {}",
+            "command failed: {}; {}",
             command.join(" "),
             Self::stderr_or_status(&output),
         )))
@@ -1381,6 +1534,24 @@ fn load_sidebar_ratio(path: &Path) -> u16 {
     parse_sidebar_ratio(&raw).unwrap_or(DEFAULT_SIDEBAR_WIDTH_PCT)
 }
 
+fn default_config_path() -> PathBuf {
+    crate::config::config_path().unwrap_or_else(|| PathBuf::from(".config/grove/config.toml"))
+}
+
+fn load_runtime_config() -> (GroveConfig, PathBuf, Option<String>) {
+    match crate::config::load() {
+        Ok(loaded) => (loaded.config, loaded.path, None),
+        Err(error) => (GroveConfig::default(), default_config_path(), Some(error)),
+    }
+}
+
+fn input_for_multiplexer(multiplexer: MultiplexerKind) -> Box<dyn TmuxInput> {
+    match multiplexer {
+        MultiplexerKind::Tmux => Box::new(CommandTmuxInput),
+        MultiplexerKind::Zellij => Box::new(CommandZellijInput::default()),
+    }
+}
+
 fn read_workspace_launch_prompt(workspace_path: &Path) -> Option<String> {
     let raw = fs::read_to_string(workspace_path.join(WORKSPACE_LAUNCH_PROMPT_FILENAME)).ok()?;
     let trimmed = raw.trim();
@@ -1448,11 +1619,14 @@ struct GroveApp {
     launch_dialog: Option<LaunchDialogState>,
     delete_dialog: Option<DeleteDialogState>,
     create_dialog: Option<CreateDialogState>,
+    settings_dialog: Option<SettingsDialogState>,
     keybind_help_open: bool,
     create_branch_all: Vec<String>,
     create_branch_filtered: Vec<String>,
     create_branch_index: usize,
+    multiplexer: MultiplexerKind,
     tmux_input: Box<dyn TmuxInput>,
+    config_path: PathBuf,
     clipboard: Box<dyn ClipboardAccess>,
     last_tmux_error: Option<String>,
     output_changing: bool,
@@ -1492,30 +1666,38 @@ struct GroveApp {
 
 impl GroveApp {
     fn new_with_event_logger(event_log: Box<dyn EventLogger>) -> Self {
+        let (config, config_path, _config_error) = load_runtime_config();
+        let multiplexer = config.multiplexer;
         let bootstrap = bootstrap_data(
             &CommandGitAdapter,
-            &CommandTmuxAdapter,
+            &CommandMultiplexerAdapter { multiplexer },
             &CommandSystemAdapter,
         );
         Self::from_parts(
             bootstrap,
-            Box::new(CommandTmuxInput),
+            input_for_multiplexer(multiplexer),
             default_sidebar_ratio_path(),
+            config_path,
+            multiplexer,
             event_log,
             None,
         )
     }
 
     fn new_with_debug_recorder(event_log: Box<dyn EventLogger>, app_start_ts: u64) -> Self {
+        let (config, config_path, _config_error) = load_runtime_config();
+        let multiplexer = config.multiplexer;
         let bootstrap = bootstrap_data(
             &CommandGitAdapter,
-            &CommandTmuxAdapter,
+            &CommandMultiplexerAdapter { multiplexer },
             &CommandSystemAdapter,
         );
         Self::from_parts(
             bootstrap,
-            Box::new(CommandTmuxInput),
+            input_for_multiplexer(multiplexer),
             default_sidebar_ratio_path(),
+            config_path,
+            multiplexer,
             event_log,
             Some(app_start_ts),
         )
@@ -1525,6 +1707,8 @@ impl GroveApp {
         bootstrap: BootstrapData,
         tmux_input: Box<dyn TmuxInput>,
         sidebar_ratio_path: PathBuf,
+        config_path: PathBuf,
+        multiplexer: MultiplexerKind,
         event_log: Box<dyn EventLogger>,
         debug_record_start_ts: Option<u64>,
     ) -> Self {
@@ -1533,6 +1717,8 @@ impl GroveApp {
             tmux_input,
             Box::new(SystemClipboardAccess::default()),
             sidebar_ratio_path,
+            config_path,
+            multiplexer,
             event_log,
             debug_record_start_ts,
         )
@@ -1543,6 +1729,8 @@ impl GroveApp {
         tmux_input: Box<dyn TmuxInput>,
         clipboard: Box<dyn ClipboardAccess>,
         sidebar_ratio_path: PathBuf,
+        config_path: PathBuf,
+        multiplexer: MultiplexerKind,
         event_log: Box<dyn EventLogger>,
         debug_record_start_ts: Option<u64>,
     ) -> Self {
@@ -1563,11 +1751,14 @@ impl GroveApp {
             launch_dialog: None,
             delete_dialog: None,
             create_dialog: None,
+            settings_dialog: None,
             keybind_help_open: false,
             create_branch_all: Vec::new(),
             create_branch_filtered: Vec::new(),
             create_branch_index: 0,
+            multiplexer,
             tmux_input,
+            config_path,
             clipboard,
             last_tmux_error: None,
             output_changing: false,
@@ -2262,14 +2453,17 @@ impl GroveApp {
         if self.delete_dialog.is_some() {
             return "Tab/S-Tab field, j/k move, Space toggle branch delete, Enter select/delete, D confirm, Esc cancel";
         }
+        if self.settings_dialog.is_some() {
+            return "Tab/S-Tab field, j/k or h/l change, Enter save/select, Esc cancel";
+        }
         if self.interactive.is_some() {
             return "Esc Esc / Ctrl+\\ exit, Alt+C copy, Alt+V paste";
         }
         if self.state.mode == UiMode::Preview {
-            return "j/k scroll, PgUp/PgDn, G bottom, h/l pane, Enter open, s start, x stop, D delete, ? help, q quit";
+            return "j/k scroll, PgUp/PgDn, G bottom, h/l pane, Enter open, s start, x stop, D delete, S settings, ? help, q quit";
         }
 
-        "j/k move, h/l pane, Enter open, n new, s start, x stop, D delete, ? help, q quit"
+        "j/k move, h/l pane, Enter open, n new, s start, x stop, D delete, S settings, ? help, q quit"
     }
 
     fn selected_workspace_summary(&self) -> String {
@@ -2335,6 +2529,7 @@ impl GroveApp {
         self.launch_dialog.is_some()
             || self.create_dialog.is_some()
             || self.delete_dialog.is_some()
+            || self.settings_dialog.is_some()
             || self.keybind_help_open
     }
 
@@ -2384,7 +2579,9 @@ impl GroveApp {
         self.state
             .workspaces
             .iter()
-            .filter(|workspace| !workspace.is_main && workspace.supported_agent)
+            .filter(|workspace| {
+                !workspace.is_main && workspace.supported_agent && workspace.status.has_session()
+            })
             .map(|workspace| WorkspaceStatusPollTarget {
                 workspace_name: workspace.name.clone(),
                 session_name: session_name_for_workspace(&workspace.name),
@@ -2401,6 +2598,8 @@ impl GroveApp {
             || lower.contains("no server running")
             || lower.contains("no sessions")
             || lower.contains("failed to connect to server")
+            || lower.contains("no active session")
+            || lower.contains("session not found")
     }
 
     fn apply_workspace_status_capture(&mut self, capture: WorkspaceStatusCapture) {
@@ -3149,6 +3348,9 @@ impl GroveApp {
                 } else if self.delete_dialog.is_some() {
                     self.log_dialog_event("delete", "dialog_cancelled");
                     self.delete_dialog = None;
+                } else if self.settings_dialog.is_some() {
+                    self.log_dialog_event("settings", "dialog_cancelled");
+                    self.settings_dialog = None;
                 } else if self.keybind_help_open {
                     self.keybind_help_open = false;
                 }
@@ -3265,6 +3467,114 @@ impl GroveApp {
                 self.keybind_help_open = false;
             }
             _ => {}
+        }
+    }
+
+    fn open_settings_dialog(&mut self) {
+        if self.modal_open() {
+            return;
+        }
+        self.settings_dialog = Some(SettingsDialogState {
+            multiplexer: self.multiplexer,
+            focused_field: SettingsDialogField::Multiplexer,
+        });
+    }
+
+    fn has_running_workspace_sessions(&self) -> bool {
+        self.state
+            .workspaces
+            .iter()
+            .any(|workspace| !workspace.is_main && workspace.status.has_session())
+    }
+
+    fn apply_settings_dialog_save(&mut self) {
+        let Some(dialog) = self.settings_dialog.as_ref() else {
+            return;
+        };
+
+        if dialog.multiplexer != self.multiplexer && self.has_running_workspace_sessions() {
+            self.show_flash("stop running workspaces before switching multiplexer", true);
+            return;
+        }
+
+        let selected = dialog.multiplexer;
+        self.multiplexer = selected;
+        self.tmux_input = input_for_multiplexer(selected);
+        let config = GroveConfig {
+            multiplexer: selected,
+        };
+        if let Err(error) = crate::config::save_to_path(&self.config_path, &config) {
+            self.show_flash(format!("settings save failed: {error}"), true);
+            return;
+        }
+
+        self.settings_dialog = None;
+        self.interactive = None;
+        self.refresh_workspaces(None);
+        self.poll_preview();
+        self.show_flash(format!("multiplexer set to {}", selected.label()), false);
+    }
+
+    fn handle_settings_dialog_key(&mut self, key_event: KeyEvent) {
+        let Some(dialog) = self.settings_dialog.as_mut() else {
+            return;
+        };
+
+        enum PostAction {
+            None,
+            Save,
+            Cancel,
+        }
+
+        let mut post_action = PostAction::None;
+        match key_event.code {
+            KeyCode::Escape => {
+                post_action = PostAction::Cancel;
+            }
+            KeyCode::Tab | KeyCode::Down | KeyCode::Char('j') => {
+                dialog.focused_field = dialog.focused_field.next();
+            }
+            KeyCode::BackTab | KeyCode::Up | KeyCode::Char('k') => {
+                dialog.focused_field = dialog.focused_field.previous();
+            }
+            KeyCode::Left | KeyCode::Char('h') => {
+                if dialog.focused_field == SettingsDialogField::Multiplexer {
+                    dialog.multiplexer = MultiplexerKind::Tmux;
+                }
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                if dialog.focused_field == SettingsDialogField::Multiplexer {
+                    dialog.multiplexer = MultiplexerKind::Zellij;
+                }
+            }
+            KeyCode::Char(' ') => {
+                if dialog.focused_field == SettingsDialogField::Multiplexer {
+                    dialog.multiplexer = match dialog.multiplexer {
+                        MultiplexerKind::Tmux => MultiplexerKind::Zellij,
+                        MultiplexerKind::Zellij => MultiplexerKind::Tmux,
+                    };
+                }
+            }
+            KeyCode::Enter => match dialog.focused_field {
+                SettingsDialogField::Multiplexer => {
+                    dialog.multiplexer = match dialog.multiplexer {
+                        MultiplexerKind::Tmux => MultiplexerKind::Zellij,
+                        MultiplexerKind::Zellij => MultiplexerKind::Tmux,
+                    };
+                }
+                SettingsDialogField::SaveButton => post_action = PostAction::Save,
+                SettingsDialogField::CancelButton => post_action = PostAction::Cancel,
+            },
+            _ => {}
+        }
+
+        match post_action {
+            PostAction::None => {}
+            PostAction::Save => self.apply_settings_dialog_save(),
+            PostAction::Cancel => {
+                self.log_dialog_event("settings", "dialog_cancelled");
+                self.settings_dialog = None;
+            }
         }
     }
 
@@ -3482,7 +3792,7 @@ impl GroveApp {
 
         let workspace_name = dialog.workspace_name.clone();
         if !self.tmux_input.supports_background_send() {
-            let (result, warnings) = Self::run_delete_workspace(dialog);
+            let (result, warnings) = Self::run_delete_workspace(dialog, self.multiplexer);
             self.apply_delete_workspace_completion(DeleteWorkspaceCompletion {
                 workspace_name,
                 result,
@@ -3491,9 +3801,10 @@ impl GroveApp {
             return;
         }
 
+        let multiplexer = self.multiplexer;
         self.delete_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let (result, warnings) = Self::run_delete_workspace(dialog);
+            let (result, warnings) = Self::run_delete_workspace(dialog, multiplexer);
             Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {
                 workspace_name,
                 result,
@@ -3545,15 +3856,26 @@ impl GroveApp {
         }
     }
 
-    fn run_delete_workspace(dialog: DeleteDialogState) -> (Result<(), String>, Vec<String>) {
+    fn run_delete_workspace(
+        dialog: DeleteDialogState,
+        multiplexer: MultiplexerKind,
+    ) -> (Result<(), String>, Vec<String>) {
         let mut warnings = Vec::new();
         let session_name = session_name_for_workspace(&dialog.workspace_name);
-        let _ = CommandTmuxInput::execute_command(&[
-            "tmux".to_string(),
-            "kill-session".to_string(),
-            "-t".to_string(),
-            session_name,
-        ]);
+        let stop_session_command = match multiplexer {
+            MultiplexerKind::Tmux => vec![
+                "tmux".to_string(),
+                "kill-session".to_string(),
+                "-t".to_string(),
+                session_name,
+            ],
+            MultiplexerKind::Zellij => vec![
+                "zellij".to_string(),
+                "kill-session".to_string(),
+                session_name,
+            ],
+        };
+        let _ = CommandTmuxInput::execute_command(&stop_session_command);
 
         let repo_root = match std::env::current_dir() {
             Ok(path) => path,
@@ -3790,11 +4112,12 @@ impl GroveApp {
             .selected_workspace()
             .map(|workspace| workspace.name.clone());
         let target_name = preferred_workspace_name.or(fallback_name);
+        let multiplexer = self.multiplexer;
         self.refresh_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
             let bootstrap = bootstrap_data(
                 &CommandGitAdapter,
-                &CommandTmuxAdapter,
+                &CommandMultiplexerAdapter { multiplexer },
                 &CommandSystemAdapter,
             );
             Msg::RefreshWorkspacesCompleted(RefreshWorkspacesCompletion {
@@ -3814,7 +4137,9 @@ impl GroveApp {
         let previous_focus = self.state.focus;
         let bootstrap = bootstrap_data(
             &CommandGitAdapter,
-            &CommandTmuxAdapter,
+            &CommandMultiplexerAdapter {
+                multiplexer: self.multiplexer,
+            },
             &CommandSystemAdapter,
         );
 
@@ -4180,7 +4505,7 @@ impl GroveApp {
             pre_launch_command,
             skip_permissions,
         };
-        let launch_plan = build_launch_plan(&request);
+        let launch_plan = build_launch_plan(&request, self.multiplexer);
         let workspace_name = request.workspace_name.clone();
         let session_name = session_name_for_workspace(&request.workspace_name);
 
@@ -4432,7 +4757,7 @@ impl GroveApp {
         };
         let workspace_name = workspace.name.clone();
         let session_name = session_name_for_workspace(&workspace_name);
-        let stop_commands = stop_plan(&session_name);
+        let stop_commands = stop_plan(&session_name, self.multiplexer);
 
         if !self.tmux_input.supports_background_send() {
             for command in &stop_commands {
@@ -4641,7 +4966,9 @@ impl GroveApp {
         target_session: &str,
         trace_context: Option<InputTraceContext>,
     ) -> Cmd<Msg> {
-        let Some(command) = tmux_send_keys_command(target_session, action) else {
+        let Some(command) =
+            multiplexer_send_input_command(self.multiplexer, target_session, action)
+        else {
             if let Some(trace_context) = trace_context {
                 self.log_input_event_with_fields(
                     "interactive_action_unmapped",
@@ -4986,6 +5313,7 @@ impl GroveApp {
             KeyCode::Char('n') | KeyCode::Char('N') => self.open_create_dialog(),
             KeyCode::Char('?') => self.open_keybind_help(),
             KeyCode::Char('D') => self.open_delete_dialog(),
+            KeyCode::Char('S') => self.open_settings_dialog(),
             KeyCode::Char('s') => self.open_start_dialog(),
             KeyCode::Char('x') => self.stop_selected_workspace_agent(),
             KeyCode::Char('h') => reduce(&mut self.state, Action::EnterListMode),
@@ -5097,9 +5425,7 @@ impl GroveApp {
                 HIT_ID_CREATE_DIALOG
                 | HIT_ID_LAUNCH_DIALOG
                 | HIT_ID_DELETE_DIALOG
-                | HIT_ID_KEYBIND_HELP_DIALOG => {
-                    HitRegion::Outside
-                }
+                | HIT_ID_KEYBIND_HELP_DIALOG => HitRegion::Outside,
                 _ => HitRegion::Outside,
             };
             let row_data = if id.id() == HIT_ID_WORKSPACE_ROW {
@@ -5879,6 +6205,10 @@ impl GroveApp {
 
         if self.delete_dialog.is_some() {
             self.handle_delete_dialog_key(key_event);
+            return (false, Cmd::None);
+        }
+        if self.settings_dialog.is_some() {
+            self.handle_settings_dialog_key(key_event);
             return (false, Cmd::None);
         }
         if self.keybind_help_open {
@@ -6685,6 +7015,70 @@ impl GroveApp {
             .render(area, frame);
     }
 
+    fn render_settings_dialog_overlay(&self, frame: &mut Frame, area: Rect) {
+        let Some(dialog) = self.settings_dialog.as_ref() else {
+            return;
+        };
+        if area.width < 40 || area.height < 12 {
+            return;
+        }
+
+        let dialog_width = area.width.saturating_sub(12).min(72);
+        let dialog_height = 12u16;
+        let theme = ui_theme();
+        let focused = |field| dialog.focused_field == field;
+        let current = dialog.multiplexer.label();
+        let body = FtText::from_lines(vec![
+            FtLine::raw("Global Settings"),
+            FtLine::raw(""),
+            FtLine::raw(format!(
+                "{} Multiplexer: [{}]",
+                if focused(SettingsDialogField::Multiplexer) {
+                    ">"
+                } else {
+                    " "
+                },
+                current
+            )),
+            FtLine::raw("  h/l, Left/Right, Space toggles"),
+            FtLine::raw(""),
+            FtLine::raw(format!(
+                "{} Save   {} Cancel",
+                if focused(SettingsDialogField::SaveButton) {
+                    "[*]"
+                } else {
+                    "[ ]"
+                },
+                if focused(SettingsDialogField::CancelButton) {
+                    "[*]"
+                } else {
+                    "[ ]"
+                }
+            )),
+            FtLine::raw(""),
+            FtLine::raw("Saved to ~/.config/grove/config.toml"),
+        ]);
+
+        let content = OverlayModalContent {
+            title: "Settings",
+            body,
+            theme,
+            border_color: theme.teal,
+        };
+
+        Modal::new(content)
+            .size(
+                ModalSizeConstraints::new()
+                    .min_width(dialog_width)
+                    .max_width(dialog_width)
+                    .min_height(dialog_height)
+                    .max_height(dialog_height),
+            )
+            .backdrop(BackdropConfig::new(theme.crust, 0.55))
+            .hit_id(HitId::new(HIT_ID_SETTINGS_DIALOG))
+            .render(area, frame);
+    }
+
     fn render_keybind_help_overlay(&self, frame: &mut Frame, area: Rect) {
         if !self.keybind_help_open {
             return;
@@ -6700,7 +7094,7 @@ impl GroveApp {
         let lines = vec![
             FtLine::raw("Global (list + preview):"),
             FtLine::raw("  ? help, q quit, Tab/h/l switch pane, Enter open/attach, Esc list pane"),
-            FtLine::raw("  n new, s start, x stop, D delete, ! unsafe toggle"),
+            FtLine::raw("  n new, s start, x stop, D delete, S settings, ! unsafe toggle"),
             FtLine::raw(""),
             FtLine::raw("List pane:"),
             FtLine::raw("  j/k or Up/Down move selection"),
@@ -6712,9 +7106,15 @@ impl GroveApp {
             FtLine::raw("  type sends input to agent"),
             FtLine::raw("  Esc Esc or Ctrl+\\ exit, Alt+C copy, Alt+V paste"),
             FtLine::raw(""),
-            FtLine::raw("Create dialog: Tab/S-Tab fields, j/k or C-n/C-p move, h/l buttons, Enter/Esc"),
-            FtLine::raw("Start dialog:  Tab/S-Tab fields, Space toggle unsafe, h/l buttons, Enter/Esc"),
-            FtLine::raw("Delete dialog: Tab/S-Tab fields, j/k move, Space toggle, Enter/D confirm, Esc"),
+            FtLine::raw(
+                "Create dialog: Tab/S-Tab fields, j/k or C-n/C-p move, h/l buttons, Enter/Esc",
+            ),
+            FtLine::raw(
+                "Start dialog:  Tab/S-Tab fields, Space toggle unsafe, h/l buttons, Enter/Esc",
+            ),
+            FtLine::raw(
+                "Delete dialog: Tab/S-Tab fields, j/k move, Space toggle, Enter/D confirm, Esc",
+            ),
             FtLine::raw(""),
             FtLine::from_spans(vec![FtSpan::styled(
                 "Close help: Esc, Enter, or ?",
@@ -6895,7 +7295,7 @@ impl GroveApp {
                 self.mode_label(),
                 self.focus_label()
             ),
-            "Workspaces (j/k, arrows, Tab/h/l focus, Enter preview, s/x start-stop, D delete, ? help, ! unsafe, Esc list, mouse)"
+            "Workspaces (j/k, arrows, Tab/h/l focus, Enter preview, s/x start-stop, D delete, S settings, ? help, ! unsafe, Esc list, mouse)"
                 .to_string(),
         ];
 
@@ -7195,6 +7595,7 @@ impl Model for GroveApp {
         self.render_create_dialog_overlay(frame, area);
         self.render_launch_dialog_overlay(frame, area);
         self.render_delete_dialog_overlay(frame, area);
+        self.render_settings_dialog_overlay(frame, area);
         self.render_keybind_help_overlay(frame, area);
         let draw_completed_at = Instant::now();
         self.last_hit_grid.replace(frame.hit_grid.clone());
@@ -7295,6 +7696,7 @@ mod tests {
         ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
+    use crate::config::MultiplexerKind;
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
     use crate::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
     use crate::interactive::InteractiveState;
@@ -7528,6 +7930,7 @@ mod tests {
 
     fn fixture_app() -> GroveApp {
         let sidebar_ratio_path = unique_sidebar_ratio_path("fixture");
+        let config_path = unique_config_path("fixture");
         GroveApp::from_parts_with_clipboard(
             fixture_bootstrap(WorkspaceStatus::Idle),
             Box::new(RecordingTmuxInput {
@@ -7538,6 +7941,8 @@ mod tests {
             }),
             test_clipboard(),
             sidebar_ratio_path,
+            config_path,
+            MultiplexerKind::Tmux,
             Box::new(NullEventLogger),
             None,
         )
@@ -7645,6 +8050,17 @@ mod tests {
         ))
     }
 
+    fn unique_config_path(label: &str) -> PathBuf {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "grove-config-{label}-{}-{timestamp}.toml",
+            std::process::id()
+        ))
+    }
+
     fn unique_temp_workspace_dir(label: &str) -> PathBuf {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -7691,6 +8107,8 @@ mod tests {
                 Box::new(tmux),
                 test_clipboard(),
                 sidebar_ratio_path,
+                unique_config_path("fixture-with-tmux"),
+                MultiplexerKind::Tmux,
                 Box::new(NullEventLogger),
                 None,
             ),
@@ -7723,6 +8141,8 @@ mod tests {
                 Box::new(tmux),
                 test_clipboard(),
                 sidebar_ratio_path,
+                unique_config_path("fixture-with-calls"),
+                MultiplexerKind::Tmux,
                 Box::new(NullEventLogger),
                 None,
             ),
@@ -7759,6 +8179,8 @@ mod tests {
                 Box::new(tmux),
                 test_clipboard(),
                 sidebar_ratio_path,
+                unique_config_path("fixture-with-events"),
+                MultiplexerKind::Tmux,
                 Box::new(event_log),
                 None,
             ),
@@ -7775,6 +8197,8 @@ mod tests {
             Box::new(BackgroundOnlyTmuxInput),
             test_clipboard(),
             unique_sidebar_ratio_path("background"),
+            unique_config_path("background"),
+            MultiplexerKind::Tmux,
             Box::new(NullEventLogger),
             None,
         )
@@ -8276,6 +8700,55 @@ mod tests {
     }
 
     #[test]
+    fn uppercase_s_opens_settings_dialog() {
+        let mut app = fixture_app();
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
+
+        assert!(app.settings_dialog.is_some());
+    }
+
+    #[test]
+    fn settings_dialog_save_switches_multiplexer_and_persists_config() {
+        let mut app = fixture_app();
+        assert_eq!(app.multiplexer, MultiplexerKind::Tmux);
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
+        assert!(app.settings_dialog.is_some());
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press));
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press));
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
+
+        assert!(app.settings_dialog.is_none());
+        assert_eq!(app.multiplexer, MultiplexerKind::Zellij);
+        let loaded = crate::config::load_from_path(&app.config_path).expect("config should load");
+        assert_eq!(loaded.multiplexer, MultiplexerKind::Zellij);
+    }
+
+    #[test]
+    fn settings_dialog_blocks_switch_when_workspace_running() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        assert_eq!(app.multiplexer, MultiplexerKind::Tmux);
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
+        assert!(app.settings_dialog.is_some());
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press));
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press));
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
+
+        assert!(app.settings_dialog.is_some());
+        assert_eq!(app.multiplexer, MultiplexerKind::Tmux);
+        assert!(
+            app.flash
+                .as_ref()
+                .is_some_and(|flash| flash.text.contains("stop running workspaces"))
+        );
+    }
+
+    #[test]
     fn status_row_shows_help_close_hint_when_help_modal_open() {
         let mut app = fixture_app();
         app.keybind_help_open = true;
@@ -8539,6 +9012,8 @@ mod tests {
             fixture_bootstrap(WorkspaceStatus::Active),
             Box::new(BackgroundOnlyTmuxInput),
             sidebar_ratio_path,
+            unique_config_path("background-poll"),
+            MultiplexerKind::Tmux,
             Box::new(NullEventLogger),
             None,
         );
@@ -8556,6 +9031,8 @@ mod tests {
             fixture_bootstrap(WorkspaceStatus::Idle),
             Box::new(BackgroundOnlyTmuxInput),
             sidebar_ratio_path,
+            unique_config_path("background-status-only"),
+            MultiplexerKind::Tmux,
             Box::new(NullEventLogger),
             None,
         );
@@ -11771,6 +12248,8 @@ mod tests {
                 calls: Rc::new(RefCell::new(Vec::new())),
             }),
             sidebar_ratio_path,
+            unique_config_path("error-state"),
+            MultiplexerKind::Tmux,
             Box::new(NullEventLogger),
             None,
         );
@@ -11853,6 +12332,8 @@ mod tests {
                 calls: Rc::new(RefCell::new(Vec::new())),
             }),
             sidebar_ratio_path,
+            unique_config_path("frame-log"),
+            MultiplexerKind::Tmux,
             Box::new(event_log),
             Some(1_771_023_000_000),
         );
@@ -11899,6 +12380,8 @@ mod tests {
                 calls: Rc::new(RefCell::new(Vec::new())),
             }),
             sidebar_ratio_path,
+            unique_config_path("frame-lines"),
+            MultiplexerKind::Tmux,
             Box::new(event_log),
             Some(1_771_023_000_123),
         );
@@ -11965,6 +12448,8 @@ mod tests {
                 calls: Rc::new(RefCell::new(Vec::new())),
             }),
             sidebar_ratio_path,
+            unique_config_path("frame-cursor-snapshot"),
+            MultiplexerKind::Tmux,
             Box::new(event_log),
             Some(1_771_023_000_124),
         );
