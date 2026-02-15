@@ -29,11 +29,4 @@ pub fn run_tui_with_debug_record(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::hello_message;
-
-    #[test]
-    fn hello_message_includes_app_name() {
-        assert_eq!(hello_message("grove"), "Hello from grove.");
-    }
-}
+mod lib_tests;
