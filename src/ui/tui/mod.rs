@@ -574,22 +574,6 @@ impl GroveApp {
         app.refresh_preview_summary();
         app
     }
-
-    fn selected_workspace_name(&self) -> Option<String> {
-        self.state
-            .selected_workspace()
-            .map(|workspace| workspace.name.clone())
-    }
-
-    fn selected_workspace_path(&self) -> Option<PathBuf> {
-        self.state
-            .selected_workspace()
-            .map(|workspace| workspace.path.clone())
-    }
-
-    fn workspace_session_name(workspace: &Workspace) -> String {
-        session_name_for_workspace_in_project(workspace.project_name.as_deref(), &workspace.name)
-    }
 }
 
 impl Model for GroveApp {

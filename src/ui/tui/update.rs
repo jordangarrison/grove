@@ -1,6 +1,22 @@
 use super::*;
 
 impl GroveApp {
+    pub(super) fn selected_workspace_name(&self) -> Option<String> {
+        self.state
+            .selected_workspace()
+            .map(|workspace| workspace.name.clone())
+    }
+
+    pub(super) fn selected_workspace_path(&self) -> Option<PathBuf> {
+        self.state
+            .selected_workspace()
+            .map(|workspace| workspace.path.clone())
+    }
+
+    pub(super) fn workspace_session_name(workspace: &Workspace) -> String {
+        session_name_for_workspace_in_project(workspace.project_name.as_deref(), &workspace.name)
+    }
+
     pub(super) fn queue_cmd(&mut self, cmd: Cmd<Msg>) {
         if matches!(cmd, Cmd::None) {
             return;
