@@ -14,7 +14,7 @@ impl GroveApp {
     }
 
     pub(super) fn workspace_session_name(workspace: &Workspace) -> String {
-        session_name_for_workspace_in_project(workspace.project_name.as_deref(), &workspace.name)
+        session_name_for_workspace_ref(workspace)
     }
 
     pub(super) fn queue_cmd(&mut self, cmd: Cmd<Msg>) {

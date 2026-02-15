@@ -144,11 +144,12 @@ pub fn session_name_for_workspace(workspace_name: &str) -> String {
     session_name_for_workspace_in_project(None, workspace_name)
 }
 
+pub fn session_name_for_workspace_ref(workspace: &Workspace) -> String {
+    session_name_for_workspace_in_project(workspace.project_name.as_deref(), &workspace.name)
+}
+
 pub fn git_session_name_for_workspace(workspace: &Workspace) -> String {
-    format!(
-        "{}-git",
-        session_name_for_workspace_in_project(workspace.project_name.as_deref(), &workspace.name)
-    )
+    format!("{}-git", session_name_for_workspace_ref(workspace))
 }
 
 pub fn workspace_should_poll_status(workspace: &Workspace, multiplexer: MultiplexerKind) -> bool {
