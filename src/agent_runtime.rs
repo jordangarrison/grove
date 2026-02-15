@@ -793,7 +793,7 @@ pub enum CommandExecutionMode<'a> {
     Delegating(&'a mut dyn FnMut(&[String]) -> std::io::Result<()>),
 }
 
-pub fn execute_launch_request_for_mode(
+fn execute_launch_request_for_mode(
     request: &LaunchRequest,
     multiplexer: MultiplexerKind,
     mode: CommandExecutionMode<'_>,
@@ -831,7 +831,7 @@ pub fn execute_shell_launch_request_for_mode(
     (session_name, result)
 }
 
-pub fn execute_stop_session_for_mode(
+fn execute_stop_session_for_mode(
     session_name: &str,
     multiplexer: MultiplexerKind,
     mode: CommandExecutionMode<'_>,
@@ -840,7 +840,7 @@ pub fn execute_stop_session_for_mode(
     execute_commands_for_mode(&commands, mode)
 }
 
-pub fn execute_stop_workspace_for_mode(
+fn execute_stop_workspace_for_mode(
     workspace: &Workspace,
     multiplexer: MultiplexerKind,
     mode: CommandExecutionMode<'_>,
