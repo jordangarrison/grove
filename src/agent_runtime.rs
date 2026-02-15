@@ -291,6 +291,18 @@ pub fn workspace_status_targets_for_polling(
         .collect()
 }
 
+pub fn workspace_status_targets_for_polling_with_live_preview(
+    workspaces: &[Workspace],
+    multiplexer: MultiplexerKind,
+    live_preview: Option<&LivePreviewTarget>,
+) -> Vec<WorkspaceStatusTarget> {
+    workspace_status_targets_for_polling(
+        workspaces,
+        multiplexer,
+        live_preview.map(|target| target.session_name.as_str()),
+    )
+}
+
 pub fn tmux_capture_error_indicates_missing_session(error: &str) -> bool {
     let lower = error.to_ascii_lowercase();
     lower.contains("can't find pane")

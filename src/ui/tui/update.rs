@@ -718,12 +718,12 @@ impl GroveApp {
 
     pub(super) fn workspace_status_poll_targets(
         &self,
-        selected_live_session: Option<&str>,
+        live_preview: Option<&LivePreviewTarget>,
     ) -> Vec<WorkspaceStatusPollTarget> {
-        workspace_status_targets_for_polling(
+        workspace_status_targets_for_polling_with_live_preview(
             &self.state.workspaces,
             self.multiplexer,
-            selected_live_session,
+            live_preview,
         )
     }
 
@@ -1179,11 +1179,7 @@ impl GroveApp {
         let live_preview = self.prepare_live_preview_session();
         let has_live_preview = live_preview.is_some();
         let cursor_session = self.interactive_target_session();
-        let status_poll_targets = self.workspace_status_poll_targets(
-            live_preview
-                .as_ref()
-                .map(|target| target.session_name.as_str()),
-        );
+        let status_poll_targets = self.workspace_status_poll_targets(live_preview.as_ref());
 
         if let Some(live_preview_target) = live_preview {
             let capture_started_at = Instant::now();
@@ -1314,11 +1310,7 @@ impl GroveApp {
 
         let live_preview = self.prepare_live_preview_session();
         let cursor_session = self.interactive_target_session();
-        let status_poll_targets = self.workspace_status_poll_targets(
-            live_preview
-                .as_ref()
-                .map(|target| target.session_name.as_str()),
-        );
+        let status_poll_targets = self.workspace_status_poll_targets(live_preview.as_ref());
 
         if live_preview.is_none() && cursor_session.is_none() && status_poll_targets.is_empty() {
             self.clear_agent_activity_tracking();

@@ -15,8 +15,8 @@ use super::{
     strip_mouse_fragments, tmux_capture_error_indicates_missing_session,
     workspace_can_enter_interactive, workspace_session_for_preview_tab,
     workspace_should_poll_status, workspace_status_session_target,
-    workspace_status_targets_for_polling, zellij_capture_log_path, zellij_capture_log_path_in,
-    zellij_config_path,
+    workspace_status_targets_for_polling, workspace_status_targets_for_polling_with_live_preview,
+    zellij_capture_log_path, zellij_capture_log_path_in, zellij_config_path,
 };
 use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -174,6 +174,27 @@ fn workspace_status_targets_for_polling_include_idle_non_main_for_zellij() {
     assert_eq!(targets.len(), 1);
     assert_eq!(targets[0].workspace_name, "feature");
     assert_eq!(targets[0].session_name, "grove-ws-feature");
+}
+
+#[test]
+fn workspace_status_targets_for_polling_with_live_preview_skips_selected_session() {
+    let mut selected = fixture_workspace("selected", false);
+    selected.status = WorkspaceStatus::Active;
+    let mut other = fixture_workspace("other", false);
+    other.status = WorkspaceStatus::Active;
+    let workspaces = vec![selected, other];
+
+    let live_preview = LivePreviewTarget {
+        session_name: "grove-ws-selected".to_string(),
+        include_escape_sequences: true,
+    };
+    let targets = workspace_status_targets_for_polling_with_live_preview(
+        &workspaces,
+        MultiplexerKind::Tmux,
+        Some(&live_preview),
+    );
+    assert_eq!(targets.len(), 1);
+    assert_eq!(targets[0].workspace_name, "other");
 }
 
 #[test]
