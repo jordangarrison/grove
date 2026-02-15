@@ -404,9 +404,23 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 276)
 
+### Phase 5z, move frame debug logging helpers into `logging.rs`
+- Commit: `55612c8`
+- Changes:
+  - moved from `src/ui/tui/mod.rs` to `src/ui/tui/logging.rs`:
+    - `frame_lines_hash`
+    - `frame_buffer_lines`
+    - `log_frame_render`
+  - `log_frame_render` exposed as `pub(super)` for `view.rs` caller
+  - no behavior changes, relocation only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `55612c8` phase 5z
   - `d598eb3` phase 5y
   - `3cc83bf` phase 5x
   - `d16af8c` phase 5w
@@ -439,6 +453,7 @@ Status:
 - shared label/timing helpers moved into `logging.rs`.
 - transition + dialog/tmux/toast logging helpers moved into `logging.rs`.
 - input trace logging helpers moved into `logging.rs`.
+- frame debug logging helpers moved into `logging.rs`.
 - `mod.rs` is now mostly module root, shared types/constants/helpers, constructors, and logging utilities.
 
 Next sub-targets:
