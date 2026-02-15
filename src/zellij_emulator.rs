@@ -4,10 +4,9 @@ use std::hash::{Hash, Hasher};
 use std::io;
 use std::path::Path;
 
+use crate::agent_runtime::{ZELLIJ_CAPTURE_COLS, ZELLIJ_CAPTURE_ROWS};
 use frankenterm_core::{Cell, Color, SgrAttrs, SgrFlags, TerminalEngine};
 
-const DEFAULT_COLS: u16 = 120;
-const DEFAULT_ROWS: u16 = 40;
 const RESET_SGR: &str = "\u{1b}[0m";
 
 #[derive(Debug, Default)]
@@ -23,13 +22,6 @@ impl ZellijPreviewEmulator {
         pane_size: Option<(u16, u16)>,
         scrollback_lines: usize,
     ) -> io::Result<String> {
-        let (cols, rows) = pane_size.unwrap_or((DEFAULT_COLS, DEFAULT_ROWS));
-        let terminal = self
-            .sessions
-            .entry(session.to_string())
-            .or_insert_with(|| SessionTerminal::new(cols, rows));
-        terminal.ensure_size(cols, rows);
-
         let source = match fs::read(log_path) {
             Ok(source) => source,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(String::new()),
@@ -40,6 +32,15 @@ impl ZellijPreviewEmulator {
             }
         };
 
+        let log_size = parse_script_header_size(&source);
+        let (cols, rows) = pane_size
+            .or(log_size)
+            .unwrap_or((ZELLIJ_CAPTURE_COLS, ZELLIJ_CAPTURE_ROWS));
+        let terminal = self
+            .sessions
+            .entry(session.to_string())
+            .or_insert_with(|| SessionTerminal::new(cols, rows));
+        terminal.ensure_size(cols, rows);
         terminal.ingest(&source);
         Ok(terminal.render(scrollback_lines))
     }
@@ -140,6 +141,30 @@ fn hash_bytes(bytes: &[u8]) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     bytes.hash(&mut hasher);
     hasher.finish()
+}
+
+fn parse_script_header_size(source: &[u8]) -> Option<(u16, u16)> {
+    let newline_index = source.iter().position(|byte| *byte == b'\n')?;
+    let header = std::str::from_utf8(&source[..newline_index]).ok()?;
+    if !header.starts_with("Script started on ") {
+        return None;
+    }
+    let cols = parse_header_dimension(header, "COLUMNS")?;
+    let rows = parse_header_dimension(header, "LINES")?;
+    Some((cols.max(1), rows.max(1)))
+}
+
+fn parse_header_dimension(header: &str, key: &str) -> Option<u16> {
+    let needle = format!("{key}=\"");
+    let start = header.find(&needle)?.saturating_add(needle.len());
+    let rest = &header[start..];
+    let end = rest.find('"')?;
+    let raw = &rest[..end];
+    let parsed = raw.parse::<i32>().ok()?;
+    if parsed <= 0 {
+        return None;
+    }
+    u16::try_from(parsed).ok()
 }
 
 fn sanitize_log_chunk(chunk: &[u8], is_first_chunk: bool) -> Vec<u8> {
@@ -335,7 +360,7 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-    use super::{ZellijPreviewEmulator, sanitize_log_chunk};
+    use super::{ZellijPreviewEmulator, parse_script_header_size, sanitize_log_chunk};
 
     fn unique_log_path(label: &str) -> PathBuf {
         let timestamp = SystemTime::now()
@@ -355,6 +380,27 @@ mod tests {
             true,
         );
         assert_eq!(sanitized, b"\x1b[31mred\x1b[0m");
+    }
+
+    #[test]
+    fn parse_script_header_size_reads_columns_and_lines() {
+        let source =
+            b"Script started on now [COMMAND=\"x\" COLUMNS=\"132\" LINES=\"48\"]\nrest of file\n";
+        assert_eq!(parse_script_header_size(source), Some((132, 48)));
+    }
+
+    #[test]
+    fn parse_script_header_size_rejects_missing_or_invalid_dimensions() {
+        assert_eq!(
+            parse_script_header_size(b"Script started on now [COMMAND=\"x\"]\nrest\n"),
+            None
+        );
+        assert_eq!(
+            parse_script_header_size(
+                b"Script started on now [COMMAND=\"x\" COLUMNS=\"-1\" LINES=\"40\"]\nrest\n"
+            ),
+            None
+        );
     }
 
     #[test]

@@ -1,5 +1,6 @@
 use std::time::{Duration, Instant};
 
+use crate::agent_runtime::zellij_config_path;
 use crate::config::MultiplexerKind;
 
 const DOUBLE_ESCAPE_WINDOW_MS: u64 = 150;
@@ -258,9 +259,12 @@ fn zellij_send_input_command(
     target_session: &str,
     action: &InteractiveAction,
 ) -> Option<Vec<String>> {
+    let config_path = zellij_config_path().to_string_lossy().to_string();
     match action {
         InteractiveAction::SendLiteral(text) => Some(vec![
             "zellij".to_string(),
+            "--config".to_string(),
+            config_path.clone(),
             "--session".to_string(),
             target_session.to_string(),
             "action".to_string(),
@@ -271,6 +275,8 @@ fn zellij_send_input_command(
             let bytes = zellij_named_key_bytes(key)?;
             let mut command = vec![
                 "zellij".to_string(),
+                "--config".to_string(),
+                config_path,
                 "--session".to_string(),
                 target_session.to_string(),
                 "action".to_string(),

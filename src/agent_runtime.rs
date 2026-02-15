@@ -8,6 +8,9 @@ use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
 pub const TMUX_SESSION_PREFIX: &str = "grove-ws-";
+pub(crate) const ZELLIJ_CAPTURE_COLS: u16 = 120;
+pub(crate) const ZELLIJ_CAPTURE_ROWS: u16 = 40;
+const DEFAULT_GROVE_ZELLIJ_CONFIG: &str = "show_startup_tips false\nshow_release_notes false\n";
 const WAITING_PATTERNS: [&str; 9] = [
     "[y/n]",
     "(y/n)",
@@ -51,6 +54,8 @@ pub struct LaunchRequest {
     pub prompt: Option<String>,
     pub pre_launch_command: Option<String>,
     pub skip_permissions: bool,
+    pub capture_cols: Option<u16>,
+    pub capture_rows: Option<u16>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,6 +143,22 @@ fn default_zellij_capture_directory() -> PathBuf {
     }
 
     PathBuf::from(".grove").join("zellij")
+}
+
+fn default_grove_config_directory() -> PathBuf {
+    if let Some(path) = dirs::config_dir() {
+        return path.join("grove");
+    }
+
+    if let Some(path) = dirs::home_dir() {
+        return path.join(".config").join("grove");
+    }
+
+    PathBuf::from(".grove")
+}
+
+pub(crate) fn zellij_config_path() -> PathBuf {
+    default_grove_config_directory().join("zellij.kdl")
 }
 
 fn zellij_capture_log_path_in(base_directory: &Path, session_name: &str) -> PathBuf {
@@ -240,13 +261,62 @@ fn zellij_launch_plan(
     session_name: String,
     launch_agent_cmd: String,
 ) -> LaunchPlan {
+    let capture_cols = request
+        .capture_cols
+        .filter(|value| *value > 0)
+        .unwrap_or(ZELLIJ_CAPTURE_COLS);
+    let capture_rows = request
+        .capture_rows
+        .filter(|value| *value > 0)
+        .unwrap_or(ZELLIJ_CAPTURE_ROWS);
+
+    fn zellij_script_capture_command(
+        command: &str,
+        capture_log_path_text: &str,
+        capture_cols: u16,
+        capture_rows: u16,
+    ) -> String {
+        format!(
+            "stty cols {cols} rows {rows}; export COLUMNS={cols} LINES={rows} TERM=xterm-256color COLORTERM=truecolor; unset NO_COLOR; script -qefc {} {}",
+            shell_single_quote(command),
+            shell_single_quote(capture_log_path_text),
+            cols = capture_cols,
+            rows = capture_rows,
+        )
+    }
+
     let capture_log_path = zellij_capture_log_path(&session_name);
     let capture_log_path_text = capture_log_path.to_string_lossy().to_string();
     let capture_log_directory_text = capture_log_path.parent().map_or_else(
         || ".".to_string(),
         |path| path.to_string_lossy().to_string(),
     );
+    let zellij_config_path = zellij_config_path();
+    let zellij_config_path_text = zellij_config_path.to_string_lossy().to_string();
+    let zellij_config_directory_text = zellij_config_path.parent().map_or_else(
+        || ".".to_string(),
+        |path| path.to_string_lossy().to_string(),
+    );
     let pre_launch_cmds = vec![
+        vec![
+            "sh".to_string(),
+            "-lc".to_string(),
+            format!(
+                "mkdir -p {config_dir} && if [ ! -f {config_file} ]; then printf '%s\\n' {config_lines} > {config_file}; fi",
+                config_dir = shell_single_quote(&zellij_config_directory_text),
+                config_file = shell_single_quote(&zellij_config_path_text),
+                config_lines = shell_single_quote(DEFAULT_GROVE_ZELLIJ_CONFIG.trim_end()),
+            ),
+        ],
+        vec![
+            "sh".to_string(),
+            "-lc".to_string(),
+            format!(
+                "zellij --config {config} kill-session {session} >/dev/null 2>&1 || true",
+                config = shell_single_quote(&zellij_config_path_text),
+                session = shell_single_quote(&session_name),
+            ),
+        ],
         vec![
             "sh".to_string(),
             "-lc".to_string(),
@@ -260,7 +330,8 @@ fn zellij_launch_plan(
             "sh".to_string(),
             "-lc".to_string(),
             format!(
-                "zellij attach {session} --create --create-background >/dev/null 2>&1 || true",
+                "zellij --config {config} attach {session} --create --create-background >/dev/null 2>&1 || true",
+                config = shell_single_quote(&zellij_config_path_text),
                 session = shell_single_quote(&session_name),
             ),
         ],
@@ -268,10 +339,14 @@ fn zellij_launch_plan(
             "sh".to_string(),
             "-lc".to_string(),
             format!(
-                "nohup script -q /dev/null -c \"zellij attach {}\" >/dev/null 2>&1 &",
-                session_name
+                "nohup script -q /dev/null -c \"stty cols {cols} rows {rows}; export COLUMNS={cols} LINES={rows} TERM=xterm-256color COLORTERM=truecolor; unset NO_COLOR; zellij --config {config} attach {session}\" >/dev/null 2>&1 &",
+                cols = capture_cols,
+                rows = capture_rows,
+                config = shell_single_quote(&zellij_config_path_text),
+                session = session_name,
             ),
         ],
+        vec!["sh".to_string(), "-lc".to_string(), "sleep 1".to_string()],
     ];
 
     match &request.prompt {
@@ -281,19 +356,30 @@ fn zellij_launch_plan(
             pre_launch_cmds,
             launch_cmd: vec![
                 "zellij".to_string(),
+                "--config".to_string(),
+                zellij_config_path_text.clone(),
                 "--session".to_string(),
                 session_name,
                 "run".to_string(),
-                "--in-place".to_string(),
+                "--floating".to_string(),
+                "--width".to_string(),
+                "100%".to_string(),
+                "--height".to_string(),
+                "100%".to_string(),
+                "--x".to_string(),
+                "0".to_string(),
+                "--y".to_string(),
+                "0".to_string(),
                 "--cwd".to_string(),
                 request.workspace_path.to_string_lossy().to_string(),
                 "--".to_string(),
                 "bash".to_string(),
                 "-lc".to_string(),
-                format!(
-                    "script -qefc {} {}",
-                    shell_single_quote(&launch_agent_cmd),
-                    shell_single_quote(&capture_log_path_text)
+                zellij_script_capture_command(
+                    &launch_agent_cmd,
+                    &capture_log_path_text,
+                    capture_cols,
+                    capture_rows,
                 ),
             ],
             launcher_script: None,
@@ -312,19 +398,30 @@ fn zellij_launch_plan(
                 pre_launch_cmds,
                 launch_cmd: vec![
                     "zellij".to_string(),
+                    "--config".to_string(),
+                    zellij_config_path_text,
                     "--session".to_string(),
                     session_name,
                     "run".to_string(),
-                    "--in-place".to_string(),
+                    "--floating".to_string(),
+                    "--width".to_string(),
+                    "100%".to_string(),
+                    "--height".to_string(),
+                    "100%".to_string(),
+                    "--x".to_string(),
+                    "0".to_string(),
+                    "--y".to_string(),
+                    "0".to_string(),
                     "--cwd".to_string(),
                     request.workspace_path.to_string_lossy().to_string(),
                     "--".to_string(),
                     "bash".to_string(),
                     "-lc".to_string(),
-                    format!(
-                        "script -qefc {} {}",
-                        shell_single_quote(&launcher_exec),
-                        shell_single_quote(&capture_log_path_text)
+                    zellij_script_capture_command(
+                        &launcher_exec,
+                        &capture_log_path_text,
+                        capture_cols,
+                        capture_rows,
                     ),
                 ],
                 launcher_script: Some(LauncherScript {
@@ -361,6 +458,8 @@ pub fn stop_plan(session_name: &str, multiplexer: MultiplexerKind) -> Vec<Vec<St
         MultiplexerKind::Zellij => vec![
             vec![
                 "zellij".to_string(),
+                "--config".to_string(),
+                zellij_config_path().to_string_lossy().to_string(),
                 "--session".to_string(),
                 session_name.to_string(),
                 "action".to_string(),
@@ -369,6 +468,8 @@ pub fn stop_plan(session_name: &str, multiplexer: MultiplexerKind) -> Vec<Vec<St
             ],
             vec![
                 "zellij".to_string(),
+                "--config".to_string(),
+                zellij_config_path().to_string_lossy().to_string(),
                 "kill-session".to_string(),
                 session_name.to_string(),
             ],
@@ -861,7 +962,7 @@ mod tests {
         detect_status, detect_waiting_prompt, evaluate_capture_change,
         normalized_agent_command_override, poll_interval, reconcile_with_sessions,
         sanitize_workspace_name, session_name_for_workspace, stop_plan, strip_mouse_fragments,
-        zellij_capture_log_path, zellij_capture_log_path_in,
+        zellij_capture_log_path, zellij_capture_log_path_in, zellij_config_path,
     };
     use crate::config::MultiplexerKind;
     use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -932,6 +1033,8 @@ mod tests {
             prompt: None,
             pre_launch_command: None,
             skip_permissions: true,
+            capture_cols: None,
+            capture_rows: None,
         };
 
         let plan = build_launch_plan(&request, MultiplexerKind::Tmux);
@@ -960,6 +1063,8 @@ mod tests {
             prompt: Some("fix migration".to_string()),
             pre_launch_command: None,
             skip_permissions: false,
+            capture_cols: None,
+            capture_rows: None,
         };
 
         let plan = build_launch_plan(&request, MultiplexerKind::Tmux);
@@ -1004,6 +1109,8 @@ mod tests {
             prompt: None,
             pre_launch_command: None,
             skip_permissions: false,
+            capture_cols: None,
+            capture_rows: None,
         };
 
         let plan = build_launch_plan(&request, MultiplexerKind::Zellij);
@@ -1014,10 +1121,37 @@ mod tests {
             .expect("capture path should have parent")
             .to_string_lossy()
             .to_string();
+        let config_path = zellij_config_path();
+        let config_path_text = config_path.to_string_lossy().to_string();
+        let config_dir_text = config_path
+            .parent()
+            .expect("config path should have parent")
+            .to_string_lossy()
+            .to_string();
 
         assert_eq!(plan.session_name, "grove-ws-auth-flow");
         assert_eq!(
             plan.pre_launch_cmds[0],
+            vec![
+                "sh",
+                "-lc",
+                &format!(
+                    "mkdir -p '{config_dir_text}' && if [ ! -f '{config_path_text}' ]; then printf '%s\\n' 'show_startup_tips false\nshow_release_notes false' > '{config_path_text}'; fi"
+                ),
+            ]
+        );
+        assert_eq!(
+            plan.pre_launch_cmds[1],
+            vec![
+                "sh",
+                "-lc",
+                &format!(
+                    "zellij --config '{config_path_text}' kill-session 'grove-ws-auth-flow' >/dev/null 2>&1 || true"
+                ),
+            ]
+        );
+        assert_eq!(
+            plan.pre_launch_cmds[2],
             vec![
                 "sh",
                 "-lc",
@@ -1028,27 +1162,53 @@ mod tests {
             ]
         );
         assert_eq!(
-            plan.pre_launch_cmds[1],
+            plan.pre_launch_cmds[3],
             vec![
                 "sh",
                 "-lc",
-                "zellij attach 'grove-ws-auth-flow' --create --create-background >/dev/null 2>&1 || true",
+                &format!(
+                    "zellij --config '{config_path_text}' attach 'grove-ws-auth-flow' --create --create-background >/dev/null 2>&1 || true"
+                ),
             ]
         );
+        assert_eq!(
+            plan.pre_launch_cmds[4],
+            vec![
+                "sh",
+                "-lc",
+                &format!(
+                    "nohup script -q /dev/null -c \"stty cols 120 rows 40; export COLUMNS=120 LINES=40 TERM=xterm-256color COLORTERM=truecolor; unset NO_COLOR; zellij --config '{config_path_text}' attach grove-ws-auth-flow\" >/dev/null 2>&1 &"
+                ),
+            ]
+        );
+        assert_eq!(plan.pre_launch_cmds[5], vec!["sh", "-lc", "sleep 1"]);
         assert_eq!(
             plan.launch_cmd,
             vec![
                 "zellij",
+                "--config",
+                &config_path_text,
                 "--session",
                 "grove-ws-auth-flow",
                 "run",
-                "--in-place",
+                "--floating",
+                "--width",
+                "100%",
+                "--height",
+                "100%",
+                "--x",
+                "0",
+                "--y",
+                "0",
                 "--cwd",
                 "/repos/grove-auth-flow",
                 "--",
                 "bash",
                 "-lc",
-                &format!("script -qefc 'codex' '{}'", capture_log_path_text),
+                &format!(
+                    "stty cols 120 rows 40; export COLUMNS=120 LINES=40 TERM=xterm-256color COLORTERM=truecolor; unset NO_COLOR; script -qefc 'codex' '{}'",
+                    capture_log_path_text
+                ),
             ]
         );
     }
@@ -1065,11 +1225,14 @@ mod tests {
     #[test]
     fn zellij_stop_plan_uses_ctrl_c_then_kill_session() {
         let plan = stop_plan("grove-ws-auth-flow", MultiplexerKind::Zellij);
+        let config_path_text = zellij_config_path().to_string_lossy().to_string();
         assert_eq!(plan.len(), 2);
         assert_eq!(
             plan[0],
             vec![
                 "zellij",
+                "--config",
+                &config_path_text,
                 "--session",
                 "grove-ws-auth-flow",
                 "action",
@@ -1079,7 +1242,13 @@ mod tests {
         );
         assert_eq!(
             plan[1],
-            vec!["zellij", "kill-session", "grove-ws-auth-flow"]
+            vec![
+                "zellij",
+                "--config",
+                &config_path_text,
+                "kill-session",
+                "grove-ws-auth-flow"
+            ]
         );
     }
 
@@ -1092,6 +1261,8 @@ mod tests {
             prompt: None,
             pre_launch_command: Some("direnv allow".to_string()),
             skip_permissions: true,
+            capture_cols: None,
+            capture_rows: None,
         };
 
         let plan = build_launch_plan(&request, MultiplexerKind::Tmux);

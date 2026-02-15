@@ -42,6 +42,7 @@ use crate::adapters::{
 use crate::agent_runtime::{
     LaunchRequest, SessionActivity, build_launch_plan, detect_status, poll_interval,
     session_name_for_workspace, stop_plan, zellij_capture_log_path,
+    zellij_config_path,
 };
 use crate::config::{GroveConfig, MultiplexerKind};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -976,8 +977,17 @@ impl TmuxInput for CommandZellijInput {
     }
 
     fn paste_buffer(&self, target_session: &str, text: &str) -> std::io::Result<()> {
+        let config_path_text = zellij_config_path().to_string_lossy().to_string();
         let output = Command::new("zellij")
-            .args(["--session", target_session, "action", "write-chars", text])
+            .args([
+                "--config",
+                config_path_text.as_str(),
+                "--session",
+                target_session,
+                "action",
+                "write-chars",
+                text,
+            ])
             .output()?;
         if output.status.success() {
             return Ok(());
@@ -1000,16 +1010,11 @@ impl CommandZellijInput {
         target_session: &str,
         scrollback_lines: usize,
     ) -> std::io::Result<String> {
-        let pane_size = self
-            .pane_sizes
-            .lock()
-            .ok()
-            .and_then(|sizes| sizes.get(target_session).copied());
         let log_path = zellij_capture_log_path(target_session);
         self.emulator
             .lock()
             .map_err(|_| std::io::Error::other("zellij emulator lock poisoned"))?
-            .capture_from_log(target_session, &log_path, pane_size, scrollback_lines)
+            .capture_from_log(target_session, &log_path, None, scrollback_lines)
     }
 }
 
@@ -3836,6 +3841,8 @@ impl GroveApp {
             ],
             MultiplexerKind::Zellij => vec![
                 "zellij".to_string(),
+                "--config".to_string(),
+                zellij_config_path().to_string_lossy().to_string(),
                 "kill-session".to_string(),
                 session_name,
             ],
@@ -4461,8 +4468,15 @@ impl GroveApp {
             self.show_flash("no workspace selected", true);
             return;
         };
+        let capture_cols = self
+            .preview_output_dimensions()
+            .map_or(self.viewport_width.saturating_sub(4), |(width, _)| width)
+            .max(80);
+        let capture_rows = self.viewport_height.saturating_sub(4).max(1);
 
         let request = LaunchRequest {
+            capture_cols: Some(capture_cols),
+            capture_rows: Some(capture_rows),
             workspace_name: workspace.name.clone(),
             workspace_path: workspace.path.clone(),
             agent: workspace.agent,
