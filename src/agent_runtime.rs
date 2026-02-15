@@ -739,15 +739,13 @@ pub fn stop_plan(session_name: &str, multiplexer: MultiplexerKind) -> Vec<Vec<St
 }
 
 pub fn execute_launch_plan(launch_plan: LaunchPlan) -> std::io::Result<()> {
-    execute_launch_plan_internal(
-        &launch_plan,
-        |script| fs::write(&script.path, &script.contents),
-        execute_command,
-    )
+    let mut executor = ProcessCommandExecutor;
+    execute_launch_plan_with_executor(&launch_plan, &mut executor)
 }
 
 pub fn execute_commands(commands: &[Vec<String>]) -> std::io::Result<()> {
-    execute_commands_with(commands, execute_command)
+    let mut executor = ProcessCommandExecutor;
+    execute_commands_with_executor(commands, &mut executor)
 }
 
 pub fn execute_command_with(
@@ -765,38 +763,88 @@ pub fn execute_commands_with(
     commands: &[Vec<String>],
     mut execute: impl FnMut(&[String]) -> std::io::Result<()>,
 ) -> std::io::Result<()> {
-    for command in commands {
-        execute_command_with(command, |command| execute(command))?;
-    }
-    Ok(())
+    let mut executor = DelegatingCommandExecutor::new(&mut execute);
+    execute_commands_with_executor(commands, &mut executor)
 }
 
 pub fn execute_launch_plan_with(
     launch_plan: &LaunchPlan,
     mut execute: impl FnMut(&[String]) -> std::io::Result<()>,
 ) -> std::io::Result<()> {
-    execute_launch_plan_internal(
-        launch_plan,
-        |script| {
-            fs::write(&script.path, &script.contents).map_err(|error| {
-                std::io::Error::other(format!("launcher script write failed: {error}"))
-            })
-        },
-        |command| execute(command),
-    )
+    let mut executor = DelegatingCommandExecutor::new(&mut execute)
+        .with_script_write_error_prefix("launcher script write failed: ");
+    execute_launch_plan_with_executor(launch_plan, &mut executor)
 }
 
-fn execute_launch_plan_internal(
-    launch_plan: &LaunchPlan,
-    mut write_launcher_script: impl FnMut(&LauncherScript) -> std::io::Result<()>,
-    mut execute: impl FnMut(&[String]) -> std::io::Result<()>,
-) -> std::io::Result<()> {
-    if let Some(script) = &launch_plan.launcher_script {
-        write_launcher_script(script)?;
+pub trait CommandExecutor {
+    fn execute(&mut self, command: &[String]) -> std::io::Result<()>;
+
+    fn write_launcher_script(&mut self, script: &LauncherScript) -> std::io::Result<()> {
+        fs::write(&script.path, &script.contents)
+    }
+}
+
+pub struct ProcessCommandExecutor;
+
+impl CommandExecutor for ProcessCommandExecutor {
+    fn execute(&mut self, command: &[String]) -> std::io::Result<()> {
+        execute_command(command)
+    }
+}
+
+pub struct DelegatingCommandExecutor<'a> {
+    execute: &'a mut dyn FnMut(&[String]) -> std::io::Result<()>,
+    script_write_error_prefix: Option<&'a str>,
+}
+
+impl<'a> DelegatingCommandExecutor<'a> {
+    pub fn new(execute: &'a mut dyn FnMut(&[String]) -> std::io::Result<()>) -> Self {
+        Self {
+            execute,
+            script_write_error_prefix: None,
+        }
     }
 
-    execute_commands_with(&launch_plan.pre_launch_cmds, |command| execute(command))?;
-    execute_command_with(&launch_plan.launch_cmd, |command| execute(command))
+    pub fn with_script_write_error_prefix(mut self, prefix: &'a str) -> Self {
+        self.script_write_error_prefix = Some(prefix);
+        self
+    }
+}
+
+impl CommandExecutor for DelegatingCommandExecutor<'_> {
+    fn execute(&mut self, command: &[String]) -> std::io::Result<()> {
+        (self.execute)(command)
+    }
+
+    fn write_launcher_script(&mut self, script: &LauncherScript) -> std::io::Result<()> {
+        match self.script_write_error_prefix {
+            Some(prefix) => fs::write(&script.path, &script.contents)
+                .map_err(|error| std::io::Error::other(format!("{prefix}{error}"))),
+            None => fs::write(&script.path, &script.contents),
+        }
+    }
+}
+
+pub fn execute_commands_with_executor(
+    commands: &[Vec<String>],
+    executor: &mut impl CommandExecutor,
+) -> std::io::Result<()> {
+    for command in commands {
+        execute_command_with(command, |command| executor.execute(command))?;
+    }
+    Ok(())
+}
+
+pub fn execute_launch_plan_with_executor(
+    launch_plan: &LaunchPlan,
+    executor: &mut impl CommandExecutor,
+) -> std::io::Result<()> {
+    if let Some(script) = &launch_plan.launcher_script {
+        executor.write_launcher_script(script)?;
+    }
+
+    execute_commands_with_executor(&launch_plan.pre_launch_cmds, executor)?;
+    execute_command_with(&launch_plan.launch_cmd, |command| executor.execute(command))
 }
 
 fn execute_command(command: &[String]) -> std::io::Result<()> {

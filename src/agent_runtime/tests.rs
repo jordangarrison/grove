@@ -5,12 +5,13 @@ use std::process;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::{
-    CaptureChange, LaunchPlan, LaunchRequest, LauncherScript, LivePreviewTarget, SessionActivity,
-    build_launch_plan, default_agent_command, detect_agent_session_status_in_home, detect_status,
-    detect_status_with_session_override_in_home, detect_waiting_prompt, evaluate_capture_change,
-    execute_command_with, execute_commands, execute_commands_with, execute_launch_plan,
-    execute_launch_plan_with, git_preview_session_if_ready, git_session_name_for_workspace,
-    kill_workspace_session_command, live_preview_agent_session,
+    CaptureChange, CommandExecutor, LaunchPlan, LaunchRequest, LauncherScript, LivePreviewTarget,
+    SessionActivity, build_launch_plan, default_agent_command, detect_agent_session_status_in_home,
+    detect_status, detect_status_with_session_override_in_home, detect_waiting_prompt,
+    evaluate_capture_change, execute_command_with, execute_commands, execute_commands_with,
+    execute_commands_with_executor, execute_launch_plan, execute_launch_plan_with,
+    execute_launch_plan_with_executor, git_preview_session_if_ready,
+    git_session_name_for_workspace, kill_workspace_session_command, live_preview_agent_session,
     live_preview_capture_target_for_tab, live_preview_session_for_tab,
     normalized_agent_command_override, poll_interval, reconcile_with_sessions,
     sanitize_workspace_name, session_name_for_workspace, session_name_for_workspace_ref, stop_plan,
@@ -53,6 +54,25 @@ fn unique_test_dir(prefix: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!("{prefix}-{}-{nanos}", process::id()));
     fs::create_dir_all(&path).expect("test directory should be created");
     path
+}
+
+#[derive(Default)]
+struct RecordingCommandExecutor {
+    commands: Vec<Vec<String>>,
+    launcher_scripts: Vec<(PathBuf, String)>,
+}
+
+impl CommandExecutor for RecordingCommandExecutor {
+    fn execute(&mut self, command: &[String]) -> std::io::Result<()> {
+        self.commands.push(command.to_vec());
+        Ok(())
+    }
+
+    fn write_launcher_script(&mut self, script: &LauncherScript) -> std::io::Result<()> {
+        self.launcher_scripts
+            .push((script.path.clone(), script.contents.clone()));
+        Ok(())
+    }
 }
 
 #[test]
@@ -518,6 +538,55 @@ fn execute_commands_with_uses_supplied_executor() {
 
     assert!(result.is_ok());
     assert_eq!(observed, vec!["echo first", "echo second"]);
+}
+
+#[test]
+fn execute_commands_with_executor_skips_empty_commands() {
+    let commands = vec![
+        Vec::new(),
+        vec!["echo".to_string(), "ran".to_string()],
+        Vec::new(),
+    ];
+    let mut executor = RecordingCommandExecutor::default();
+
+    let result = execute_commands_with_executor(&commands, &mut executor);
+
+    assert!(result.is_ok());
+    assert_eq!(
+        executor.commands,
+        vec![vec!["echo".to_string(), "ran".to_string()]]
+    );
+}
+
+#[test]
+fn execute_launch_plan_with_executor_runs_prelaunch_then_launch() {
+    let launch_plan = LaunchPlan {
+        session_name: "grove-ws-test".to_string(),
+        pane_lookup_cmd: Vec::new(),
+        pre_launch_cmds: vec![
+            vec!["echo".to_string(), "one".to_string()],
+            vec!["echo".to_string(), "two".to_string()],
+        ],
+        launch_cmd: vec!["echo".to_string(), "launch".to_string()],
+        launcher_script: Some(LauncherScript {
+            path: PathBuf::from("/tmp/.grove-start.sh"),
+            contents: "#!/usr/bin/env bash\necho hi\n".to_string(),
+        }),
+    };
+    let mut executor = RecordingCommandExecutor::default();
+
+    let result = execute_launch_plan_with_executor(&launch_plan, &mut executor);
+
+    assert!(result.is_ok());
+    assert_eq!(
+        executor.commands,
+        vec![
+            vec!["echo".to_string(), "one".to_string()],
+            vec!["echo".to_string(), "two".to_string()],
+            vec!["echo".to_string(), "launch".to_string()],
+        ]
+    );
+    assert_eq!(executor.launcher_scripts.len(), 1);
 }
 
 #[test]
