@@ -451,7 +451,10 @@ impl GroveApp {
                 &["list", "focus", "h", "esc"],
                 "Navigation",
             ));
-            if self.can_enter_interactive() {
+            if workspace_can_enter_interactive(
+                self.state.selected_workspace(),
+                self.preview_tab == PreviewTab::Git,
+            ) {
                 actions.push(Self::palette_action(
                     PALETTE_CMD_ENTER_INTERACTIVE,
                     "Enter Interactive Mode",
@@ -3261,15 +3264,11 @@ impl GroveApp {
         }
     }
 
-    pub(super) fn can_enter_interactive(&self) -> bool {
-        workspace_can_enter_interactive(
+    pub(super) fn enter_interactive(&mut self, now: Instant) -> bool {
+        if !workspace_can_enter_interactive(
             self.state.selected_workspace(),
             self.preview_tab == PreviewTab::Git,
-        )
-    }
-
-    pub(super) fn enter_interactive(&mut self, now: Instant) -> bool {
-        if !self.can_enter_interactive() {
+        ) {
             return false;
         }
 
