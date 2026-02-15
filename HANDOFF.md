@@ -352,9 +352,22 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 276)
 
+### Phase 5v, extract text selection state into `selection.rs`
+- Commit: `0858c4f`
+- Changes:
+  - added `src/ui/tui/selection.rs`
+    - moved `TextSelectionPoint` and `TextSelectionState` structs + impls out of `src/ui/tui/mod.rs`
+    - preserved sibling/test access via `pub(super)` visibility for fields and methods used by `view.rs` and tests
+  - wired `mod selection;` + imports in `src/ui/tui/mod.rs`
+  - no behavior changes, relocation only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `0858c4f` phase 5v
   - `912bb07` phase 5u
   - `f634be8` phase 5t
   - `805390d` phase 5s
@@ -379,10 +392,11 @@ Status:
 - preview polling/capture/runtime integration moved into `update.rs`.
 - adaptive polling/activity tracking moved into `update.rs`.
 - shared text/formatting helpers moved into `text.rs`.
+- text selection structs/state moved into `selection.rs`.
 - `mod.rs` is now mostly module root, shared types/constants/helpers, constructors, and logging utilities.
 
 Next sub-targets:
-- optional: split remaining shared utility helpers from `mod.rs` into focused helper modules (selection, logging)
+- optional: split remaining shared utility helpers from `mod.rs` into focused helper modules (logging)
 - keep behavior unchanged while shrinking `mod.rs` further only if necessary for readability
 
 Rules:
