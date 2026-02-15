@@ -1218,9 +1218,26 @@
   - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 64)
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 7a, move `agent_runtime` module under `src/application/`
+- Commit: `aa8e75d`
+- Changes:
+  - moved module files:
+    - `src/agent_runtime.rs` -> `src/application/agent_runtime.rs`
+    - `src/agent_runtime/tests.rs` -> `src/application/agent_runtime/tests.rs`
+  - added `src/application/mod.rs` with `pub mod agent_runtime;`
+  - updated crate root in `src/lib.rs`:
+    - removed `pub mod agent_runtime;`
+    - added `pub mod application;`
+  - updated imports across crate from `crate::agent_runtime::...` to `crate::application::agent_runtime::...`
+  - no behavior changes, crate-tree alignment move only
+- Gates:
+  - `cargo test --lib` (pass, 314)
+
 ## Current State
-- Worktree is clean after phase 6ar commit.
+- Worktree is clean after phase 7a commit.
 - Recent refactor commits on local `master`:
+  - `aa8e75d` refactor(application): move agent runtime under application
+  - `4fc9053` docs(handoff): record phase 6ar
   - `5ce9c52` refactor(runtime): inline typed lifecycle execution paths
   - `3d61013` docs(handoff): record phase 6aq
   - `2085f6a` refactor(runtime): scope tuple lifecycle executors to module
@@ -1326,9 +1343,9 @@ Status:
 - `mod.rs` is now mostly module root + app state struct.
 
 Next sub-targets:
-- continue phase 6 boundary work for non-UI runtime logic
-- next candidate: run a phase-6 boundary sweep for remaining non-UI logic in `ui/tui/update.rs` (if none, close phase 6 and start phase-7 crate-tree alignment)
-- keep phase-6 moves tiny and parity-safe across both multiplexers
+- phase 6 runtime-boundary extraction is functionally complete for lifecycle start/stop flow
+- continue phase 7 crate-tree alignment in small compile-safe moves
+- next candidate: move `workspace_lifecycle` under `src/application/` and update imports/tests
 
 Rules:
 - keep behavior unchanged
