@@ -230,6 +230,43 @@ pub fn workspace_can_stop_agent(workspace: Option<&Workspace>) -> bool {
     workspace.status.has_session()
 }
 
+pub fn launch_request_for_workspace(
+    workspace: &Workspace,
+    prompt: Option<String>,
+    pre_launch_command: Option<String>,
+    skip_permissions: bool,
+    capture_cols: Option<u16>,
+    capture_rows: Option<u16>,
+) -> LaunchRequest {
+    LaunchRequest {
+        project_name: workspace.project_name.clone(),
+        workspace_name: workspace.name.clone(),
+        workspace_path: workspace.path.clone(),
+        agent: workspace.agent,
+        prompt,
+        pre_launch_command,
+        skip_permissions,
+        capture_cols,
+        capture_rows,
+    }
+}
+
+pub fn shell_launch_request_for_workspace(
+    workspace: &Workspace,
+    session_name: String,
+    command: String,
+    capture_cols: Option<u16>,
+    capture_rows: Option<u16>,
+) -> ShellLaunchRequest {
+    ShellLaunchRequest {
+        session_name,
+        workspace_path: workspace.path.clone(),
+        command,
+        capture_cols,
+        capture_rows,
+    }
+}
+
 pub fn workspace_session_for_preview_tab(
     workspace: Option<&Workspace>,
     preview_tab_is_git: bool,

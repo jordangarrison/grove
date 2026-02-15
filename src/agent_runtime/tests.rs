@@ -13,16 +13,16 @@ use super::{
     execute_commands_with_executor, execute_launch_plan, execute_launch_plan_for_mode,
     execute_launch_plan_with, execute_launch_plan_with_executor, execute_launch_request_for_mode,
     execute_stop_session_for_mode, git_preview_session_if_ready, git_session_name_for_workspace,
-    kill_workspace_session_command, live_preview_agent_session,
+    kill_workspace_session_command, launch_request_for_workspace, live_preview_agent_session,
     live_preview_capture_target_for_tab, live_preview_session_for_tab,
     normalized_agent_command_override, poll_interval, reconcile_with_sessions,
-    sanitize_workspace_name, session_name_for_workspace, session_name_for_workspace_ref, stop_plan,
-    strip_mouse_fragments, tmux_capture_error_indicates_missing_session,
-    workspace_can_enter_interactive, workspace_can_start_agent, workspace_can_stop_agent,
-    workspace_session_for_preview_tab, workspace_should_poll_status,
-    workspace_status_session_target, workspace_status_targets_for_polling,
-    workspace_status_targets_for_polling_with_live_preview, zellij_capture_log_path,
-    zellij_capture_log_path_in, zellij_config_path,
+    sanitize_workspace_name, session_name_for_workspace, session_name_for_workspace_ref,
+    shell_launch_request_for_workspace, stop_plan, strip_mouse_fragments,
+    tmux_capture_error_indicates_missing_session, workspace_can_enter_interactive,
+    workspace_can_start_agent, workspace_can_stop_agent, workspace_session_for_preview_tab,
+    workspace_should_poll_status, workspace_status_session_target,
+    workspace_status_targets_for_polling, workspace_status_targets_for_polling_with_live_preview,
+    zellij_capture_log_path, zellij_capture_log_path_in, zellij_config_path,
 };
 use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -112,6 +112,56 @@ fn git_session_name_uses_project_context_when_present() {
         git_session_name_for_workspace(&workspace),
         "grove-ws-project-one-feature-auth-v2-git"
     );
+}
+
+#[test]
+fn launch_request_for_workspace_copies_workspace_context_and_options() {
+    let workspace = fixture_workspace("feature/auth.v2", false).with_project_context(
+        "project.one".to_string(),
+        PathBuf::from("/repos/project.one"),
+    );
+    let request = launch_request_for_workspace(
+        &workspace,
+        Some("run checks".to_string()),
+        Some("direnv exec .".to_string()),
+        true,
+        Some(132),
+        Some(44),
+    );
+
+    assert_eq!(request.project_name.as_deref(), Some("project.one"));
+    assert_eq!(request.workspace_name, "feature/auth.v2");
+    assert_eq!(
+        request.workspace_path,
+        PathBuf::from("/repos/grove-feature/auth.v2")
+    );
+    assert_eq!(request.agent, AgentType::Claude);
+    assert_eq!(request.prompt.as_deref(), Some("run checks"));
+    assert_eq!(request.pre_launch_command.as_deref(), Some("direnv exec ."));
+    assert!(request.skip_permissions);
+    assert_eq!(request.capture_cols, Some(132));
+    assert_eq!(request.capture_rows, Some(44));
+}
+
+#[test]
+fn shell_launch_request_for_workspace_uses_workspace_path_and_options() {
+    let workspace = fixture_workspace("feature", false);
+    let request = shell_launch_request_for_workspace(
+        &workspace,
+        "grove-ws-feature-git".to_string(),
+        "lazygit".to_string(),
+        Some(120),
+        Some(40),
+    );
+
+    assert_eq!(request.session_name, "grove-ws-feature-git");
+    assert_eq!(
+        request.workspace_path,
+        PathBuf::from("/repos/grove-feature")
+    );
+    assert_eq!(request.command, "lazygit");
+    assert_eq!(request.capture_cols, Some(120));
+    assert_eq!(request.capture_rows, Some(40));
 }
 
 #[test]

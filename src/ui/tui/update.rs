@@ -642,12 +642,10 @@ impl GroveApp {
     }
 
     fn ensure_lazygit_session_for_selected_workspace(&mut self) -> Option<String> {
-        let (workspace_path, session_name) = self.state.selected_workspace().map(|workspace| {
-            (
-                workspace.path.clone(),
-                git_session_name_for_workspace(workspace),
-            )
-        })?;
+        let Some(workspace) = self.state.selected_workspace() else {
+            return None;
+        };
+        let session_name = git_session_name_for_workspace(workspace);
 
         if self.lazygit_ready_sessions.contains(&session_name) {
             return Some(session_name);
@@ -661,13 +659,13 @@ impl GroveApp {
             .map_or(self.viewport_width.saturating_sub(4), |(width, _)| width)
             .max(80);
         let capture_rows = self.viewport_height.saturating_sub(4).max(1);
-        let launch_request = ShellLaunchRequest {
-            session_name: session_name.clone(),
-            workspace_path,
-            command: LAZYGIT_COMMAND.to_string(),
-            capture_cols: Some(capture_cols),
-            capture_rows: Some(capture_rows),
-        };
+        let launch_request = shell_launch_request_for_workspace(
+            workspace,
+            session_name.clone(),
+            LAZYGIT_COMMAND.to_string(),
+            Some(capture_cols),
+            Some(capture_rows),
+        );
         let (_, launch_result) = execute_shell_launch_request_for_mode(
             &launch_request,
             self.multiplexer,
@@ -1658,17 +1656,14 @@ impl GroveApp {
             .max(80);
         let capture_rows = self.viewport_height.saturating_sub(4).max(1);
 
-        let request = LaunchRequest {
-            project_name: workspace.project_name.clone(),
-            capture_cols: Some(capture_cols),
-            capture_rows: Some(capture_rows),
-            workspace_name: workspace.name.clone(),
-            workspace_path: workspace.path.clone(),
-            agent: workspace.agent,
+        let request = launch_request_for_workspace(
+            workspace,
             prompt,
             pre_launch_command,
             skip_permissions,
-        };
+            Some(capture_cols),
+            Some(capture_rows),
+        );
         let workspace_name = request.workspace_name.clone();
         let workspace_path = request.workspace_path.clone();
 
