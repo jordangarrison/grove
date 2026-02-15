@@ -2785,57 +2785,6 @@ impl GroveApp {
         modifiers.is_empty() || modifiers == Modifiers::SHIFT
     }
 
-    fn open_settings_dialog(&mut self) {
-        if self.modal_open() {
-            return;
-        }
-        self.settings_dialog = Some(SettingsDialogState {
-            multiplexer: self.multiplexer,
-            focused_field: SettingsDialogField::Multiplexer,
-        });
-    }
-
-    fn has_running_workspace_sessions(&self) -> bool {
-        self.state
-            .workspaces
-            .iter()
-            .any(|workspace| workspace.status.has_session())
-    }
-
-    fn apply_settings_dialog_save(&mut self) {
-        let Some(dialog) = self.settings_dialog.as_ref() else {
-            return;
-        };
-
-        if dialog.multiplexer != self.multiplexer && self.has_running_workspace_sessions() {
-            self.show_toast(
-                "restart running workspaces before switching multiplexer",
-                true,
-            );
-            return;
-        }
-
-        let selected = dialog.multiplexer;
-        self.multiplexer = selected;
-        self.tmux_input = input_for_multiplexer(selected);
-        let config = GroveConfig {
-            multiplexer: selected,
-            projects: self.projects.clone(),
-        };
-        if let Err(error) = crate::config::save_to_path(&self.config_path, &config) {
-            self.show_toast(format!("settings save failed: {error}"), true);
-            return;
-        }
-
-        self.settings_dialog = None;
-        self.interactive = None;
-        self.lazygit_ready_sessions.clear();
-        self.lazygit_failed_sessions.clear();
-        self.refresh_workspaces(None);
-        self.poll_preview();
-        self.show_toast(format!("multiplexer set to {}", selected.label()), false);
-    }
-
     fn open_start_dialog(&mut self) {
         if self.start_in_flight {
             self.show_toast("agent start already in progress", true);
