@@ -1276,9 +1276,25 @@
 - Gates:
   - `cargo test --lib` (pass, 314)
 
+### Phase 7e, move `interactive` module under `src/application/`
+- Commit: `a969cee`
+- Changes:
+  - moved module files:
+    - `src/interactive.rs` -> `src/application/interactive.rs`
+    - `src/interactive/tests.rs` -> `src/application/interactive/tests.rs`
+  - updated `src/application/mod.rs` with `pub mod interactive;`
+  - updated crate root in `src/lib.rs`:
+    - removed `pub mod interactive;`
+  - updated imports from `crate::interactive::...` to `crate::application::interactive::...`
+  - no behavior changes, crate-tree alignment move only
+- Gates:
+  - `cargo test --lib` (pass, 314)
+
 ## Current State
-- Worktree is clean after phase 7d commit.
+- Worktree is clean after phase 7e commit.
 - Recent refactor commits on local `master`:
+  - `a969cee` refactor(application): move interactive module under application
+  - `262dfef` docs(handoff): record phase 7d
   - `941ef5c` refactor(application): move preview module under application
   - `05f505d` docs(handoff): record phase 7c
   - `ff8b08e` refactor(infrastructure): move zellij emulator under infrastructure
@@ -1394,7 +1410,7 @@ Status:
 Next sub-targets:
 - phase 6 runtime-boundary extraction is functionally complete for lifecycle start/stop flow
 - continue phase 7 crate-tree alignment in small compile-safe moves
-- next candidate: move remaining non-UI runtime modules into DDD buckets (`interactive`, `mouse`) with compile-safe import rewrites per module
+- next candidate: move remaining non-UI runtime modules into DDD buckets (`mouse`) with compile-safe import rewrites
 
 Rules:
 - keep behavior unchanged
