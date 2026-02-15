@@ -1332,9 +1332,25 @@
 - Gates:
   - `cargo test --lib` (pass, 314)
 
+### Phase 7i, move `config` module under `src/infrastructure/`
+- Commit: `9d08f17`
+- Changes:
+  - moved module files:
+    - `src/config.rs` -> `src/infrastructure/config.rs`
+    - `src/config/tests.rs` -> `src/infrastructure/config/tests.rs`
+  - updated `src/infrastructure/mod.rs` with `pub mod config;`
+  - updated crate root in `src/lib.rs`:
+    - removed `pub mod config;`
+  - updated imports from `crate::config::...` to `crate::infrastructure::config::...` across application, infrastructure, and UI modules/tests
+  - no behavior changes, crate-tree alignment move only
+- Gates:
+  - `cargo test --lib` (pass, 314)
+
 ## Current State
-- Worktree is clean after phase 7h commit.
+- Worktree is clean after phase 7i commit.
 - Recent refactor commits on local `master`:
+  - `9d08f17` refactor(infrastructure): move config module under infrastructure
+  - `bc50a64` docs(handoff): record phase 7h
   - `696ff76` refactor(infrastructure): move adapters module under infrastructure
   - `a88d3f4` docs(handoff): record phase 7g
   - `5baa43d` refactor(ui): move state module under ui
@@ -1458,7 +1474,7 @@ Status:
 Next sub-targets:
 - phase 6 runtime-boundary extraction is functionally complete for lifecycle start/stop flow
 - continue phase 7 crate-tree alignment in small compile-safe moves
-- next candidate: move remaining root modules into DDD buckets (`config`, `event_log`, `hardening`) with compile-safe import rewrites
+- next candidate: move remaining root modules into DDD buckets (`event_log`, `hardening`) with compile-safe import rewrites
 
 Rules:
 - keep behavior unchanged
