@@ -390,7 +390,10 @@ impl GroveApp {
             ));
         }
 
-        if self.preview_agent_tab_is_focused() && self.can_stop_selected_workspace() {
+        if self.preview_agent_tab_is_focused()
+            && !self.stop_in_flight
+            && workspace_can_stop_agent(self.state.selected_workspace())
+        {
             actions.push(Self::palette_action(
                 PALETTE_CMD_STOP_AGENT,
                 "Stop Agent",
@@ -1934,20 +1937,12 @@ impl GroveApp {
         );
     }
 
-    fn can_stop_selected_workspace(&self) -> bool {
-        if self.stop_in_flight {
-            return false;
-        }
-
-        workspace_can_stop_agent(self.state.selected_workspace())
-    }
-
     fn stop_selected_workspace_agent(&mut self) {
         if self.stop_in_flight {
             return;
         }
 
-        if !self.can_stop_selected_workspace() {
+        if !workspace_can_stop_agent(self.state.selected_workspace()) {
             self.show_toast("no agent running", true);
             return;
         }
