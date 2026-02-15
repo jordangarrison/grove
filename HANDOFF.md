@@ -923,8 +923,65 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 301)
 
+### Phase 6ac, move sync command/launch sequencing into `agent_runtime`
+- Commit: `(pending, uncommitted)`
+- Changes:
+  - added runtime helpers in `src/agent_runtime.rs`:
+    - `execute_commands_with(&[Vec<String>], impl FnMut(&[String]) -> std::io::Result<()>)`
+    - `execute_launch_plan_with(&LaunchPlan, impl FnMut(&[String]) -> std::io::Result<()>)`
+  - updated sync UI callsites in `src/ui/tui/update.rs`:
+    - lazygit launch sync path now uses `execute_launch_plan_with(..., |cmd| self.execute_tmux_command(cmd))`
+    - agent start sync path now uses `execute_launch_plan_with(..., |cmd| self.execute_tmux_command(cmd))`
+    - agent stop sync path now uses `execute_commands_with(..., |cmd| self.execute_tmux_command(cmd))`
+  - removed now-redundant UI helpers from `src/ui/tui/logging.rs`:
+    - `execute_tmux_commands`
+    - `execute_launch_plan_sync`
+  - updated runtime tests in `src/agent_runtime/tests.rs`:
+    - `execute_commands_with_uses_supplied_executor`
+    - `execute_launch_plan_with_prefixes_script_write_errors`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 53)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 303)
+
+### Phase 6ad, move single-command sync execution through runtime boundary
+- Commit: `(pending, uncommitted)`
+- Changes:
+  - added runtime helper in `src/agent_runtime.rs`:
+    - `execute_command_with(&[String], impl FnOnce(&[String]) -> std::io::Result<()>)`
+  - updated runtime helper composition in `src/agent_runtime.rs`:
+    - `execute_commands_with` now delegates each command through `execute_command_with`
+    - `execute_launch_plan_with` now delegates final launch command through `execute_command_with`
+  - updated UI command execution path in `src/ui/tui/logging.rs`:
+    - `execute_tmux_command` now delegates command invocation to `execute_command_with`, keeping UI logging/toast policy unchanged
+  - updated runtime tests in `src/agent_runtime/tests.rs`:
+    - `execute_command_with_skips_empty_commands`
+    - `execute_command_with_invokes_executor_for_non_empty_commands`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 55)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 305)
+
+### Phase 6ae, dedupe runtime launch executors behind shared internal helper
+- Commit: `(pending, uncommitted)`
+- Changes:
+  - added internal runtime helper in `src/agent_runtime.rs`:
+    - `execute_launch_plan_internal(&LaunchPlan, write_launcher_script, execute)`
+  - updated runtime public executors in `src/agent_runtime.rs`:
+    - `execute_launch_plan` now delegates to shared helper while preserving unprefixed script-write errors
+    - `execute_launch_plan_with` now delegates to shared helper while preserving prefixed script-write errors (`launcher script write failed: ...`)
+  - updated runtime tests in `src/agent_runtime/tests.rs`:
+    - `execute_launch_plan_keeps_unprefixed_script_write_errors`
+  - no behavior changes, duplication cleanup only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 56)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 306)
+
 ## Current State
-- Worktree is clean.
+- Worktree has uncommitted changes for phases 6ac, 6ad, and 6ae.
 - Recent refactor commits on local `master`:
   - `1325e8f` phase 6ab
   - `5044871` phase 6aa
@@ -1004,7 +1061,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: move sync-mode `execute_tmux_command` ownership from UI/logging into a lower infrastructure boundary, then keep UI responsible only for toast/event decisions
+- next candidate: introduce a runtime command-executor abstraction to unify sync/background launch + stop execution entrypoints while keeping UI responsible for event/toast policy
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
