@@ -391,9 +391,23 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 276)
 
+### Phase 5y, move input trace logging helpers into `logging.rs`
+- Commit: `d598eb3`
+- Changes:
+  - moved from `src/ui/tui/mod.rs` to `src/ui/tui/logging.rs`:
+    - input event + key/action labels (`log_input_event_with_fields`, `interactive_action_kind`, `interactive_key_kind`)
+    - pending interactive input queue helpers (`track_pending_interactive_input`, `clear_pending_inputs_for_session`, `clear_pending_sends_for_session`, `drain_pending_inputs_for_session`)
+    - pending queue metrics/scheduling (`pending_input_depth`, `oldest_pending_input_age_ms`, `schedule_interactive_debounced_poll`)
+  - methods required by sibling modules kept `pub(super)`
+  - no behavior changes, relocation only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `d598eb3` phase 5y
   - `3cc83bf` phase 5x
   - `d16af8c` phase 5w
   - `0858c4f` phase 5v
@@ -424,6 +438,7 @@ Status:
 - text selection structs/state moved into `selection.rs`.
 - shared label/timing helpers moved into `logging.rs`.
 - transition + dialog/tmux/toast logging helpers moved into `logging.rs`.
+- input trace logging helpers moved into `logging.rs`.
 - `mod.rs` is now mostly module root, shared types/constants/helpers, constructors, and logging utilities.
 
 Next sub-targets:
