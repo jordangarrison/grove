@@ -745,17 +745,6 @@ impl GroveApp {
             .collect()
     }
 
-    fn tmux_capture_error_indicates_missing_session(error: &str) -> bool {
-        let lower = error.to_ascii_lowercase();
-        lower.contains("can't find pane")
-            || lower.contains("can't find session")
-            || lower.contains("no server running")
-            || lower.contains("no sessions")
-            || lower.contains("failed to connect to server")
-            || lower.contains("no active session")
-            || lower.contains("session not found")
-    }
-
     fn apply_workspace_status_capture(&mut self, capture: WorkspaceStatusCapture) {
         let supported_agent = capture.supported_agent;
         let Some(workspace_index) = self
@@ -786,7 +775,7 @@ impl GroveApp {
                 workspace.is_orphaned = false;
             }
             Err(error) => {
-                if Self::tmux_capture_error_indicates_missing_session(&error) {
+                if tmux_capture_error_indicates_missing_session(&error) {
                     let workspace = &mut self.state.workspaces[workspace_index];
                     let previously_had_live_session = workspace.status.has_session();
                     workspace.status = if workspace.is_main {
@@ -1041,7 +1030,7 @@ impl GroveApp {
             Err(message) => {
                 self.clear_agent_activity_tracking();
                 let capture_error_indicates_missing_session =
-                    Self::tmux_capture_error_indicates_missing_session(&message);
+                    tmux_capture_error_indicates_missing_session(&message);
                 if capture_error_indicates_missing_session {
                     self.lazygit_ready_sessions.remove(session_name);
                     if let Some(workspace) = self.state.selected_workspace_mut()

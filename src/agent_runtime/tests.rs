@@ -10,8 +10,9 @@ use super::{
     detect_status_with_session_override_in_home, detect_waiting_prompt, evaluate_capture_change,
     git_session_name_for_workspace, normalized_agent_command_override, poll_interval,
     reconcile_with_sessions, sanitize_workspace_name, session_name_for_workspace, stop_plan,
-    strip_mouse_fragments, workspace_should_poll_status, zellij_capture_log_path,
-    zellij_capture_log_path_in, zellij_config_path,
+    strip_mouse_fragments, tmux_capture_error_indicates_missing_session,
+    workspace_should_poll_status, zellij_capture_log_path, zellij_capture_log_path_in,
+    zellij_config_path,
 };
 use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -95,6 +96,19 @@ fn workspace_status_poll_policy_differs_between_tmux_and_zellij_for_idle_non_mai
     assert!(workspace_should_poll_status(
         &workspace,
         MultiplexerKind::Zellij
+    ));
+}
+
+#[test]
+fn tmux_missing_session_error_detection_matches_known_patterns() {
+    assert!(tmux_capture_error_indicates_missing_session(
+        "can't find session: grove-ws-main"
+    ));
+    assert!(tmux_capture_error_indicates_missing_session(
+        "No active session found"
+    ));
+    assert!(!tmux_capture_error_indicates_missing_session(
+        "permission denied"
     ));
 }
 
