@@ -1155,9 +1155,28 @@
   - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 67)
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6ao, unify typed lifecycle outcomes in `agent_runtime`
+- Commit: `ad254f6`
+- Changes:
+  - consolidated runtime lifecycle outcome shapes in `src/agent_runtime.rs`:
+    - removed duplicated `LaunchExecutionResult` and `StopExecutionResult`
+    - introduced shared `SessionExecutionResult { workspace_name, workspace_path, session_name, result }`
+  - updated runtime helpers in `src/agent_runtime.rs`:
+    - `execute_launch_request_with_result_for_mode` now returns `SessionExecutionResult`
+    - `execute_stop_workspace_with_result_for_mode` now returns `SessionExecutionResult`
+  - updated UI runtime mappers in `src/ui/tui/update.rs`:
+    - `start_agent_completion_from_runtime` and `stop_agent_completion_from_runtime` now accept shared `SessionExecutionResult`
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - no behavior changes, lifecycle outcome type deduplication only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 67)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
-- Worktree is clean after phase 6an commit.
+- Worktree is clean after phase 6ao commit.
 - Recent refactor commits on local `master`:
+  - `ad254f6` refactor(runtime): unify session execution outcome type
+  - `240452c` docs(handoff): record phase 6an
   - `286d266` refactor(runtime): add typed stop execution outcome
   - `46db066` docs(handoff): record phase 6am
   - `1ca52aa` refactor(runtime): add typed launch execution outcome
@@ -1256,7 +1275,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: unify typed start/stop outcomes behind a shared runtime session-lifecycle outcome type to remove shape duplication in `agent_runtime`
+- next candidate: move `StartAgentCompletion`/`StopAgentCompletion` conversion from runtime outcome into `msg.rs` impls (`From<SessionExecutionResult>`) to simplify update flow glue
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
