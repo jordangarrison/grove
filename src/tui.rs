@@ -7029,24 +7029,27 @@ impl GroveApp {
                 }
             }
             KeyCode::PageUp => {
-                if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
-                    if self.preview_tab == PreviewTab::Agent {
-                        self.scroll_preview(-5);
-                    }
+                if self.state.mode == UiMode::Preview
+                    && self.state.focus == PaneFocus::Preview
+                    && self.preview_tab == PreviewTab::Agent
+                {
+                    self.scroll_preview(-5);
                 }
             }
             KeyCode::PageDown => {
-                if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
-                    if self.preview_tab == PreviewTab::Agent {
-                        self.scroll_preview(5);
-                    }
+                if self.state.mode == UiMode::Preview
+                    && self.state.focus == PaneFocus::Preview
+                    && self.preview_tab == PreviewTab::Agent
+                {
+                    self.scroll_preview(5);
                 }
             }
             KeyCode::Char('G') => {
-                if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
-                    if self.preview_tab == PreviewTab::Agent {
-                        self.jump_preview_to_bottom();
-                    }
+                if self.state.mode == UiMode::Preview
+                    && self.state.focus == PaneFocus::Preview
+                    && self.preview_tab == PreviewTab::Agent
+                {
+                    self.jump_preview_to_bottom();
                 }
             }
             KeyCode::Char('j') | KeyCode::Down => {
