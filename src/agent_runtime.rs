@@ -195,6 +195,22 @@ pub fn workspace_can_enter_interactive(
     live_preview_agent_session(workspace).is_some()
 }
 
+pub fn workspace_session_for_preview_tab(
+    workspace: Option<&Workspace>,
+    preview_tab_is_git: bool,
+    git_preview_session: Option<&str>,
+) -> Option<String> {
+    if preview_tab_is_git {
+        if workspace.is_none() {
+            return None;
+        }
+
+        return git_preview_session.map(str::to_string);
+    }
+
+    live_preview_agent_session(workspace)
+}
+
 pub fn workspace_status_session_target(
     workspace: &Workspace,
     multiplexer: MultiplexerKind,

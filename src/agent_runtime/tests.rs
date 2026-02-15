@@ -12,7 +12,8 @@ use super::{
     normalized_agent_command_override, poll_interval, reconcile_with_sessions,
     sanitize_workspace_name, session_name_for_workspace, session_name_for_workspace_ref, stop_plan,
     strip_mouse_fragments, tmux_capture_error_indicates_missing_session,
-    workspace_can_enter_interactive, workspace_should_poll_status, workspace_status_session_target,
+    workspace_can_enter_interactive, workspace_session_for_preview_tab,
+    workspace_should_poll_status, workspace_status_session_target,
     workspace_status_targets_for_polling, zellij_capture_log_path, zellij_capture_log_path_in,
     zellij_config_path,
 };
@@ -190,6 +191,42 @@ fn workspace_can_enter_interactive_depends_on_preview_tab_mode() {
         Some(&active_workspace),
         false
     ));
+}
+
+#[test]
+fn workspace_session_for_preview_tab_respects_preview_tab_mode() {
+    let idle_workspace = fixture_workspace("feature", false);
+    assert_eq!(
+        workspace_session_for_preview_tab(
+            Some(&idle_workspace),
+            true,
+            Some("grove-ws-feature-git"),
+        ),
+        Some("grove-ws-feature-git".to_string())
+    );
+    assert_eq!(
+        workspace_session_for_preview_tab(Some(&idle_workspace), true, None),
+        None
+    );
+    assert_eq!(
+        workspace_session_for_preview_tab(None, true, Some("grove-ws-feature-git")),
+        None
+    );
+    assert_eq!(
+        workspace_session_for_preview_tab(
+            Some(&idle_workspace),
+            false,
+            Some("grove-ws-feature-git"),
+        ),
+        None
+    );
+
+    let mut active_workspace = fixture_workspace("feature", false);
+    active_workspace.status = WorkspaceStatus::Active;
+    assert_eq!(
+        workspace_session_for_preview_tab(Some(&active_workspace), false, None),
+        Some("grove-ws-feature".to_string())
+    );
 }
 
 #[test]

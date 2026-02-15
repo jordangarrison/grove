@@ -40,9 +40,9 @@ use crate::adapters::{BootstrapData, DiscoveryState};
 use crate::agent_runtime::{
     LaunchRequest, OutputDigest, SessionActivity, ShellLaunchRequest, build_launch_plan,
     build_shell_launch_plan, detect_status_with_session_override, evaluate_capture_change,
-    git_session_name_for_workspace, kill_workspace_session_command, live_preview_agent_session,
-    poll_interval, session_name_for_workspace_ref, stop_plan,
-    tmux_capture_error_indicates_missing_session, workspace_can_enter_interactive,
+    git_session_name_for_workspace, kill_workspace_session_command, poll_interval,
+    session_name_for_workspace_ref, stop_plan, tmux_capture_error_indicates_missing_session,
+    workspace_can_enter_interactive, workspace_session_for_preview_tab,
     workspace_status_targets_for_polling,
 };
 use crate::config::{GroveConfig, MultiplexerKind, ProjectConfig};

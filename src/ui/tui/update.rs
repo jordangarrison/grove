@@ -691,16 +691,25 @@ impl GroveApp {
     }
 
     fn selected_session_for_live_preview(&self) -> Option<(String, bool)> {
-        if self.preview_tab == PreviewTab::Git {
-            let workspace = self.state.selected_workspace()?;
+        let selected_workspace = self.state.selected_workspace();
+        let git_preview_session = if self.preview_tab == PreviewTab::Git {
+            let workspace = selected_workspace?;
             let session_name = git_session_name_for_workspace(workspace);
             if self.lazygit_ready_sessions.contains(&session_name) {
-                return Some((session_name, true));
+                Some(session_name)
+            } else {
+                None
             }
-            return None;
-        }
+        } else {
+            None
+        };
 
-        live_preview_agent_session(self.state.selected_workspace()).map(|session| (session, true))
+        workspace_session_for_preview_tab(
+            selected_workspace,
+            self.preview_tab == PreviewTab::Git,
+            git_preview_session.as_deref(),
+        )
+        .map(|session| (session, true))
     }
 
     pub(super) fn prepare_live_preview_session(&mut self) -> Option<(String, bool)> {
@@ -3287,17 +3296,21 @@ impl GroveApp {
             return false;
         }
 
-        let session_name = if self.preview_tab == PreviewTab::Git {
+        let git_preview_session = if self.preview_tab == PreviewTab::Git {
             let Some((session_name, _)) = self.prepare_live_preview_session() else {
                 return false;
             };
-            session_name
+            Some(session_name)
         } else {
-            let Some(session_name) = live_preview_agent_session(self.state.selected_workspace())
-            else {
-                return false;
-            };
-            session_name
+            None
+        };
+
+        let Some(session_name) = workspace_session_for_preview_tab(
+            self.state.selected_workspace(),
+            self.preview_tab == PreviewTab::Git,
+            git_preview_session.as_deref(),
+        ) else {
+            return false;
         };
 
         self.interactive = Some(InteractiveState::new(
