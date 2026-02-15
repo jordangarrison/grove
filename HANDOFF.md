@@ -651,9 +651,27 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 288)
 
+### Phase 6k, move preview-tab session target resolution to `agent_runtime`
+- Commit: `28a1c3d`
+- Changes:
+  - added runtime helper in `src/agent_runtime.rs`:
+    - `workspace_session_for_preview_tab(Option<&Workspace>, bool, Option<&str>) -> Option<String>`
+  - updated UI callers in `src/ui/tui/update.rs`:
+    - `selected_session_for_live_preview` now delegates final session resolution to runtime helper
+    - `enter_interactive` now delegates final session resolution to runtime helper
+    - git-tab lazygit readiness/launch behavior remains unchanged in UI
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime test in `src/agent_runtime/tests.rs`:
+    - `workspace_session_for_preview_tab_respects_preview_tab_mode`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 42)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `28a1c3d` phase 6k
   - `4d6b323` phase 6j
   - `6136c11` phase 6i
   - `af85ec7` phase 6h
@@ -714,7 +732,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: move remaining non-UI session-target helpers from `ui/tui/update.rs` (for example interactive-entry session resolution helpers) into runtime/application layer
+- next candidate: move remaining live-preview session-target policy from `ui/tui/update.rs` into runtime/application layer (while keeping UI-owned lazygit launch orchestration local)
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
