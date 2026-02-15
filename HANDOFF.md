@@ -668,9 +668,41 @@
   - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 42)
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6l, move git preview readiness policy to `agent_runtime`
+- Commit: `7e3f610`
+- Changes:
+  - added runtime helper in `src/agent_runtime.rs`:
+    - `git_preview_session_if_ready(Option<&Workspace>, &HashSet<String>) -> Option<String>`
+  - updated UI caller in `src/ui/tui/update.rs`:
+    - `selected_session_for_live_preview` now delegates git-session readiness resolution to runtime helper
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime test in `src/agent_runtime/tests.rs`:
+    - `git_preview_session_if_ready_requires_matching_ready_session`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 43)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
+### Phase 6m, centralize live-preview tab session policy in `agent_runtime`
+- Commit: `0da752e`
+- Changes:
+  - added runtime helper in `src/agent_runtime.rs`:
+    - `live_preview_session_for_tab(Option<&Workspace>, bool, &HashSet<String>) -> Option<String>`
+  - updated UI caller in `src/ui/tui/update.rs`:
+    - `selected_session_for_live_preview` now delegates tab-mode session selection entirely to runtime helper
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime test in `src/agent_runtime/tests.rs`:
+    - `live_preview_session_for_tab_uses_git_or_agent_policy`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 44)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `0da752e` phase 6m
+  - `7e3f610` phase 6l
   - `28a1c3d` phase 6k
   - `4d6b323` phase 6j
   - `6136c11` phase 6i
@@ -732,7 +764,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: move remaining live-preview session-target policy from `ui/tui/update.rs` into runtime/application layer (while keeping UI-owned lazygit launch orchestration local)
+- next candidate: move live-preview capture payload shaping from `ui/tui/update.rs` into runtime/application layer (session + capture-mode policy), while keeping UI-owned lazygit launch orchestration local
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
