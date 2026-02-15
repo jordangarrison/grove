@@ -8,14 +8,14 @@ use super::{
     CaptureChange, LaunchRequest, SessionActivity, build_launch_plan, default_agent_command,
     detect_agent_session_status_in_home, detect_status,
     detect_status_with_session_override_in_home, detect_waiting_prompt, evaluate_capture_change,
-    git_session_name_for_workspace, kill_workspace_session_command, live_preview_agent_session,
-    normalized_agent_command_override, poll_interval, reconcile_with_sessions,
-    sanitize_workspace_name, session_name_for_workspace, session_name_for_workspace_ref, stop_plan,
-    strip_mouse_fragments, tmux_capture_error_indicates_missing_session,
-    workspace_can_enter_interactive, workspace_session_for_preview_tab,
-    workspace_should_poll_status, workspace_status_session_target,
-    workspace_status_targets_for_polling, zellij_capture_log_path, zellij_capture_log_path_in,
-    zellij_config_path,
+    git_preview_session_if_ready, git_session_name_for_workspace, kill_workspace_session_command,
+    live_preview_agent_session, normalized_agent_command_override, poll_interval,
+    reconcile_with_sessions, sanitize_workspace_name, session_name_for_workspace,
+    session_name_for_workspace_ref, stop_plan, strip_mouse_fragments,
+    tmux_capture_error_indicates_missing_session, workspace_can_enter_interactive,
+    workspace_session_for_preview_tab, workspace_should_poll_status,
+    workspace_status_session_target, workspace_status_targets_for_polling, zellij_capture_log_path,
+    zellij_capture_log_path_in, zellij_config_path,
 };
 use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -227,6 +227,22 @@ fn workspace_session_for_preview_tab_respects_preview_tab_mode() {
         workspace_session_for_preview_tab(Some(&active_workspace), false, None),
         Some("grove-ws-feature".to_string())
     );
+}
+
+#[test]
+fn git_preview_session_if_ready_requires_matching_ready_session() {
+    let workspace = fixture_workspace("feature", false);
+    let mut ready_sessions = HashSet::new();
+    assert_eq!(
+        git_preview_session_if_ready(Some(&workspace), &ready_sessions),
+        None
+    );
+    ready_sessions.insert("grove-ws-feature-git".to_string());
+    assert_eq!(
+        git_preview_session_if_ready(Some(&workspace), &ready_sessions),
+        Some("grove-ws-feature-git".to_string())
+    );
+    assert_eq!(git_preview_session_if_ready(None, &ready_sessions), None);
 }
 
 #[test]

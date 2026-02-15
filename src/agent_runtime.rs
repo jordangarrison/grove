@@ -211,6 +211,19 @@ pub fn workspace_session_for_preview_tab(
     live_preview_agent_session(workspace)
 }
 
+pub fn git_preview_session_if_ready(
+    workspace: Option<&Workspace>,
+    ready_sessions: &HashSet<String>,
+) -> Option<String> {
+    let workspace = workspace?;
+    let session_name = git_session_name_for_workspace(workspace);
+    if !ready_sessions.contains(&session_name) {
+        return None;
+    }
+
+    Some(session_name)
+}
+
 pub fn workspace_status_session_target(
     workspace: &Workspace,
     multiplexer: MultiplexerKind,
