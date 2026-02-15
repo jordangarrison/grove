@@ -417,9 +417,23 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 276)
 
+### Phase 5aa, move deferred command/input-seq helpers into `update.rs`
+- Commit: `1cb3248`
+- Changes:
+  - moved from `src/ui/tui/mod.rs` to `src/ui/tui/update.rs`:
+    - `queue_cmd`
+    - `merge_deferred_cmds`
+    - `next_input_seq`
+  - `queue_cmd` exposed as `pub(super)` because `dialogs.rs` queues background tasks
+  - no behavior changes, relocation only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `1cb3248` phase 5aa
   - `55612c8` phase 5z
   - `d598eb3` phase 5y
   - `3cc83bf` phase 5x
@@ -454,6 +468,7 @@ Status:
 - transition + dialog/tmux/toast logging helpers moved into `logging.rs`.
 - input trace logging helpers moved into `logging.rs`.
 - frame debug logging helpers moved into `logging.rs`.
+- deferred command/input-seq helpers moved into `update.rs`.
 - `mod.rs` is now mostly module root, shared types/constants/helpers, constructors, and logging utilities.
 
 Next sub-targets:
