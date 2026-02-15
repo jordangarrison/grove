@@ -1187,9 +1187,24 @@
   - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 67)
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6aq, scope tuple lifecycle executors to `agent_runtime`
+- Commit: `2085f6a`
+- Changes:
+  - narrowed runtime helper visibility in `src/agent_runtime.rs`:
+    - `execute_launch_request_for_mode` from `pub` to private `fn`
+    - `execute_stop_session_for_mode` from `pub` to private `fn`
+    - `execute_stop_workspace_for_mode` from `pub` to private `fn`
+  - kept typed runtime lifecycle entrypoints public (`execute_*_with_result_for_mode`) as UI boundary API
+  - no behavior changes, runtime API-surface cleanup only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 67)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
-- Worktree is clean after phase 6ap commit.
+- Worktree is clean after phase 6aq commit.
 - Recent refactor commits on local `master`:
+  - `2085f6a` refactor(runtime): scope tuple lifecycle executors to module
+  - `93283d7` docs(handoff): record phase 6ap
   - `d80e32f` refactor(ui): move lifecycle outcome conversion into msg
   - `3d3f680` docs(handoff): record phase 6ao
   - `ad254f6` refactor(runtime): unify session execution outcome type
@@ -1292,7 +1307,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: extract shared runtime lifecycle helper that executes start/stop by `CommandExecutionMode` and returns `SessionExecutionResult` to shrink duplicated mode-branching in UI update flow
+- next candidate: inline now-private tuple lifecycle helpers into typed `*_with_result_for_mode` functions to collapse duplicate call depth inside `agent_runtime`
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
