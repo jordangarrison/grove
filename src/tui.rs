@@ -74,7 +74,7 @@ const WORKSPACE_LAUNCH_PROMPT_FILENAME: &str = ".grove-prompt";
 const HEADER_HEIGHT: u16 = 1;
 const STATUS_HEIGHT: u16 = 1;
 const DIVIDER_WIDTH: u16 = 1;
-const WORKSPACE_ITEM_HEIGHT: u16 = 2;
+const WORKSPACE_ITEM_HEIGHT: u16 = 1;
 const PREVIEW_METADATA_ROWS: u16 = 2;
 const TICK_EARLY_TOLERANCE_MS: u64 = 5;
 const HIT_ID_HEADER: u32 = 1;
@@ -3008,7 +3008,7 @@ impl GroveApp {
             format!("         {T}||{R}           {T}|||{R}              {T}||{R}"),
             format!("        {T}/||\\{R}         {T}/|||\\{R}            {T}/||\\{R}"),
             String::new(),
-            "Main Worktree".to_string(),
+            "Base Worktree".to_string(),
             String::new(),
             "This is your repo root.".to_string(),
             "Create focused workspaces from here when you start new work.".to_string(),
@@ -4858,7 +4858,7 @@ impl GroveApp {
             return;
         };
         if workspace.is_main {
-            self.show_flash("cannot delete main workspace", true);
+            self.show_flash("cannot delete base workspace", true);
             return;
         }
 
@@ -7553,10 +7553,10 @@ impl GroveApp {
             }
 
             for workspace_index in workspace_indices {
-                if visual_row == target_row || visual_row.saturating_add(1) == target_row {
+                if visual_row == target_row {
                     return Some(workspace_index);
                 }
-                visual_row = visual_row.saturating_add(2);
+                visual_row = visual_row.saturating_add(usize::from(WORKSPACE_ITEM_HEIGHT));
             }
         }
 
@@ -8105,6 +8105,14 @@ impl GroveApp {
         format!("{}d", age_secs / 86_400)
     }
 
+    fn workspace_display_name(workspace: &Workspace) -> String {
+        if workspace.is_main {
+            "base".to_string()
+        } else {
+            workspace.name.clone()
+        }
+    }
+
     fn render_header(&self, frame: &mut Frame, area: Rect) {
         if area.is_empty() {
             return;
@@ -8269,44 +8277,51 @@ impl GroveApp {
                     } else {
                         primary_style
                     };
-                    let primary_spans = vec![
+                    let workspace_name = Self::workspace_display_name(workspace);
+                    let show_branch = workspace.branch != workspace_name;
+                    let branch_text = if show_branch {
+                        format!(" · {}", workspace.branch)
+                    } else {
+                        String::new()
+                    };
+                    let agent_separator = " · ";
+                    let mut row_spans = vec![
                         FtSpan::styled(format!("{selected} "), primary_style),
-                        FtSpan::styled(workspace.name.clone(), workspace_label_style),
+                        FtSpan::styled(workspace_name.clone(), workspace_label_style),
                     ];
-                    lines.push(FtLine::from_spans(primary_spans));
-
-                    let mut secondary_spans = vec![
-                        FtSpan::styled("  ", secondary_style),
-                        FtSpan::styled(format!("{} | ", workspace.branch), secondary_style),
-                        FtSpan::styled(
-                            workspace.agent.label().to_string(),
-                            secondary_style
-                                .fg(self.workspace_agent_color(workspace.agent))
-                                .bold(),
-                        ),
-                    ];
+                    if !branch_text.is_empty() {
+                        row_spans.push(FtSpan::styled(branch_text.clone(), secondary_style));
+                    }
+                    row_spans.push(FtSpan::styled(agent_separator, secondary_style));
+                    row_spans.push(FtSpan::styled(
+                        workspace.agent.label().to_string(),
+                        secondary_style
+                            .fg(self.workspace_agent_color(workspace.agent))
+                            .bold(),
+                    ));
                     if workspace.is_orphaned {
-                        secondary_spans.push(FtSpan::styled(
-                            " | session ended",
+                        row_spans.push(FtSpan::styled(
+                            " · session ended",
                             secondary_style.fg(theme.peach),
                         ));
                     }
-                    lines.push(FtLine::from_spans(secondary_spans));
+                    lines.push(FtLine::from_spans(row_spans));
 
                     if is_working {
                         let primary_label_x = inner.x.saturating_add(
                             u16::try_from(text_display_width("▸ ")).unwrap_or(u16::MAX),
                         );
                         animated_labels.push((
-                            workspace.name.clone(),
+                            workspace_name.clone(),
                             workspace.agent,
                             primary_label_x,
                             row_y,
                         ));
-                        let agent_prefix = format!("{} | ", workspace.branch);
+                        let agent_prefix =
+                            format!("{workspace_name}{branch_text}{agent_separator}");
                         let secondary_label_x = inner.x.saturating_add(
                             u16::try_from(
-                                text_display_width("  ")
+                                text_display_width("▸ ")
                                     .saturating_add(text_display_width(&agent_prefix)),
                             )
                             .unwrap_or(u16::MAX),
@@ -8315,7 +8330,7 @@ impl GroveApp {
                             workspace.agent.label().to_string(),
                             workspace.agent,
                             secondary_label_x,
-                            row_y.saturating_add(1),
+                            row_y,
                         ));
                     }
 
@@ -8379,11 +8394,7 @@ impl GroveApp {
             return;
         }
 
-        let title = if self.interactive.is_some() {
-            "Preview (Interactive)"
-        } else {
-            "Preview"
-        };
+        let title = "Preview";
         let block =
             Block::new()
                 .title(title)
@@ -8405,28 +8416,25 @@ impl GroveApp {
         let theme = ui_theme();
         let mut animated_labels: Vec<(String, AgentType, u16, u16)> = Vec::new();
         let selected_workspace_header = selected_workspace.map(|workspace| {
-            let mode_label = if self.interactive.is_some() {
-                "INTERACTIVE"
-            } else {
-                "PREVIEW"
-            };
+            let workspace_name = Self::workspace_display_name(workspace);
             let is_working = self.status_is_visually_working(
                 Some(workspace.path.as_path()),
                 workspace.status,
                 true,
             );
-            let name_label = if workspace.name == workspace.branch {
-                workspace.name.clone()
+            let branch_label = if workspace.branch != workspace_name {
+                Some(workspace.branch.clone())
             } else {
-                format!("{} ({})", workspace.name, workspace.branch)
+                None
             };
             let age_label = self.relative_age_label(workspace.last_activity_unix_secs);
             (
-                mode_label.to_string(),
-                name_label,
+                workspace_name,
+                branch_label,
                 age_label,
                 is_working,
                 workspace.agent,
+                workspace.is_orphaned,
             )
         });
 
@@ -8436,47 +8444,55 @@ impl GroveApp {
             .max(1);
 
         let mut text_lines = vec![
-            if let Some((mode_label, name_label, age_label, is_working, agent)) =
+            if let Some((name_label, branch_label, age_label, is_working, agent, is_orphaned)) =
                 selected_workspace_header.as_ref()
             {
-                let mut spans = vec![
-                    FtSpan::styled(format!("{mode_label} | "), Style::new().fg(theme.subtext0)),
-                    FtSpan::styled(
-                        name_label.clone(),
-                        if *is_working {
-                            Style::new().fg(self.workspace_agent_color(*agent)).bold()
-                        } else {
-                            Style::new().fg(theme.subtext0)
-                        },
-                    ),
-                ];
+                let mut spans = vec![FtSpan::styled(
+                    name_label.clone(),
+                    if *is_working {
+                        Style::new().fg(self.workspace_agent_color(*agent)).bold()
+                    } else {
+                        Style::new().fg(theme.text).bold()
+                    },
+                )];
+                if let Some(branch_label) = branch_label {
+                    spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+                    spans.push(FtSpan::styled(
+                        branch_label.clone(),
+                        Style::new().fg(theme.subtext0),
+                    ));
+                }
+                spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+                spans.push(FtSpan::styled(
+                    agent.label().to_string(),
+                    Style::new().fg(self.workspace_agent_color(*agent)).bold(),
+                ));
                 if !age_label.is_empty() {
-                    spans.push(FtSpan::styled("  ", Style::new().fg(theme.subtext0)));
+                    spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
                     spans.push(FtSpan::styled(
                         age_label.clone(),
                         Style::new().fg(theme.overlay0),
                     ));
                 }
+                if *is_orphaned {
+                    spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+                    spans.push(FtSpan::styled(
+                        "session ended",
+                        Style::new().fg(theme.peach),
+                    ));
+                }
                 FtLine::from_spans(spans)
             } else {
                 FtLine::from_spans(vec![FtSpan::styled(
-                    "PREVIEW | none",
+                    "none selected",
                     Style::new().fg(theme.subtext0),
                 )])
             },
             if let Some(workspace) = selected_workspace {
-                FtLine::from_spans(vec![
-                    FtSpan::styled(
-                        format!("{} | ", workspace.agent.label()),
-                        Style::new()
-                            .fg(self.workspace_agent_color(workspace.agent))
-                            .bold(),
-                    ),
-                    FtSpan::styled(
-                        workspace.path.display().to_string(),
-                        Style::new().fg(theme.overlay0),
-                    ),
-                ])
+                FtLine::from_spans(vec![FtSpan::styled(
+                    workspace.path.display().to_string(),
+                    Style::new().fg(theme.overlay0),
+                )])
             } else {
                 FtLine::from_spans(vec![FtSpan::styled(
                     "no workspace",
@@ -8484,16 +8500,21 @@ impl GroveApp {
                 )])
             },
         ];
-        if let Some((mode_label, name_label, _, true, agent)) = selected_workspace_header.as_ref() {
-            let name_x = inner.x.saturating_add(
-                u16::try_from(text_display_width(&format!("{mode_label} | "))).unwrap_or(u16::MAX),
-            );
-            animated_labels.push((name_label.clone(), *agent, name_x, inner.y));
+        if let Some((name_label, branch_label, _, true, agent, _)) =
+            selected_workspace_header.as_ref()
+        {
+            animated_labels.push((name_label.clone(), *agent, inner.x, inner.y));
+            let branch_prefix = branch_label
+                .as_ref()
+                .map_or(String::new(), |branch| format!(" · {branch}"));
+            let agent_prefix = format!("{name_label}{branch_prefix} · ");
             animated_labels.push((
                 agent.label().to_string(),
                 *agent,
-                inner.x,
-                inner.y.saturating_add(1),
+                inner.x.saturating_add(
+                    u16::try_from(text_display_width(&agent_prefix)).unwrap_or(u16::MAX),
+                ),
+                inner.y,
             ));
         }
 
@@ -9228,7 +9249,7 @@ impl GroveApp {
                 theme,
                 "BaseBranch",
                 dialog.base_branch.as_str(),
-                "main (default: current branch)",
+                "current branch (fallback: main/master)",
                 focused(CreateDialogField::BaseBranch),
             ),
         ];
@@ -9473,10 +9494,11 @@ impl GroveApp {
                     } else {
                         " "
                     };
+                    let workspace_name = Self::workspace_display_name(workspace);
                     lines.push(format!(
                         "{} {} | {} | {} | {}{}",
                         selected,
-                        workspace.name,
+                        workspace_name,
                         workspace.branch,
                         workspace.agent.label(),
                         workspace.path.display(),
@@ -9536,7 +9558,7 @@ impl GroveApp {
             .map(|workspace| {
                 format!(
                     "{} ({}, {})",
-                    workspace.name,
+                    Self::workspace_display_name(workspace),
                     workspace.branch,
                     workspace.path.display()
                 )
@@ -10525,7 +10547,7 @@ mod tests {
 
         with_rendered_frame(&app, 80, 24, |frame| {
             let Some(sidebar_row) =
-                find_row_containing(frame, "grove", sidebar_x_start, sidebar_x_end)
+                find_row_containing(frame, "▸ base", sidebar_x_start, sidebar_x_end)
             else {
                 panic!("sidebar workspace row should be rendered");
             };
@@ -10537,7 +10559,7 @@ mod tests {
 
             let Some(preview_row) = find_row_containing(
                 frame,
-                "PREVIEW | grove (main)",
+                "base · main · Claude",
                 preview_x_start,
                 preview_x_end,
             ) else {
@@ -10573,11 +10595,35 @@ mod tests {
     }
 
     #[test]
+    fn sidebar_row_omits_duplicate_workspace_and_branch_text() {
+        let mut app = fixture_app();
+        app.state.selected_index = 1;
+        let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let Some(row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
+                panic!("feature row should be rendered");
+            };
+            let row_text = row_text(frame, row, x_start, x_end);
+            assert!(
+                !row_text.contains("feature-a · feature-a"),
+                "row should not duplicate workspace and branch when they match, got: {row_text}"
+            );
+            assert!(
+                row_text.contains("feature-a · Codex"),
+                "row should include workspace and agent labels, got: {row_text}"
+            );
+        });
+    }
+
+    #[test]
     fn shell_lines_show_workspace_and_agent_labels_without_status_badges() {
         let app = fixture_app();
         let lines = app.shell_lines(12);
-        let Some(main_line) = lines.iter().find(|line| line.contains("grove | main")) else {
-            panic!("main workspace shell line should be present");
+        let Some(base_line) = lines.iter().find(|line| line.contains("base | main")) else {
+            panic!("base workspace shell line should be present");
         };
         let Some(feature_line) = lines
             .iter()
@@ -10586,16 +10632,16 @@ mod tests {
             panic!("feature workspace shell line should be present");
         };
         assert!(
-            !main_line.contains("["),
-            "main workspace should not show status badge, got: {main_line}"
+            !base_line.contains("["),
+            "base workspace should not show status badge, got: {base_line}"
         );
         assert!(
             !feature_line.contains("["),
             "feature workspace should not show status badge, got: {feature_line}"
         );
         assert!(
-            main_line.contains("Claude"),
-            "main workspace should include Claude label, got: {main_line}"
+            base_line.contains("Claude"),
+            "base workspace should include Claude label, got: {base_line}"
         );
         assert!(
             feature_line.contains("Codex"),
@@ -10739,13 +10785,6 @@ mod tests {
             assert!(
                 !sidebar_row_text.contains("["),
                 "waiting workspace should not show status badge, got: {sidebar_row_text}"
-            );
-
-            let secondary_row = selected_row.saturating_add(1);
-            let secondary_text = row_text(frame, secondary_row, x_start, x_end);
-            assert!(
-                !secondary_text.contains("NEEDS INPUT"),
-                "waiting workspace should not show extra input banner, got: {secondary_text}"
             );
         });
     }
@@ -12775,7 +12814,7 @@ mod tests {
         assert!(app.delete_dialog.is_none());
         assert!(
             app.status_bar_line()
-                .contains("cannot delete main workspace")
+                .contains("cannot delete base workspace")
         );
     }
 
