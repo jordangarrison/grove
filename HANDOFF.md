@@ -821,9 +821,22 @@
 - Gates:
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6w, inline interactive-entry policy UI wrapper callsites
+- Commit: `a5f5bff`
+- Changes:
+  - removed `can_enter_interactive` wrapper from `src/ui/tui/update.rs`
+  - updated callsites in `src/ui/tui/update.rs` to call
+    `workspace_can_enter_interactive(...)` directly in:
+    - command-palette action inclusion
+    - `enter_interactive` guard
+  - no behavior changes, UI shim cleanup only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `a5f5bff` phase 6w
   - `824ffce` phase 6v
   - `2b37bac` phase 6u
   - `c61c1da` phase 6t
