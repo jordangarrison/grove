@@ -1088,9 +1088,29 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 312)
 
+### Phase 6ak, move launch request construction into `agent_runtime`
+- Commit: `d9ef81a`
+- Changes:
+  - added runtime request-builder helpers in `src/agent_runtime.rs`:
+    - `launch_request_for_workspace(&Workspace, Option<String>, Option<String>, bool, Option<u16>, Option<u16>) -> LaunchRequest`
+    - `shell_launch_request_for_workspace(&Workspace, String, String, Option<u16>, Option<u16>) -> ShellLaunchRequest`
+  - updated UI callsites in `src/ui/tui/update.rs`:
+    - `start_selected_workspace_agent_with_options` now builds `LaunchRequest` through runtime helper
+    - `ensure_lazygit_session_for_selected_workspace` now builds `ShellLaunchRequest` through runtime helper
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime tests in `src/agent_runtime/tests.rs`:
+    - `launch_request_for_workspace_copies_workspace_context_and_options`
+    - `shell_launch_request_for_workspace_uses_workspace_path_and_options`
+  - no behavior changes, request-shaping ownership move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 64)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
-- Worktree is clean after phase 6aj commit.
+- Worktree is clean after phase 6ak commit.
 - Recent refactor commits on local `master`:
+  - `d9ef81a` refactor(runtime): build launch requests from workspace
+  - `e2d7be2` docs(handoff): record phase 6aj
   - `3eddb24` refactor(runtime): add lifecycle execution facade helpers
   - `dd9d499` docs(handoff): record phase 6ai
   - `f977236` refactor(runtime): trim execution wrapper surface
@@ -1181,7 +1201,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: move start-dialog request construction (`LaunchRequest`) from UI into a small runtime input builder helper so UI only gathers dialog fields and applies completion/toasts
+- next candidate: move start/stop completion payload construction into a runtime lifecycle helper so background and sync paths share one completion-shaping boundary
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
