@@ -378,9 +378,23 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 276)
 
+### Phase 5x, move transition and toast logging orchestration into `logging.rs`
+- Commit: `3cc83bf`
+- Changes:
+  - moved from `src/ui/tui/mod.rs` to `src/ui/tui/logging.rs`:
+    - `TransitionSnapshot` struct
+    - transition event helpers (`capture_transition_snapshot`, `emit_transition_events`)
+    - dialog/tmux/toast logging helpers (`log_dialog_event_with_fields`, `log_dialog_event`, `log_tmux_error`, `execute_tmux_command`, `show_toast`)
+  - methods exposed as `pub(super)` for sibling callers in `update.rs`, `dialogs.rs`, and tests
+  - no behavior changes, relocation only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `3cc83bf` phase 5x
   - `d16af8c` phase 5w
   - `0858c4f` phase 5v
   - `912bb07` phase 5u
@@ -409,6 +423,7 @@ Status:
 - shared text/formatting helpers moved into `text.rs`.
 - text selection structs/state moved into `selection.rs`.
 - shared label/timing helpers moved into `logging.rs`.
+- transition + dialog/tmux/toast logging helpers moved into `logging.rs`.
 - `mod.rs` is now mostly module root, shared types/constants/helpers, constructors, and logging utilities.
 
 Next sub-targets:
