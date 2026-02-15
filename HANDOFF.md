@@ -981,7 +981,7 @@
   - `cargo test --lib` (pass, 306)
 
 ### Phase 6af, introduce runtime command-executor abstraction
-- Commit: `(pending, uncommitted)`
+- Commit: `bc28049`
 - Changes:
   - added runtime abstraction in `src/agent_runtime.rs`:
     - `CommandExecutor` trait with command + launcher-script execution hooks
@@ -1006,7 +1006,7 @@
   - `cargo test --lib` (pass, 308)
 
 ### Phase 6ag, centralize runtime execution result shaping helpers
-- Commit: `(pending, uncommitted)`
+- Commit: `2f45daf`
 - Changes:
   - added runtime result helpers in `src/agent_runtime.rs`:
     - `execute_launch_plan_result(LaunchPlan) -> Result<(), String>`
@@ -1028,9 +1028,35 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 312)
 
+### Phase 6ah, add runtime dispatch helper for sync vs process execution
+- Commit: `(pending, uncommitted)`
+- Changes:
+  - added runtime dispatch type + helpers in `src/agent_runtime.rs`:
+    - `CommandExecutionMode::{Process, Delegating}`
+    - `execute_launch_plan_for_mode(&LaunchPlan, CommandExecutionMode) -> Result<(), String>`
+    - `execute_commands_for_mode(&[Vec<String>], CommandExecutionMode) -> Result<(), String>`
+  - refactored runtime result wrappers in `src/agent_runtime.rs`:
+    - `execute_launch_plan_result`, `execute_launch_plan_with_result`, `execute_commands_result`, and `execute_commands_with_result` now delegate through mode-based dispatch
+  - updated UI callsites in `src/ui/tui/update.rs`:
+    - sync and background start/stop/lazygit execution paths now call mode-based runtime dispatch directly
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime tests in `src/agent_runtime/tests.rs`:
+    - `execute_commands_for_mode_process_returns_string_errors`
+    - `execute_launch_plan_for_mode_delegating_prefixes_script_write_errors`
+  - no behavior changes, dispatch-boundary move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 64)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 314)
+
 ## Current State
-- Worktree has uncommitted changes for phases 6af and 6ag.
+- Worktree has uncommitted changes for phase 6ah.
 - Recent refactor commits on local `master`:
+  - `b7d8be7` docs(handoff): record phase 6ag
+  - `2f45daf` refactor(runtime): centralize launch and stop result mapping
+  - `c233767` docs(handoff): record phase 6af
+  - `bc28049` refactor(runtime): add command executor abstraction
+  - `69fbdde` docs(handoff): mark phases 6ac-6ae committed
   - `b6d262b` docs(handoff): record phases 6ac-6ae
   - `2d637bc` refactor(runtime): route sync execution through runtime command helpers
   - `1325e8f` phase 6ab
@@ -1111,7 +1137,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: introduce runtime launch/stop dispatch helper that chooses sync/delegated vs process execution, so UI only passes execution strategy and handles post-result state/toasts
+- next candidate: collapse runtime execution wrappers (`*_with_result`, `*_result`, `*_for_mode`) to minimal API surface and migrate UI callsites to one preferred entrypoint
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
