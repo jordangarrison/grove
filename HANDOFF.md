@@ -96,6 +96,24 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 276)
 
+### Phase 5c, move dialog/overlay render helpers into `view.rs`
+- Commit: pending
+- Changes:
+  - moved render helper methods from `src/ui/tui/mod.rs` to `src/ui/tui/view.rs`:
+    - `render_toasts`
+    - `render_launch_dialog_overlay`
+    - `render_delete_dialog_overlay`
+    - `render_settings_dialog_overlay`
+    - `render_project_dialog_overlay`
+    - `render_command_palette_overlay`
+    - `render_keybind_help_overlay`
+    - `render_create_dialog_overlay`
+    - `render_edit_dialog_overlay`
+  - no behavior changes, relocation only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
 ## Current State
 - Worktree includes Phase 5a module extraction changes + this handoff update.
 - Local branch includes prior refactor commits:
@@ -109,6 +127,7 @@
 Status:
 - `msg`, `update`, `view`, `dialogs` created and wired.
 - dialog key handlers moved into `dialogs.rs`.
+- dialog and overlay render helpers moved into `view.rs`.
 - Remaining work is further decomposition of large `GroveApp` impl blocks inside `mod.rs`.
 
 Next sub-targets:
