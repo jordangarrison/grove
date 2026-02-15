@@ -3176,11 +3176,14 @@ impl GroveApp {
         if self.interactive.is_some() {
             return "Esc Esc / Ctrl+\\ exit, Alt+C copy, Alt+V paste";
         }
-        if self.state.mode == UiMode::Preview {
+        if self.preview_agent_tab_is_focused() {
             return "[ prev tab, ] next tab, j/k scroll, PgUp/PgDn, G bottom, h/l pane, Enter open, n new, e edit, p projects, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit";
         }
+        if self.preview_git_tab_is_focused() {
+            return "[ prev tab, ] next tab, h/l pane, Enter attach lazygit, n new, e edit, p projects, D delete, S settings, Ctrl+K palette, ? help, q quit";
+        }
 
-        "j/k move, h/l pane, Enter open, n new, e edit, p projects, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit"
+        "j/k move, h/l pane, Enter open, n new, e edit, p projects, D delete, S settings, Ctrl+K palette, ? help, q quit"
     }
 
     fn cycle_preview_tab(&mut self, direction: i8) {
@@ -3342,7 +3345,7 @@ impl GroveApp {
             ),
         ];
 
-        if self.can_start_selected_workspace() {
+        if self.preview_agent_tab_is_focused() && self.can_start_selected_workspace() {
             actions.push(Self::palette_action(
                 PALETTE_CMD_START_AGENT,
                 "Start Agent",
@@ -3352,7 +3355,7 @@ impl GroveApp {
             ));
         }
 
-        if self.can_stop_selected_workspace() {
+        if self.preview_agent_tab_is_focused() && self.can_stop_selected_workspace() {
             actions.push(Self::palette_action(
                 PALETTE_CMD_STOP_AGENT,
                 "Stop Agent",
@@ -3418,7 +3421,7 @@ impl GroveApp {
             }
         }
 
-        if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
+        if self.preview_agent_tab_is_focused() {
             actions.push(Self::palette_action(
                 PALETTE_CMD_SCROLL_UP,
                 "Scroll Up",
@@ -3500,23 +3503,33 @@ impl GroveApp {
                 false
             }
             PALETTE_CMD_SCROLL_UP => {
-                self.scroll_preview(-1);
+                if self.preview_agent_tab_is_focused() {
+                    self.scroll_preview(-1);
+                }
                 false
             }
             PALETTE_CMD_SCROLL_DOWN => {
-                self.scroll_preview(1);
+                if self.preview_agent_tab_is_focused() {
+                    self.scroll_preview(1);
+                }
                 false
             }
             PALETTE_CMD_PAGE_UP => {
-                self.scroll_preview(-5);
+                if self.preview_agent_tab_is_focused() {
+                    self.scroll_preview(-5);
+                }
                 false
             }
             PALETTE_CMD_PAGE_DOWN => {
-                self.scroll_preview(5);
+                if self.preview_agent_tab_is_focused() {
+                    self.scroll_preview(5);
+                }
                 false
             }
             PALETTE_CMD_SCROLL_BOTTOM => {
-                self.jump_preview_to_bottom();
+                if self.preview_agent_tab_is_focused() {
+                    self.jump_preview_to_bottom();
+                }
                 false
             }
             PALETTE_CMD_NEW_WORKSPACE => {
@@ -3528,11 +3541,15 @@ impl GroveApp {
                 false
             }
             PALETTE_CMD_START_AGENT => {
-                self.open_start_dialog();
+                if self.preview_agent_tab_is_focused() {
+                    self.open_start_dialog();
+                }
                 false
             }
             PALETTE_CMD_STOP_AGENT => {
-                self.stop_selected_workspace_agent();
+                if self.preview_agent_tab_is_focused() {
+                    self.stop_selected_workspace_agent();
+                }
                 false
             }
             PALETTE_CMD_DELETE_WORKSPACE => {
@@ -4488,6 +4505,18 @@ impl GroveApp {
             .with_input(self.keybinding_input_nonempty())
             .with_task(self.keybinding_task_running())
             .with_modal(self.modal_open())
+    }
+
+    fn preview_agent_tab_is_focused(&self) -> bool {
+        self.state.mode == UiMode::Preview
+            && self.state.focus == PaneFocus::Preview
+            && self.preview_tab == PreviewTab::Agent
+    }
+
+    fn preview_git_tab_is_focused(&self) -> bool {
+        self.state.mode == UiMode::Preview
+            && self.state.focus == PaneFocus::Preview
+            && self.preview_tab == PreviewTab::Git
     }
 
     fn apply_keybinding_action(&mut self, action: KeybindingAction) -> bool {
@@ -7130,8 +7159,16 @@ impl GroveApp {
             KeyCode::Char('?') => self.open_keybind_help(),
             KeyCode::Char('D') => self.open_delete_dialog(),
             KeyCode::Char('S') => self.open_settings_dialog(),
-            KeyCode::Char('s') => self.open_start_dialog(),
-            KeyCode::Char('x') => self.stop_selected_workspace_agent(),
+            KeyCode::Char('s') => {
+                if self.preview_agent_tab_is_focused() {
+                    self.open_start_dialog();
+                }
+            }
+            KeyCode::Char('x') => {
+                if self.preview_agent_tab_is_focused() {
+                    self.stop_selected_workspace_agent();
+                }
+            }
             KeyCode::Char('h') => reduce(&mut self.state, Action::EnterListMode),
             KeyCode::Char('l') => {
                 let mode_before = self.state.mode;
@@ -9551,7 +9588,7 @@ impl GroveApp {
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "  n new, e edit, p projects, s start, x stop, D delete, S settings, ! unsafe toggle",
+                    "  n new, e edit, p projects, D delete, S settings, ! unsafe toggle",
                     content_width,
                 ),
                 Style::new().fg(theme.text),
@@ -9576,7 +9613,14 @@ impl GroveApp {
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "  [ previous tab, ] next tab, j/k or Up/Down scroll, PgUp/PgDn page, G bottom",
+                    "  Agent tab: [/] tab, j/k or Up/Down scroll, PgUp/PgDn page, G bottom, s start, x stop",
+                    content_width,
+                ),
+                Style::new().fg(theme.text),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    "  Git tab: [/] tab, Enter attach lazygit",
                     content_width,
                 ),
                 Style::new().fg(theme.text),
@@ -10356,10 +10400,10 @@ mod tests {
         HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW,
         LaunchDialogField, LaunchDialogState, LivePreviewCapture, Msg, PALETTE_CMD_FOCUS_LIST,
         PALETTE_CMD_MOVE_SELECTION_DOWN, PALETTE_CMD_OPEN_PREVIEW, PALETTE_CMD_SCROLL_DOWN,
-        PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
-        StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput,
-        WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line,
-        parse_cursor_metadata, ui_theme,
+        PALETTE_CMD_START_AGENT, PREVIEW_METADATA_ROWS, PendingResizeVerification,
+        PreviewPollCompletion, PreviewTab, StartAgentCompletion, StopAgentCompletion,
+        TextSelectionPoint, TmuxInput, WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture,
+        ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::config::{MultiplexerKind, ProjectConfig};
@@ -10666,6 +10710,12 @@ mod tests {
 
     fn key_press(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code).with_kind(KeyEventKind::Press)
+    }
+
+    fn focus_agent_preview_tab(app: &mut GroveApp) {
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        app.preview_tab = PreviewTab::Agent;
     }
 
     fn force_tick_due(app: &mut GroveApp) {
@@ -11520,6 +11570,7 @@ mod tests {
         let mut app = fixture_app();
         app.state.mode = UiMode::Preview;
         app.state.focus = PaneFocus::Preview;
+        app.preview_tab = PreviewTab::Agent;
 
         with_rendered_frame(&app, 180, 24, |frame| {
             let status_row = frame.height().saturating_sub(1);
@@ -11527,6 +11578,23 @@ mod tests {
             assert!(status_text.contains("s start"));
             assert!(status_text.contains("x stop"));
             assert!(status_text.contains("D delete"));
+        });
+    }
+
+    #[test]
+    fn status_row_hides_agent_hints_in_git_tab() {
+        let mut app = fixture_app();
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        app.preview_tab = PreviewTab::Git;
+
+        with_rendered_frame(&app, 180, 24, |frame| {
+            let status_row = frame.height().saturating_sub(1);
+            let status_text = row_text(frame, status_row, 0, frame.width());
+            assert!(!status_text.contains("s start"));
+            assert!(!status_text.contains("x stop"));
+            assert!(!status_text.contains("j/k scroll"));
+            assert!(status_text.contains("Enter attach lazygit"));
         });
     }
 
@@ -11664,9 +11732,11 @@ mod tests {
         );
         assert!(list_ids.iter().any(|id| id == PALETTE_CMD_OPEN_PREVIEW));
         assert!(!list_ids.iter().any(|id| id == PALETTE_CMD_SCROLL_DOWN));
+        assert!(!list_ids.iter().any(|id| id == PALETTE_CMD_START_AGENT));
 
         app.state.mode = UiMode::Preview;
         app.state.focus = PaneFocus::Preview;
+        app.preview_tab = PreviewTab::Agent;
         let preview_ids: Vec<String> = app
             .build_command_palette_actions()
             .into_iter()
@@ -11674,10 +11744,28 @@ mod tests {
             .collect();
         assert!(preview_ids.iter().any(|id| id == PALETTE_CMD_SCROLL_DOWN));
         assert!(preview_ids.iter().any(|id| id == PALETTE_CMD_FOCUS_LIST));
+        assert!(preview_ids.iter().any(|id| id == PALETTE_CMD_START_AGENT));
         assert!(
             !preview_ids
                 .iter()
                 .any(|id| id == PALETTE_CMD_MOVE_SELECTION_DOWN)
+        );
+
+        app.preview_tab = PreviewTab::Git;
+        let git_preview_ids: Vec<String> = app
+            .build_command_palette_actions()
+            .into_iter()
+            .map(|action| action.id)
+            .collect();
+        assert!(
+            !git_preview_ids
+                .iter()
+                .any(|id| id == PALETTE_CMD_SCROLL_DOWN)
+        );
+        assert!(
+            !git_preview_ids
+                .iter()
+                .any(|id| id == PALETTE_CMD_START_AGENT)
         );
     }
 
@@ -12034,11 +12122,8 @@ mod tests {
     fn start_agent_emits_dialog_and_lifecycle_events() {
         let (mut app, _commands, _captures, _cursor_captures, events) =
             fixture_app_with_tmux_and_events(WorkspaceStatus::Idle, Vec::new(), Vec::new());
-
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-        );
+        focus_agent_preview_tab(&mut app);
+        app.state.selected_index = 1;
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
@@ -12051,12 +12136,7 @@ mod tests {
         let kinds = event_kinds(&events);
         assert_kind_subsequence(
             &kinds,
-            &[
-                "selection_changed",
-                "dialog_opened",
-                "dialog_confirmed",
-                "agent_started",
-            ],
+            &["dialog_opened", "dialog_confirmed", "agent_started"],
         );
         assert!(kinds.iter().any(|kind| kind == "toast_shown"));
     }
@@ -12772,6 +12852,7 @@ mod tests {
     fn ctrl_c_dismisses_modal_via_action_mapper() {
         let mut app = fixture_app();
         app.state.selected_index = 1;
+        focus_agent_preview_tab(&mut app);
 
         ftui::Model::update(
             &mut app,
@@ -12856,11 +12937,8 @@ mod tests {
     fn start_key_launches_selected_workspace_agent() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-        );
+        focus_agent_preview_tab(&mut app);
+        app.state.selected_index = 1;
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
@@ -12935,6 +13013,7 @@ mod tests {
     fn background_start_confirm_queues_lifecycle_task() {
         let mut app = fixture_background_app(WorkspaceStatus::Idle);
         app.state.selected_index = 1;
+        focus_agent_preview_tab(&mut app);
 
         ftui::Model::update(
             &mut app,
@@ -12975,14 +13054,12 @@ mod tests {
     fn unsafe_toggle_changes_launch_command_flags() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+        focus_agent_preview_tab(&mut app);
+        app.state.selected_index = 1;
 
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('!')).with_kind(KeyEventKind::Press)),
-        );
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
         );
         ftui::Model::update(
             &mut app,
@@ -13015,12 +13092,10 @@ mod tests {
 
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+        focus_agent_preview_tab(&mut app);
         app.state.workspaces[1].path = workspace_dir.clone();
+        app.state.selected_index = 1;
 
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-        );
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
@@ -13056,11 +13131,8 @@ mod tests {
     fn start_dialog_pre_launch_command_runs_before_agent() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-        );
+        focus_agent_preview_tab(&mut app);
+        app.state.selected_index = 1;
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
@@ -13099,11 +13171,8 @@ mod tests {
     fn start_dialog_field_navigation_can_toggle_unsafe_for_launch() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-        );
+        focus_agent_preview_tab(&mut app);
+        app.state.selected_index = 1;
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
@@ -13142,11 +13211,9 @@ mod tests {
     fn start_dialog_blocks_background_navigation_and_escape_cancels() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+        focus_agent_preview_tab(&mut app);
+        app.state.selected_index = 1;
 
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-        );
         assert_eq!(app.state.selected_index, 1);
 
         ftui::Model::update(
@@ -13637,11 +13704,8 @@ mod tests {
     fn stop_key_stops_selected_workspace_agent() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-        );
+        focus_agent_preview_tab(&mut app);
+        app.state.selected_index = 1;
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
@@ -13677,6 +13741,7 @@ mod tests {
     fn background_stop_key_queues_lifecycle_task() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.selected_index = 1;
+        focus_agent_preview_tab(&mut app);
 
         let cmd = ftui::Model::update(
             &mut app,
@@ -13721,6 +13786,7 @@ mod tests {
     fn start_key_opens_dialog_for_main_workspace() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+        focus_agent_preview_tab(&mut app);
 
         ftui::Model::update(
             &mut app,
@@ -13741,11 +13807,8 @@ mod tests {
     fn start_key_on_running_workspace_shows_toast_and_no_dialog() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-        );
+        focus_agent_preview_tab(&mut app);
+        app.state.selected_index = 1;
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
@@ -13757,14 +13820,26 @@ mod tests {
     }
 
     #[test]
-    fn stop_key_without_running_agent_shows_toast() {
+    fn start_key_noop_when_agent_tab_not_focused() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+        app.state.selected_index = 1;
 
         ftui::Model::update(
             &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+            Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
         );
+
+        assert!(app.launch_dialog.is_none());
+        assert!(commands.borrow().is_empty());
+    }
+
+    #[test]
+    fn stop_key_without_running_agent_shows_toast() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+        focus_agent_preview_tab(&mut app);
+        app.state.selected_index = 1;
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
@@ -13775,10 +13850,28 @@ mod tests {
     }
 
     #[test]
+    fn stop_key_noop_in_git_tab() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        app.state.selected_index = 1;
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        app.preview_tab = PreviewTab::Git;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(commands.borrow().is_empty());
+    }
+
+    #[test]
     fn stop_key_on_active_main_workspace_stops_agent() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
         app.state.workspaces[0].status = WorkspaceStatus::Active;
+        focus_agent_preview_tab(&mut app);
 
         ftui::Model::update(
             &mut app,
