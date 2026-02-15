@@ -799,9 +799,21 @@
   - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 48)
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6u, inline stop-policy UI wrapper callsites
+- Commit: `2b37bac`
+- Changes:
+  - removed `can_stop_selected_workspace` wrapper from `src/ui/tui/update.rs`
+  - updated callsites in `src/ui/tui/update.rs`:
+    - command-palette action inclusion now directly checks `workspace_can_stop_agent(...)` plus local `stop_in_flight` guard
+    - `stop_selected_workspace_agent` now directly checks `workspace_can_stop_agent(...)`
+  - no behavior changes, UI shim cleanup only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `2b37bac` phase 6u
   - `c61c1da` phase 6t
   - `d3cba15` phase 6s
   - `0a46446` phase 6r
