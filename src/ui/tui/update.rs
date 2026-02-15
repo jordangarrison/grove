@@ -1233,4 +1233,24 @@ impl GroveApp {
         }
         self.keybind_help_open = true;
     }
+
+    fn persist_sidebar_ratio(&mut self) {
+        if let Err(error) = fs::write(
+            &self.sidebar_ratio_path,
+            serialize_sidebar_ratio(self.sidebar_width_pct),
+        ) {
+            self.last_tmux_error = Some(format!("sidebar ratio persist failed: {error}"));
+        }
+    }
+
+    pub(super) fn move_selection(&mut self, action: Action) {
+        let before = self.state.selected_index;
+        reduce(&mut self.state, action);
+        if self.state.selected_index != before {
+            self.preview.jump_to_bottom();
+            self.clear_agent_activity_tracking();
+            self.clear_preview_selection();
+            self.poll_preview();
+        }
+    }
 }
