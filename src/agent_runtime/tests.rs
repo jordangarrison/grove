@@ -13,17 +13,18 @@ use super::{
     execute_commands_with_executor, execute_launch_plan, execute_launch_plan_for_mode,
     execute_launch_plan_with, execute_launch_plan_with_executor, execute_launch_request_for_mode,
     execute_launch_request_with_result_for_mode, execute_stop_session_for_mode,
-    execute_stop_workspace_for_mode, git_preview_session_if_ready, git_session_name_for_workspace,
-    kill_workspace_session_command, launch_request_for_workspace, live_preview_agent_session,
-    live_preview_capture_target_for_tab, live_preview_session_for_tab,
-    normalized_agent_command_override, poll_interval, reconcile_with_sessions,
-    sanitize_workspace_name, session_name_for_workspace, session_name_for_workspace_ref,
-    shell_launch_request_for_workspace, stop_plan, strip_mouse_fragments,
-    tmux_capture_error_indicates_missing_session, workspace_can_enter_interactive,
-    workspace_can_start_agent, workspace_can_stop_agent, workspace_session_for_preview_tab,
-    workspace_should_poll_status, workspace_status_session_target,
-    workspace_status_targets_for_polling, workspace_status_targets_for_polling_with_live_preview,
-    zellij_capture_log_path, zellij_capture_log_path_in, zellij_config_path,
+    execute_stop_workspace_for_mode, execute_stop_workspace_with_result_for_mode,
+    git_preview_session_if_ready, git_session_name_for_workspace, kill_workspace_session_command,
+    launch_request_for_workspace, live_preview_agent_session, live_preview_capture_target_for_tab,
+    live_preview_session_for_tab, normalized_agent_command_override, poll_interval,
+    reconcile_with_sessions, sanitize_workspace_name, session_name_for_workspace,
+    session_name_for_workspace_ref, shell_launch_request_for_workspace, stop_plan,
+    strip_mouse_fragments, tmux_capture_error_indicates_missing_session,
+    workspace_can_enter_interactive, workspace_can_start_agent, workspace_can_stop_agent,
+    workspace_session_for_preview_tab, workspace_should_poll_status,
+    workspace_status_session_target, workspace_status_targets_for_polling,
+    workspace_status_targets_for_polling_with_live_preview, zellij_capture_log_path,
+    zellij_capture_log_path_in, zellij_config_path,
 };
 use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -687,6 +688,29 @@ fn execute_stop_workspace_for_mode_uses_project_scoped_session_name() {
             "grove-ws-project-one-feature-auth-v2".to_string(),
         ]
     );
+}
+
+#[test]
+fn execute_stop_workspace_with_result_for_mode_includes_workspace_context() {
+    let workspace = fixture_workspace("feature/auth.v2", false).with_project_context(
+        "project.one".to_string(),
+        PathBuf::from("/repos/project.one"),
+    );
+    let result = execute_stop_workspace_with_result_for_mode(
+        &workspace,
+        MultiplexerKind::Tmux,
+        CommandExecutionMode::Delegating(&mut |_command| {
+            Err(std::io::Error::other("synthetic execution failure"))
+        }),
+    );
+
+    assert_eq!(result.workspace_name, "feature/auth.v2");
+    assert_eq!(
+        result.workspace_path,
+        PathBuf::from("/repos/grove-feature/auth.v2")
+    );
+    assert_eq!(result.session_name, "grove-ws-project-one-feature-auth-v2");
+    assert!(result.result.is_err());
 }
 
 #[test]

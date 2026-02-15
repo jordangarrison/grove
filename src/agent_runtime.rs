@@ -88,6 +88,14 @@ pub struct LaunchExecutionResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StopExecutionResult {
+    pub workspace_name: String,
+    pub workspace_path: PathBuf,
+    pub session_name: String,
+    pub result: Result<(), String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShellLaunchRequest {
     pub session_name: String,
     pub workspace_path: PathBuf,
@@ -848,6 +856,22 @@ pub fn execute_stop_workspace_for_mode(
     let session_name = session_name_for_workspace_ref(workspace);
     let result = execute_stop_session_for_mode(&session_name, multiplexer, mode);
     (session_name, result)
+}
+
+pub fn execute_stop_workspace_with_result_for_mode(
+    workspace: &Workspace,
+    multiplexer: MultiplexerKind,
+    mode: CommandExecutionMode<'_>,
+) -> StopExecutionResult {
+    let workspace_name = workspace.name.clone();
+    let workspace_path = workspace.path.clone();
+    let (session_name, result) = execute_stop_workspace_for_mode(workspace, multiplexer, mode);
+    StopExecutionResult {
+        workspace_name,
+        workspace_path,
+        session_name,
+        result,
+    }
 }
 
 pub fn execute_launch_plan_for_mode(

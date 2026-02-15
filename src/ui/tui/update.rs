@@ -1792,46 +1792,43 @@ impl GroveApp {
             self.show_toast("no workspace selected", true);
             return;
         };
-        let workspace_name = workspace.name.clone();
-        let workspace_path = workspace.path.clone();
         let workspace_for_task = workspace.clone();
 
         if !self.tmux_input.supports_background_send() {
-            let (session_name, result) = execute_stop_workspace_for_mode(
+            let completion = execute_stop_workspace_with_result_for_mode(
                 &workspace,
                 self.multiplexer,
                 CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
             );
-            if let Err(error) = result {
-                self.last_tmux_error = Some(error);
+            if let Some(error) = completion.result.as_ref().err() {
+                self.last_tmux_error = Some(error.clone());
                 self.show_toast("agent stop failed", true);
                 return;
             }
 
-            self.apply_stop_agent_completion(StopAgentCompletion {
-                workspace_name,
-                workspace_path,
-                session_name,
-                result: Ok(()),
-            });
+            self.apply_stop_agent_completion(Self::stop_agent_completion_from_runtime(completion));
             return;
         }
 
         self.stop_in_flight = true;
         let multiplexer = self.multiplexer;
         self.queue_cmd(Cmd::task(move || {
-            let (session_name, result) = execute_stop_workspace_for_mode(
+            let completion = execute_stop_workspace_with_result_for_mode(
                 &workspace_for_task,
                 multiplexer,
                 CommandExecutionMode::Process,
             );
-            Msg::StopAgentCompleted(StopAgentCompletion {
-                workspace_name,
-                workspace_path,
-                session_name,
-                result,
-            })
+            Msg::StopAgentCompleted(GroveApp::stop_agent_completion_from_runtime(completion))
         }));
+    }
+
+    fn stop_agent_completion_from_runtime(result: StopExecutionResult) -> StopAgentCompletion {
+        StopAgentCompletion {
+            workspace_name: result.workspace_name,
+            workspace_path: result.workspace_path,
+            session_name: result.session_name,
+            result: result.result,
+        }
     }
 
     fn apply_stop_agent_completion(&mut self, completion: StopAgentCompletion) {
