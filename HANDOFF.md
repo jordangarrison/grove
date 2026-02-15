@@ -1050,7 +1050,7 @@
   - `cargo test --lib` (pass, 314)
 
 ### Phase 6ai, collapse runtime execution API surface to mode entrypoints
-- Commit: `(pending, uncommitted)`
+- Commit: `f977236`
 - Changes:
   - removed redundant runtime wrappers in `src/agent_runtime.rs`:
     - `execute_launch_plan_result`
@@ -1067,9 +1067,33 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 310)
 
+### Phase 6aj, add runtime lifecycle execution facade helpers
+- Commit: `3eddb24`
+- Changes:
+  - added runtime lifecycle facade helpers in `src/agent_runtime.rs`:
+    - `execute_launch_request_for_mode(&LaunchRequest, MultiplexerKind, CommandExecutionMode) -> (String, Result<(), String>)`
+    - `execute_shell_launch_request_for_mode(&ShellLaunchRequest, MultiplexerKind, CommandExecutionMode) -> (String, Result<(), String>)`
+    - `execute_stop_session_for_mode(&str, MultiplexerKind, CommandExecutionMode) -> Result<(), String>`
+  - updated UI callsites in `src/ui/tui/update.rs`:
+    - lazygit launch path now executes from shell launch request through runtime facade
+    - agent start sync/background paths now execute from launch request through runtime facade
+    - agent stop sync/background paths now execute from session name through runtime facade
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime tests in `src/agent_runtime/tests.rs`:
+    - `execute_launch_request_for_mode_returns_session_name_on_error`
+    - `execute_stop_session_for_mode_delegating_runs_stop_sequence`
+  - no behavior changes, runtime lifecycle orchestration boundary move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 62)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 312)
+
 ## Current State
-- Worktree has uncommitted changes for phase 6ai.
+- Worktree is clean after phase 6aj commit.
 - Recent refactor commits on local `master`:
+  - `3eddb24` refactor(runtime): add lifecycle execution facade helpers
+  - `dd9d499` docs(handoff): record phase 6ai
+  - `f977236` refactor(runtime): trim execution wrapper surface
   - `04dd021` docs(handoff): record phase 6ah
   - `dec61b5` refactor(runtime): add mode-based execution dispatch
   - `b7d8be7` docs(handoff): record phase 6ag
@@ -1157,7 +1181,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: extract a runtime lifecycle execution facade that owns start/stop plan execution end-to-end (inputs to Result), leaving UI to apply completion state/toasts only
+- next candidate: move start-dialog request construction (`LaunchRequest`) from UI into a small runtime input builder helper so UI only gathers dialog fields and applies completion/toasts
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
