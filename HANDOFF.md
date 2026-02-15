@@ -810,9 +810,21 @@
 - Gates:
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6v, inline start-policy UI wrapper callsites
+- Commit: `824ffce`
+- Changes:
+  - removed `can_start_selected_workspace` wrapper from `src/ui/tui/update.rs`
+  - updated callsites in `src/ui/tui/update.rs` and `src/ui/tui/dialogs.rs`:
+    - command-palette action inclusion now directly checks `workspace_can_start_agent(...)` plus local `start_in_flight` guard
+    - start flow now directly checks `workspace_can_start_agent(...)`
+  - no behavior changes, UI shim cleanup only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `824ffce` phase 6v
   - `2b37bac` phase 6u
   - `c61c1da` phase 6t
   - `d3cba15` phase 6s
