@@ -57,7 +57,7 @@
   - re-run both after formatting cleanup (pass)
 
 ### Phase 5a, extract core TUI modules (`msg/update/view/dialogs`)
-- Commit: pending (this handoff update ships with commit)
+- Commit: `a49d2c4`
 - Changes:
   - added `src/ui/tui/msg.rs`
     - moved `Msg` enum
@@ -80,7 +80,7 @@
   - `cargo test --lib` (pass, 276)
 
 ### Phase 5b, move dialog key handlers into `dialogs.rs`
-- Commit: pending
+- Commit: `7c1bda9`
 - Changes:
   - moved modal/key handler methods from `src/ui/tui/mod.rs` into `src/ui/tui/dialogs.rs`:
     - `handle_keybind_help_key`
@@ -97,7 +97,7 @@
   - `cargo test --lib` (pass, 276)
 
 ### Phase 5c, move dialog/overlay render helpers into `view.rs`
-- Commit: pending
+- Commit: `1b78f7b`
 - Changes:
   - moved render helper methods from `src/ui/tui/mod.rs` to `src/ui/tui/view.rs`:
     - `render_toasts`
@@ -115,7 +115,7 @@
   - `cargo test --lib` (pass, 276)
 
 ### Phase 5d, move key and mouse dispatch into `update.rs`
-- Commit: pending
+- Commit: `6bd2566`
 - Changes:
   - moved from `src/ui/tui/mod.rs` to `src/ui/tui/update.rs`:
     - `handle_mouse_event`
@@ -127,7 +127,7 @@
   - `cargo test --lib` (pass, 276)
 
 ### Phase 5e, move paste and non-interactive key flow into `update.rs`
-- Commit: pending
+- Commit: `38194da`
 - Changes:
   - moved from `src/ui/tui/mod.rs` to `src/ui/tui/update.rs`:
     - `handle_paste_event`
@@ -140,7 +140,7 @@
   - `cargo test --lib` (pass, 276)
 
 ### Phase 5f, move workspace selection helpers into `update.rs`
-- Commit: pending
+- Commit: `e7dec48`
 - Changes:
   - moved from `src/ui/tui/mod.rs` to `src/ui/tui/update.rs`:
     - `sidebar_workspace_index_at_y`
@@ -153,11 +153,17 @@
   - `cargo test --lib` (pass, 276)
 
 ## Current State
-- Worktree includes Phase 5a module extraction changes + this handoff update.
-- Local branch includes prior refactor commits:
-  - `dc0b0c1`
-  - `092df8e`
-  - `eb9ab96`
+- Worktree is clean after Phase 5f.
+- Local branch includes these refactor milestones:
+  - `e7dec48` phase 5f
+  - `38194da` phase 5e
+  - `6bd2566` phase 5d
+  - `1b78f7b` phase 5c
+  - `7c1bda9` phase 5b
+  - `a49d2c4` phase 5a
+  - `dc0b0c1` phase 3
+  - `092df8e` phase 2
+  - `eb9ab96` phase 1
 
 ## Next Plan (execute in phases)
 
