@@ -1689,23 +1689,7 @@ impl GroveApp {
         let session_name = launch_plan.session_name.clone();
 
         if !self.tmux_input.supports_background_send() {
-            if let Some(script) = &launch_plan.launcher_script
-                && let Err(error) = fs::write(&script.path, &script.contents)
-            {
-                self.last_tmux_error = Some(format!("launcher script write failed: {error}"));
-                self.show_toast("launcher script write failed", true);
-                return;
-            }
-
-            for command in &launch_plan.pre_launch_cmds {
-                if let Err(error) = self.execute_tmux_command(command) {
-                    self.last_tmux_error = Some(error.to_string());
-                    self.show_toast("agent start failed", true);
-                    return;
-                }
-            }
-
-            if let Err(error) = self.execute_tmux_command(&launch_plan.launch_cmd) {
+            if let Err(error) = self.execute_launch_plan_sync(&launch_plan) {
                 self.last_tmux_error = Some(error.to_string());
                 self.show_toast("agent start failed", true);
                 return;
@@ -1826,12 +1810,10 @@ impl GroveApp {
         let stop_commands = stop_plan(&session_name, self.multiplexer);
 
         if !self.tmux_input.supports_background_send() {
-            for command in &stop_commands {
-                if let Err(error) = self.execute_tmux_command(command) {
-                    self.last_tmux_error = Some(error.to_string());
-                    self.show_toast("agent stop failed", true);
-                    return;
-                }
+            if let Err(error) = self.execute_tmux_commands(&stop_commands) {
+                self.last_tmux_error = Some(error.to_string());
+                self.show_toast("agent stop failed", true);
+                return;
             }
 
             self.apply_stop_agent_completion(StopAgentCompletion {

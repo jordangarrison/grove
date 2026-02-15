@@ -190,6 +190,27 @@ impl GroveApp {
         result
     }
 
+    pub(super) fn execute_tmux_commands(
+        &mut self,
+        commands: &[Vec<String>],
+    ) -> std::io::Result<()> {
+        for command in commands {
+            self.execute_tmux_command(command)?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn execute_launch_plan_sync(
+        &mut self,
+        launch_plan: &crate::agent_runtime::LaunchPlan,
+    ) -> std::io::Result<()> {
+        if let Some(script) = &launch_plan.launcher_script {
+            fs::write(&script.path, &script.contents)?;
+        }
+        self.execute_tmux_commands(&launch_plan.pre_launch_cmds)?;
+        self.execute_tmux_command(&launch_plan.launch_cmd)
+    }
+
     pub(super) fn show_toast(&mut self, text: impl Into<String>, is_error: bool) {
         let message = text.into();
         self.event_log.log(
