@@ -898,9 +898,25 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 301)
 
+### Phase 6aa, extract sync-mode start/stop command execution helpers from `update.rs`
+- Commit: `5044871`
+- Changes:
+  - added shared infrastructure helpers on `GroveApp` in `src/ui/tui/logging.rs`:
+    - `execute_tmux_commands(&[Vec<String>]) -> std::io::Result<()>`
+    - `execute_launch_plan_sync(&LaunchPlan) -> std::io::Result<()>`
+  - updated sync callsites in `src/ui/tui/update.rs`:
+    - start flow now delegates sync launch execution to `execute_launch_plan_sync`
+    - stop flow now delegates sync command sequence execution to `execute_tmux_commands`
+  - removed inline sync start/stop execution loops from `src/ui/tui/update.rs`
+  - no behavior changes, infrastructure extraction only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 301)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `5044871` phase 6aa
   - `34e7784` phase 6z
   - `ee13b44` phase 6y
   - `e6ffffc` phase 6x
@@ -977,7 +993,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: move sync-mode start/stop launch command execution path out of `src/ui/tui/update.rs` (currently inline `execute_tmux_command` loops) into shared runtime/infrastructure helper
+- next candidate: apply shared sync launch executor to lazygit session startup path (`ensure_lazygit_session_for_selected_workspace`) to remove duplicated script+prelaunch command execution logic
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
