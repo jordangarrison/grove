@@ -532,9 +532,25 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 279)
 
+### Phase 6c, move tmux missing-session error classification to `agent_runtime`
+- Commit: `3b365f0`
+- Changes:
+  - added `tmux_capture_error_indicates_missing_session(&str) -> bool` in `src/agent_runtime.rs`
+  - removed duplicate helper from `src/ui/tui/update.rs`
+  - updated TUI call sites to use runtime helper in:
+    - live preview capture error handling
+    - background workspace status capture error handling
+  - added focused runtime test in `src/agent_runtime/tests.rs`:
+    - `tmux_missing_session_error_detection_matches_known_patterns`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 280)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `3b365f0` phase 6c
   - `e4859a5` phase 6b
   - `3366bf3` phase 6a
   - `ea873d9` phase 5af
@@ -587,7 +603,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: move additional session/poll orchestration helpers from `ui/tui/update.rs` into runtime/application layer
+- next candidate: move live-preview session selection helper logic from `ui/tui/update.rs` into runtime/application layer
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
