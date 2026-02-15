@@ -1,13 +1,16 @@
 use super::{
-    BranchMode, CreateWorkspaceRequest, GitCommandRunner, SetupScriptContext, SetupScriptRunner,
-    WorkspaceLifecycleError, WorkspaceMarkerError, copy_env_files, create_workspace,
-    ensure_grove_gitignore_entries, read_workspace_agent_marker, read_workspace_markers,
-    workspace_directory_path, write_workspace_agent_marker,
+    BranchMode, CreateWorkspaceRequest, DeleteWorkspaceRequest, GitCommandRunner,
+    SetupScriptContext, SetupScriptRunner, WorkspaceLifecycleError, WorkspaceMarkerError,
+    copy_env_files, create_workspace, delete_workspace, ensure_grove_gitignore_entries,
+    read_workspace_agent_marker, read_workspace_markers, workspace_directory_path,
+    write_workspace_agent_marker,
 };
+use crate::config::MultiplexerKind;
 use crate::domain::AgentType;
 use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Debug)]
@@ -364,6 +367,68 @@ fn workspace_directory_path_uses_repo_prefix() {
     assert_eq!(
         workspace_directory_path(repo_root, "feature_a").expect("path derivation should succeed"),
         PathBuf::from("/repos/grove-feature_a")
+    );
+}
+
+#[test]
+fn delete_workspace_prunes_missing_worktree() {
+    let temp = TestDir::new("delete-prune");
+    let repo_root = temp.path.join("grove");
+    fs::create_dir_all(&repo_root).expect("repo dir should exist");
+    init_git_repo(&repo_root);
+
+    let request = DeleteWorkspaceRequest {
+        project_name: None,
+        project_path: Some(repo_root.clone()),
+        workspace_name: "feature-x".to_string(),
+        branch: "feature-x".to_string(),
+        workspace_path: temp.path.join("grove-feature-x"),
+        is_missing: true,
+        delete_local_branch: false,
+    };
+
+    let (result, warnings) = delete_workspace(request, MultiplexerKind::Tmux);
+    assert_eq!(result, Ok(()));
+    assert!(warnings.is_empty());
+}
+
+#[test]
+fn delete_workspace_records_branch_delete_failure_as_warning() {
+    let temp = TestDir::new("delete-branch-warning");
+    let repo_root = temp.path.join("grove");
+    fs::create_dir_all(&repo_root).expect("repo dir should exist");
+    init_git_repo(&repo_root);
+
+    let request = DeleteWorkspaceRequest {
+        project_name: None,
+        project_path: Some(repo_root.clone()),
+        workspace_name: "feature-y".to_string(),
+        branch: "missing-branch".to_string(),
+        workspace_path: temp.path.join("grove-feature-y"),
+        is_missing: true,
+        delete_local_branch: true,
+    };
+
+    let (result, warnings) = delete_workspace(request, MultiplexerKind::Tmux);
+    assert_eq!(result, Ok(()));
+    assert_eq!(warnings.len(), 1);
+    assert!(
+        warnings[0].contains("local branch: git branch delete failed:"),
+        "unexpected warning: {}",
+        warnings[0]
+    );
+}
+
+fn init_git_repo(repo_root: &Path) {
+    let output = Command::new("git")
+        .current_dir(repo_root)
+        .args(["init"])
+        .output()
+        .expect("git init should run");
+    assert!(
+        output.status.success(),
+        "git init failed: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
 }
 

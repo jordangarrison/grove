@@ -1,3 +1,5 @@
+use crate::agent_runtime::kill_workspace_session_command;
+use crate::config::MultiplexerKind;
 use crate::domain::AgentType;
 use std::fs;
 use std::fs::OpenOptions;
@@ -99,6 +101,17 @@ pub struct CreateWorkspaceResult {
     pub workspace_path: PathBuf,
     pub branch: String,
     pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeleteWorkspaceRequest {
+    pub project_name: Option<String>,
+    pub project_path: Option<PathBuf>,
+    pub workspace_name: String,
+    pub branch: String,
+    pub workspace_path: PathBuf,
+    pub is_missing: bool,
+    pub delete_local_branch: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -222,6 +235,44 @@ pub fn create_workspace(
     })
 }
 
+pub fn delete_workspace(
+    request: DeleteWorkspaceRequest,
+    multiplexer: MultiplexerKind,
+) -> (Result<(), String>, Vec<String>) {
+    let mut warnings = Vec::new();
+    let stop_session_command = kill_workspace_session_command(
+        request.project_name.as_deref(),
+        &request.workspace_name,
+        multiplexer,
+    );
+    let _ = run_command(&stop_session_command);
+
+    let repo_root = if let Some(project_path) = request.project_path {
+        project_path
+    } else if let Ok(cwd) = std::env::current_dir() {
+        cwd
+    } else {
+        return (
+            Err("workspace project root unavailable".to_string()),
+            warnings,
+        );
+    };
+
+    if let Err(error) =
+        run_delete_worktree_git(&repo_root, &request.workspace_path, request.is_missing)
+    {
+        return (Err(error), warnings);
+    }
+
+    if request.delete_local_branch
+        && let Err(error) = run_delete_local_branch_git(&repo_root, &request.branch)
+    {
+        warnings.push(format!("local branch: {error}"));
+    }
+
+    (Ok(()), warnings)
+}
+
 pub(crate) fn workspace_directory_path(
     repo_root: &Path,
     workspace_name: &str,
@@ -233,6 +284,91 @@ pub(crate) fn workspace_directory_path(
 
     let parent = repo_root.parent().unwrap_or(repo_root);
     Ok(parent.join(format!("{repo_name}-{workspace_name}")))
+}
+
+fn run_command(args: &[String]) -> Result<(), String> {
+    let Some(program) = args.first() else {
+        return Err("command is empty".to_string());
+    };
+    let output = Command::new(program)
+        .args(&args[1..])
+        .output()
+        .map_err(|error| format!("{}: {error}", args.join(" ")))?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if stderr.is_empty() {
+        return Err(format!("{}: exit status {}", args.join(" "), output.status));
+    }
+    Err(format!("{}: {stderr}", args.join(" ")))
+}
+
+fn run_delete_worktree_git(
+    repo_root: &Path,
+    workspace_path: &Path,
+    is_missing: bool,
+) -> Result<(), String> {
+    if is_missing {
+        return run_git_command(repo_root, &["worktree".to_string(), "prune".to_string()])
+            .map_err(|error| format!("git worktree prune failed: {error}"));
+    }
+
+    let workspace_path_arg = workspace_path.to_string_lossy().to_string();
+    let remove_args = vec![
+        "worktree".to_string(),
+        "remove".to_string(),
+        workspace_path_arg.clone(),
+    ];
+    if run_git_command(repo_root, &remove_args).is_ok() {
+        return Ok(());
+    }
+
+    run_git_command(
+        repo_root,
+        &[
+            "worktree".to_string(),
+            "remove".to_string(),
+            "--force".to_string(),
+            workspace_path_arg,
+        ],
+    )
+    .map_err(|error| format!("git worktree remove failed: {error}"))
+}
+
+fn run_delete_local_branch_git(repo_root: &Path, branch: &str) -> Result<(), String> {
+    let safe_args = vec!["branch".to_string(), "-d".to_string(), branch.to_string()];
+    if run_git_command(repo_root, &safe_args).is_ok() {
+        return Ok(());
+    }
+
+    run_git_command(
+        repo_root,
+        &["branch".to_string(), "-D".to_string(), branch.to_string()],
+    )
+    .map_err(|error| format!("git branch delete failed: {error}"))
+}
+
+fn run_git_command(repo_root: &Path, args: &[String]) -> Result<(), String> {
+    let output = Command::new("git")
+        .current_dir(repo_root)
+        .args(args)
+        .output()
+        .map_err(|error| format!("git {}: {error}", args.join(" ")))?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if stderr.is_empty() {
+        return Err(format!(
+            "git {}: exit status {}",
+            args.join(" "),
+            output.status
+        ));
+    }
+    Err(format!("git {}: {stderr}", args.join(" ")))
 }
 
 pub(crate) fn ensure_grove_gitignore_entries(

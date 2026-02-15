@@ -1528,8 +1528,17 @@ impl GroveApp {
 
         let workspace_name = dialog.workspace_name.clone();
         let workspace_path = dialog.path.clone();
+        let request = DeleteWorkspaceRequest {
+            project_name: dialog.project_name,
+            project_path: dialog.project_path,
+            workspace_name: dialog.workspace_name,
+            branch: dialog.branch,
+            workspace_path: dialog.path,
+            is_missing: dialog.is_missing,
+            delete_local_branch: dialog.delete_local_branch,
+        };
         if !self.tmux_input.supports_background_send() {
-            let (result, warnings) = Self::run_delete_workspace(dialog, self.multiplexer);
+            let (result, warnings) = delete_workspace(request, self.multiplexer);
             self.apply_delete_workspace_completion(DeleteWorkspaceCompletion {
                 workspace_name,
                 workspace_path,
@@ -1542,7 +1551,7 @@ impl GroveApp {
         let multiplexer = self.multiplexer;
         self.delete_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let (result, warnings) = Self::run_delete_workspace(dialog, multiplexer);
+            let (result, warnings) = delete_workspace(request, multiplexer);
             Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {
                 workspace_name,
                 workspace_path,

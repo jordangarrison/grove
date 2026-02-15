@@ -40,8 +40,8 @@ use crate::adapters::{BootstrapData, DiscoveryState};
 use crate::agent_runtime::{
     LaunchRequest, LivePreviewTarget, OutputDigest, SessionActivity, ShellLaunchRequest,
     build_launch_plan, build_shell_launch_plan, detect_status_with_session_override,
-    evaluate_capture_change, git_session_name_for_workspace, kill_workspace_session_command,
-    live_preview_capture_target_for_tab, poll_interval, session_name_for_workspace_ref, stop_plan,
+    evaluate_capture_change, git_session_name_for_workspace, live_preview_capture_target_for_tab,
+    poll_interval, session_name_for_workspace_ref, stop_plan,
     tmux_capture_error_indicates_missing_session, workspace_can_enter_interactive,
     workspace_can_start_agent, workspace_can_stop_agent, workspace_session_for_preview_tab,
     workspace_status_targets_for_polling_with_live_preview,
@@ -60,7 +60,8 @@ use crate::preview::PreviewState;
 use crate::state::{Action, AppState, PaneFocus, UiMode, reduce};
 use crate::workspace_lifecycle::{
     BranchMode, CommandGitRunner, CommandSetupScriptRunner, CreateWorkspaceRequest,
-    CreateWorkspaceResult, WorkspaceLifecycleError, create_workspace, write_workspace_agent_marker,
+    CreateWorkspaceResult, DeleteWorkspaceRequest, WorkspaceLifecycleError, create_workspace,
+    delete_workspace, write_workspace_agent_marker,
 };
 
 mod ansi;
