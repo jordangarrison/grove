@@ -1138,9 +1138,28 @@
   - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 66)
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6an, add typed stop execution outcome in `agent_runtime`
+- Commit: `286d266`
+- Changes:
+  - added runtime outcome type and helper in `src/agent_runtime.rs`:
+    - `StopExecutionResult { workspace_name, workspace_path, session_name, result }`
+    - `execute_stop_workspace_with_result_for_mode(&Workspace, MultiplexerKind, CommandExecutionMode) -> StopExecutionResult`
+  - updated UI callsites in `src/ui/tui/update.rs`:
+    - `stop_selected_workspace_agent` now uses typed runtime stop outcome for both sync and background paths
+    - added local mapper `stop_agent_completion_from_runtime` for `Msg::StopAgentCompleted` payload shaping
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime test in `src/agent_runtime/tests.rs`:
+    - `execute_stop_workspace_with_result_for_mode_includes_workspace_context`
+  - no behavior changes, stop lifecycle payload ownership move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 67)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
-- Worktree is clean after phase 6am commit.
+- Worktree is clean after phase 6an commit.
 - Recent refactor commits on local `master`:
+  - `286d266` refactor(runtime): add typed stop execution outcome
+  - `46db066` docs(handoff): record phase 6am
   - `1ca52aa` refactor(runtime): add typed launch execution outcome
   - `a02eac1` docs(handoff): record phase 6al
   - `6a0da9e` refactor(runtime): stop sessions via workspace lifecycle helper
@@ -1237,7 +1256,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: move stop-workspace completion payload shaping into a typed runtime helper (mirroring start path) so stop sync/background UI paths share one runtime-owned outcome model
+- next candidate: unify typed start/stop outcomes behind a shared runtime session-lifecycle outcome type to remove shape duplication in `agent_runtime`
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
