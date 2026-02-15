@@ -38,9 +38,9 @@ use serde_json::Value;
 
 use crate::adapters::{BootstrapData, DiscoveryState};
 use crate::agent_runtime::{
-    LaunchRequest, OutputDigest, SessionActivity, ShellLaunchRequest, build_launch_plan,
-    build_shell_launch_plan, detect_status_with_session_override, evaluate_capture_change,
-    git_session_name_for_workspace, kill_workspace_session_command,
+    LaunchRequest, LivePreviewTarget, OutputDigest, SessionActivity, ShellLaunchRequest,
+    build_launch_plan, build_shell_launch_plan, detect_status_with_session_override,
+    evaluate_capture_change, git_session_name_for_workspace, kill_workspace_session_command,
     live_preview_capture_target_for_tab, poll_interval, session_name_for_workspace_ref, stop_plan,
     tmux_capture_error_indicates_missing_session, workspace_can_enter_interactive,
     workspace_session_for_preview_tab, workspace_status_targets_for_polling,

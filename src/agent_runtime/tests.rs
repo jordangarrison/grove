@@ -5,8 +5,8 @@ use std::process;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::{
-    CaptureChange, LaunchRequest, SessionActivity, build_launch_plan, default_agent_command,
-    detect_agent_session_status_in_home, detect_status,
+    CaptureChange, LaunchRequest, LivePreviewTarget, SessionActivity, build_launch_plan,
+    default_agent_command, detect_agent_session_status_in_home, detect_status,
     detect_status_with_session_override_in_home, detect_waiting_prompt, evaluate_capture_change,
     git_preview_session_if_ready, git_session_name_for_workspace, kill_workspace_session_command,
     live_preview_agent_session, live_preview_capture_target_for_tab, live_preview_session_for_tab,
@@ -277,11 +277,17 @@ fn live_preview_capture_target_for_tab_sets_capture_mode() {
 
     assert_eq!(
         live_preview_capture_target_for_tab(Some(&active_workspace), false, &ready_sessions),
-        Some(("grove-ws-feature".to_string(), true))
+        Some(LivePreviewTarget {
+            session_name: "grove-ws-feature".to_string(),
+            include_escape_sequences: true,
+        })
     );
     assert_eq!(
         live_preview_capture_target_for_tab(Some(&active_workspace), true, &ready_sessions),
-        Some(("grove-ws-feature-git".to_string(), true))
+        Some(LivePreviewTarget {
+            session_name: "grove-ws-feature-git".to_string(),
+            include_escape_sequences: true,
+        })
     );
 }
 

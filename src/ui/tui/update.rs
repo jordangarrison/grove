@@ -690,7 +690,7 @@ impl GroveApp {
         Some(session_name)
     }
 
-    fn selected_session_for_live_preview(&self) -> Option<(String, bool)> {
+    fn selected_session_for_live_preview(&self) -> Option<LivePreviewTarget> {
         live_preview_capture_target_for_tab(
             self.state.selected_workspace(),
             self.preview_tab == PreviewTab::Git,
@@ -698,11 +698,14 @@ impl GroveApp {
         )
     }
 
-    pub(super) fn prepare_live_preview_session(&mut self) -> Option<(String, bool)> {
+    pub(super) fn prepare_live_preview_session(&mut self) -> Option<LivePreviewTarget> {
         if self.preview_tab == PreviewTab::Git {
             return self
                 .ensure_lazygit_session_for_selected_workspace()
-                .map(|session| (session, true));
+                .map(|session_name| LivePreviewTarget {
+                    session_name,
+                    include_escape_sequences: true,
+                });
         }
         self.selected_session_for_live_preview()
     }
@@ -1177,20 +1180,26 @@ impl GroveApp {
         let has_live_preview = live_preview.is_some();
         let cursor_session = self.interactive_target_session();
         let status_poll_targets = self.workspace_status_poll_targets(
-            live_preview.as_ref().map(|(session, _)| session.as_str()),
+            live_preview
+                .as_ref()
+                .map(|target| target.session_name.as_str()),
         );
 
-        if let Some((session_name, include_escape_sequences)) = live_preview {
+        if let Some(live_preview_target) = live_preview {
             let capture_started_at = Instant::now();
             let result = self
                 .tmux_input
-                .capture_output(&session_name, 600, include_escape_sequences)
+                .capture_output(
+                    &live_preview_target.session_name,
+                    600,
+                    live_preview_target.include_escape_sequences,
+                )
                 .map_err(|error| error.to_string());
             let capture_ms =
                 Self::duration_millis(Instant::now().saturating_duration_since(capture_started_at));
             self.apply_live_preview_capture(
-                &session_name,
-                include_escape_sequences,
+                &live_preview_target.session_name,
+                live_preview_target.include_escape_sequences,
                 capture_ms,
                 capture_ms,
                 result,
@@ -1229,25 +1238,25 @@ impl GroveApp {
     fn schedule_async_preview_poll(
         &self,
         generation: u64,
-        live_preview: Option<(String, bool)>,
+        live_preview: Option<LivePreviewTarget>,
         cursor_session: Option<String>,
         status_poll_targets: Vec<WorkspaceStatusPollTarget>,
     ) -> Cmd<Msg> {
         Cmd::task(move || {
-            let live_capture = live_preview.map(|(session, include_escape_sequences)| {
+            let live_capture = live_preview.map(|target| {
                 let capture_started_at = Instant::now();
                 let result = CommandTmuxInput::capture_session_output(
-                    &session,
+                    &target.session_name,
                     600,
-                    include_escape_sequences,
+                    target.include_escape_sequences,
                 )
                 .map_err(|error| error.to_string());
                 let capture_ms = GroveApp::duration_millis(
                     Instant::now().saturating_duration_since(capture_started_at),
                 );
                 LivePreviewCapture {
-                    session,
-                    include_escape_sequences,
+                    session: target.session_name,
+                    include_escape_sequences: target.include_escape_sequences,
                     capture_ms,
                     total_ms: capture_ms,
                     result,
@@ -1306,7 +1315,9 @@ impl GroveApp {
         let live_preview = self.prepare_live_preview_session();
         let cursor_session = self.interactive_target_session();
         let status_poll_targets = self.workspace_status_poll_targets(
-            live_preview.as_ref().map(|(session, _)| session.as_str()),
+            live_preview
+                .as_ref()
+                .map(|target| target.session_name.as_str()),
         );
 
         if live_preview.is_none() && cursor_session.is_none() && status_poll_targets.is_empty() {
@@ -3283,10 +3294,10 @@ impl GroveApp {
         }
 
         let git_preview_session = if self.preview_tab == PreviewTab::Git {
-            let Some((session_name, _)) = self.prepare_live_preview_session() else {
+            let Some(target) = self.prepare_live_preview_session() else {
                 return false;
             };
-            Some(session_name)
+            Some(target.session_name)
         } else {
             None
         };

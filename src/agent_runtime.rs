@@ -102,6 +102,12 @@ pub struct WorkspaceStatusTarget {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LivePreviewTarget {
+    pub session_name: String,
+    pub include_escape_sequences: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct OutputDigest {
     pub raw_hash: u64,
     pub raw_len: usize,
@@ -240,9 +246,12 @@ pub fn live_preview_capture_target_for_tab(
     workspace: Option<&Workspace>,
     preview_tab_is_git: bool,
     ready_sessions: &HashSet<String>,
-) -> Option<(String, bool)> {
-    let session = live_preview_session_for_tab(workspace, preview_tab_is_git, ready_sessions)?;
-    Some((session, true))
+) -> Option<LivePreviewTarget> {
+    let session_name = live_preview_session_for_tab(workspace, preview_tab_is_git, ready_sessions)?;
+    Some(LivePreviewTarget {
+        session_name,
+        include_escape_sequences: true,
+    })
 }
 
 pub fn workspace_status_session_target(
