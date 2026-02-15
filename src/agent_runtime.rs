@@ -80,6 +80,14 @@ pub struct LaunchPlan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaunchExecutionResult {
+    pub workspace_name: String,
+    pub workspace_path: PathBuf,
+    pub session_name: String,
+    pub result: Result<(), String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShellLaunchRequest {
     pub session_name: String,
     pub workspace_path: PathBuf,
@@ -794,6 +802,22 @@ pub fn execute_launch_request_for_mode(
     let session_name = launch_plan.session_name.clone();
     let result = execute_launch_plan_for_mode(&launch_plan, mode);
     (session_name, result)
+}
+
+pub fn execute_launch_request_with_result_for_mode(
+    request: &LaunchRequest,
+    multiplexer: MultiplexerKind,
+    mode: CommandExecutionMode<'_>,
+) -> LaunchExecutionResult {
+    let workspace_name = request.workspace_name.clone();
+    let workspace_path = request.workspace_path.clone();
+    let (session_name, result) = execute_launch_request_for_mode(request, multiplexer, mode);
+    LaunchExecutionResult {
+        workspace_name,
+        workspace_path,
+        session_name,
+        result,
+    }
 }
 
 pub fn execute_shell_launch_request_for_mode(

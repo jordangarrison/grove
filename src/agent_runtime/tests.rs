@@ -12,9 +12,10 @@ use super::{
     execute_command_with, execute_commands, execute_commands_for_mode, execute_commands_with,
     execute_commands_with_executor, execute_launch_plan, execute_launch_plan_for_mode,
     execute_launch_plan_with, execute_launch_plan_with_executor, execute_launch_request_for_mode,
-    execute_stop_session_for_mode, execute_stop_workspace_for_mode, git_preview_session_if_ready,
-    git_session_name_for_workspace, kill_workspace_session_command, launch_request_for_workspace,
-    live_preview_agent_session, live_preview_capture_target_for_tab, live_preview_session_for_tab,
+    execute_launch_request_with_result_for_mode, execute_stop_session_for_mode,
+    execute_stop_workspace_for_mode, git_preview_session_if_ready, git_session_name_for_workspace,
+    kill_workspace_session_command, launch_request_for_workspace, live_preview_agent_session,
+    live_preview_capture_target_for_tab, live_preview_session_for_tab,
     normalized_agent_command_override, poll_interval, reconcile_with_sessions,
     sanitize_workspace_name, session_name_for_workspace, session_name_for_workspace_ref,
     shell_launch_request_for_workspace, stop_plan, strip_mouse_fragments,
@@ -583,6 +584,36 @@ fn execute_launch_request_for_mode_returns_session_name_on_error() {
 
     assert_eq!(session_name, "grove-ws-auth-flow");
     assert!(result.is_err());
+}
+
+#[test]
+fn execute_launch_request_with_result_for_mode_includes_workspace_context() {
+    let request = LaunchRequest {
+        project_name: Some("project.one".to_string()),
+        workspace_name: "auth-flow".to_string(),
+        workspace_path: PathBuf::from("/repos/project.one/worktrees/auth-flow"),
+        agent: AgentType::Claude,
+        prompt: None,
+        pre_launch_command: None,
+        skip_permissions: false,
+        capture_cols: Some(120),
+        capture_rows: Some(40),
+    };
+    let result = execute_launch_request_with_result_for_mode(
+        &request,
+        MultiplexerKind::Tmux,
+        CommandExecutionMode::Delegating(&mut |_command| {
+            Err(std::io::Error::other("synthetic execution failure"))
+        }),
+    );
+
+    assert_eq!(result.workspace_name, "auth-flow");
+    assert_eq!(
+        result.workspace_path,
+        PathBuf::from("/repos/project.one/worktrees/auth-flow")
+    );
+    assert_eq!(result.session_name, "grove-ws-project-one-auth-flow");
+    assert!(result.result.is_err());
 }
 
 #[test]

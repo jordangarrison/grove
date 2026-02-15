@@ -1664,45 +1664,44 @@ impl GroveApp {
             Some(capture_cols),
             Some(capture_rows),
         );
-        let workspace_name = request.workspace_name.clone();
-        let workspace_path = request.workspace_path.clone();
 
         if !self.tmux_input.supports_background_send() {
-            let (session_name, result) = execute_launch_request_for_mode(
+            let completion = execute_launch_request_with_result_for_mode(
                 &request,
                 self.multiplexer,
                 CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
             );
-            if let Err(error) = result {
-                self.last_tmux_error = Some(error);
+            if let Some(error) = completion.result.as_ref().err() {
+                self.last_tmux_error = Some(error.clone());
                 self.show_toast("agent start failed", true);
                 return;
             }
 
-            self.apply_start_agent_completion(StartAgentCompletion {
-                workspace_name,
-                workspace_path,
-                session_name,
-                result: Ok(()),
-            });
+            self.apply_start_agent_completion(Self::start_agent_completion_from_runtime(
+                completion,
+            ));
             return;
         }
 
         self.start_in_flight = true;
         let multiplexer = self.multiplexer;
         self.queue_cmd(Cmd::task(move || {
-            let (session_name, result) = execute_launch_request_for_mode(
+            let completion = execute_launch_request_with_result_for_mode(
                 &request,
                 multiplexer,
                 CommandExecutionMode::Process,
             );
-            Msg::StartAgentCompleted(StartAgentCompletion {
-                workspace_name,
-                workspace_path,
-                session_name,
-                result,
-            })
+            Msg::StartAgentCompleted(GroveApp::start_agent_completion_from_runtime(completion))
         }));
+    }
+
+    fn start_agent_completion_from_runtime(result: LaunchExecutionResult) -> StartAgentCompletion {
+        StartAgentCompletion {
+            workspace_name: result.workspace_name,
+            workspace_path: result.workspace_path,
+            session_name: result.session_name,
+            result: result.result,
+        }
     }
 
     fn apply_start_agent_completion(&mut self, completion: StartAgentCompletion) {
