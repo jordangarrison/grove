@@ -1029,7 +1029,7 @@
   - `cargo test --lib` (pass, 312)
 
 ### Phase 6ah, add runtime dispatch helper for sync vs process execution
-- Commit: `(pending, uncommitted)`
+- Commit: `dec61b5`
 - Changes:
   - added runtime dispatch type + helpers in `src/agent_runtime.rs`:
     - `CommandExecutionMode::{Process, Delegating}`
@@ -1049,9 +1049,29 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 314)
 
+### Phase 6ai, collapse runtime execution API surface to mode entrypoints
+- Commit: `(pending, uncommitted)`
+- Changes:
+  - removed redundant runtime wrappers in `src/agent_runtime.rs`:
+    - `execute_launch_plan_result`
+    - `execute_launch_plan_with_result`
+    - `execute_commands_result`
+    - `execute_commands_with_result`
+  - retained mode-based and executor-based entrypoints as preferred runtime execution API
+  - updated runtime tests in `src/agent_runtime/tests.rs`:
+    - removed coverage tied to removed wrapper functions
+    - kept/expanded mode-based coverage (`execute_commands_for_mode_process_returns_string_errors`, `execute_launch_plan_for_mode_delegating_prefixes_script_write_errors`)
+  - no behavior changes, API-surface cleanup only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 60)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 310)
+
 ## Current State
-- Worktree has uncommitted changes for phase 6ah.
+- Worktree has uncommitted changes for phase 6ai.
 - Recent refactor commits on local `master`:
+  - `04dd021` docs(handoff): record phase 6ah
+  - `dec61b5` refactor(runtime): add mode-based execution dispatch
   - `b7d8be7` docs(handoff): record phase 6ag
   - `2f45daf` refactor(runtime): centralize launch and stop result mapping
   - `c233767` docs(handoff): record phase 6af
@@ -1137,7 +1157,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: collapse runtime execution wrappers (`*_with_result`, `*_result`, `*_for_mode`) to minimal API surface and migrate UI callsites to one preferred entrypoint
+- next candidate: extract a runtime lifecycle execution facade that owns start/stop plan execution end-to-end (inputs to Result), leaving UI to apply completion state/toasts only
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
