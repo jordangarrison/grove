@@ -756,7 +756,7 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
 ### Phase 6r, remove status-poll wrapper in UI update flow
-- Commit: `(uncommitted)`
+- Commit: `0a46446`
 - Changes:
   - removed `workspace_status_poll_targets` wrapper from `src/ui/tui/update.rs`
   - updated sync and async poll callsites in `src/ui/tui/update.rs` to call
@@ -769,12 +769,26 @@
 - Gates:
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6s, centralize workspace start eligibility policy in `agent_runtime`
+- Commit: `d3cba15`
+- Changes:
+  - added runtime helper in `src/agent_runtime.rs`:
+    - `workspace_can_start_agent(Option<&Workspace>) -> bool`
+  - updated UI caller in `src/ui/tui/update.rs`:
+    - `can_start_selected_workspace` now delegates status/support policy to runtime helper and keeps only `start_in_flight` UI gating
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime test in `src/agent_runtime/tests.rs`:
+    - `workspace_can_start_agent_depends_on_status_and_support`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 47)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
-- Worktree has uncommitted phase 6r changes in:
-  - `src/ui/tui/update.rs`
-  - `src/ui/tui/tests/mod.rs`
-  - `HANDOFF.md`
+- Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `d3cba15` phase 6s
+  - `0a46446` phase 6r
   - `ce477d5` phase 6q
   - `16ead82` phase 6p
   - `a3a13bf` phase 6o
