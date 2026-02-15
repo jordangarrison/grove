@@ -913,9 +913,20 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 301)
 
+### Phase 6ab, reuse shared sync launch executor for lazygit startup path
+- Commit: `1325e8f`
+- Changes:
+  - updated `ensure_lazygit_session_for_selected_workspace` in `src/ui/tui/update.rs` to delegate launch-plan execution to `execute_launch_plan_sync` instead of inlining script/prelaunch/launch command steps
+  - adjusted `execute_launch_plan_sync` in `src/ui/tui/logging.rs` to preserve prior script-write error message prefix (`launcher script write failed: ...`)
+  - no behavior changes, duplicated sync launch execution removal only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 301)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `1325e8f` phase 6ab
   - `5044871` phase 6aa
   - `34e7784` phase 6z
   - `ee13b44` phase 6y
@@ -993,7 +1004,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: apply shared sync launch executor to lazygit session startup path (`ensure_lazygit_session_for_selected_workspace`) to remove duplicated script+prelaunch command execution logic
+- next candidate: move sync-mode `execute_tmux_command` ownership from UI/logging into a lower infrastructure boundary, then keep UI responsible only for toast/event decisions
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
