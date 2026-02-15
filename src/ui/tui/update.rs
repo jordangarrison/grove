@@ -176,6 +176,416 @@ impl GroveApp {
         self.merge_deferred_cmds(cmd)
     }
 
+    fn cycle_preview_tab(&mut self, direction: i8) {
+        let next_tab = if direction.is_negative() {
+            self.preview_tab.previous()
+        } else {
+            self.preview_tab.next()
+        };
+        if next_tab == self.preview_tab {
+            return;
+        }
+
+        self.preview_tab = next_tab;
+        self.clear_preview_selection();
+        if self.preview_tab == PreviewTab::Git
+            && let Some(workspace) = self.state.selected_workspace()
+        {
+            let session_name = Self::git_tab_session_name(workspace);
+            self.lazygit_failed_sessions.remove(&session_name);
+        }
+        self.poll_preview();
+    }
+
+    fn selected_workspace_summary(&self) -> String {
+        self.state
+            .selected_workspace()
+            .map(|workspace| {
+                if workspace.is_main && !workspace.status.has_session() {
+                    return self.main_worktree_splash();
+                }
+                format!(
+                    "Workspace: {}\nBranch: {}\nPath: {}\nAgent: {}\nOrphaned session: {}",
+                    workspace.name,
+                    workspace.branch,
+                    workspace.path.display(),
+                    workspace.agent.label(),
+                    if workspace.is_orphaned { "yes" } else { "no" }
+                )
+            })
+            .unwrap_or_else(|| "No workspace selected".to_string())
+    }
+
+    fn main_worktree_splash(&self) -> String {
+        const G: &str = "\x1b[38;2;166;227;161m";
+        const T: &str = "\x1b[38;2;250;179;135m";
+        const R: &str = "\x1b[0m";
+
+        [
+            String::new(),
+            format!("{G}                    .@@@.{R}"),
+            format!("{G}                 .@@@@@@@@@.{R}"),
+            format!("{G}               .@@@@@@@@@@@@@.{R}"),
+            format!("{G}    .@@@.     @@@@@@@@@@@@@@@@@        .@@.{R}"),
+            format!("{G}  .@@@@@@@.  @@@@@@@@@@@@@@@@@@@    .@@@@@@@@.{R}"),
+            format!("{G} @@@@@@@@@@@ @@@@@@@@@@@@@@@@@@@@  @@@@@@@@@@@@@{R}"),
+            format!("{G} @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@{R}"),
+            format!("{G}  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@{R}"),
+            format!("{G}  '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@'{R}"),
+            format!("{G}    '@@@@@@@@  '@@@@@@@@@@@@@@@' @@@@@@@@@@@@@@'{R}"),
+            format!("{G}      '@@@@'     '@@@@@@@@@@@'    '@@@@@@@@@@'{R}"),
+            format!("         {T}||{R}        {G}'@@@@@@@'{R}        {G}'@@@@'{R}"),
+            format!("         {T}||{R}           {T}|||{R}              {T}||{R}"),
+            format!("         {T}||{R}           {T}|||{R}              {T}||{R}"),
+            format!("        {T}/||\\{R}         {T}/|||\\{R}            {T}/||\\{R}"),
+            String::new(),
+            "Base Worktree".to_string(),
+            String::new(),
+            "This is your repo root.".to_string(),
+            "Create focused workspaces from here when you start new work.".to_string(),
+            String::new(),
+            "--------------------------------------------------".to_string(),
+            String::new(),
+            "Press 'n' to create a workspace".to_string(),
+            String::new(),
+            "Each workspace has its own directory and branch.".to_string(),
+            "Run agents in parallel without branch hopping.".to_string(),
+        ]
+        .join("\n")
+    }
+
+    fn has_non_palette_modal_open(&self) -> bool {
+        self.launch_dialog.is_some()
+            || self.create_dialog.is_some()
+            || self.edit_dialog.is_some()
+            || self.delete_dialog.is_some()
+            || self.settings_dialog.is_some()
+            || self.project_dialog.is_some()
+            || self.keybind_help_open
+    }
+
+    fn can_open_command_palette(&self) -> bool {
+        !self.has_non_palette_modal_open() && self.interactive.is_none()
+    }
+
+    fn palette_action(
+        id: &'static str,
+        title: &'static str,
+        description: &'static str,
+        tags: &[&str],
+        category: &'static str,
+    ) -> PaletteActionItem {
+        PaletteActionItem::new(id, title)
+            .with_description(description)
+            .with_tags(tags)
+            .with_category(category)
+    }
+
+    pub(super) fn build_command_palette_actions(&self) -> Vec<PaletteActionItem> {
+        let mut actions: Vec<PaletteActionItem> = vec![
+            Self::palette_action(
+                PALETTE_CMD_TOGGLE_FOCUS,
+                "Toggle Pane Focus",
+                "Switch focus between workspace list and preview (Tab)",
+                &["tab", "focus", "pane"],
+                "Navigation",
+            ),
+            Self::palette_action(
+                PALETTE_CMD_NEW_WORKSPACE,
+                "New Workspace",
+                "Open workspace creation dialog (n)",
+                &["new", "workspace", "create", "n"],
+                "Workspace",
+            ),
+            Self::palette_action(
+                PALETTE_CMD_EDIT_WORKSPACE,
+                "Edit Workspace",
+                "Open workspace edit dialog (e)",
+                &["edit", "workspace", "agent", "e"],
+                "Workspace",
+            ),
+            Self::palette_action(
+                PALETTE_CMD_OPEN_SETTINGS,
+                "Settings",
+                "Open settings dialog (S)",
+                &["settings", "multiplexer", "S"],
+                "Workspace",
+            ),
+            Self::palette_action(
+                PALETTE_CMD_TOGGLE_UNSAFE,
+                "Toggle Unsafe Launch",
+                "Toggle launch skip-permissions default (!)",
+                &["unsafe", "permissions", "!"],
+                "Workspace",
+            ),
+            Self::palette_action(
+                PALETTE_CMD_OPEN_HELP,
+                "Keybind Help",
+                "Open keyboard shortcut help (?)",
+                &["help", "shortcuts", "?"],
+                "System",
+            ),
+            Self::palette_action(
+                PALETTE_CMD_QUIT,
+                "Quit Grove",
+                "Exit application (q)",
+                &["quit", "exit", "q"],
+                "System",
+            ),
+        ];
+
+        if self.preview_agent_tab_is_focused() && self.can_start_selected_workspace() {
+            actions.push(Self::palette_action(
+                PALETTE_CMD_START_AGENT,
+                "Start Agent",
+                "Open start-agent dialog for selected workspace (s)",
+                &["start", "agent", "workspace", "s"],
+                "Workspace",
+            ));
+        }
+
+        if self.preview_agent_tab_is_focused() && self.can_stop_selected_workspace() {
+            actions.push(Self::palette_action(
+                PALETTE_CMD_STOP_AGENT,
+                "Stop Agent",
+                "Stop selected workspace agent (x)",
+                &["stop", "agent", "workspace", "x"],
+                "Workspace",
+            ));
+        }
+
+        if !self.delete_in_flight
+            && self
+                .state
+                .selected_workspace()
+                .is_some_and(|workspace| !workspace.is_main)
+        {
+            actions.push(Self::palette_action(
+                PALETTE_CMD_DELETE_WORKSPACE,
+                "Delete Workspace",
+                "Open delete dialog for selected workspace (D)",
+                &["delete", "workspace", "worktree", "D"],
+                "Workspace",
+            ));
+        }
+
+        if self.state.focus == PaneFocus::WorkspaceList {
+            actions.push(Self::palette_action(
+                PALETTE_CMD_MOVE_SELECTION_UP,
+                "Select Previous Workspace",
+                "Move workspace selection up (k / Up)",
+                &["up", "previous", "workspace", "k"],
+                "List",
+            ));
+            actions.push(Self::palette_action(
+                PALETTE_CMD_MOVE_SELECTION_DOWN,
+                "Select Next Workspace",
+                "Move workspace selection down (j / Down)",
+                &["down", "next", "workspace", "j"],
+                "List",
+            ));
+            actions.push(Self::palette_action(
+                PALETTE_CMD_OPEN_PREVIEW,
+                "Open Preview",
+                "Focus preview pane for selected workspace (Enter/l)",
+                &["open", "preview", "enter", "l"],
+                "List",
+            ));
+        } else {
+            actions.push(Self::palette_action(
+                PALETTE_CMD_FOCUS_LIST,
+                "Focus Workspace List",
+                "Return focus to workspace list (h/Esc)",
+                &["list", "focus", "h", "esc"],
+                "Navigation",
+            ));
+            if self.can_enter_interactive() {
+                actions.push(Self::palette_action(
+                    PALETTE_CMD_ENTER_INTERACTIVE,
+                    "Enter Interactive Mode",
+                    "Attach to selected workspace session (Enter)",
+                    &["interactive", "attach", "enter"],
+                    "Preview",
+                ));
+            }
+        }
+
+        if self.preview_agent_tab_is_focused() {
+            actions.push(Self::palette_action(
+                PALETTE_CMD_SCROLL_UP,
+                "Scroll Up",
+                "Scroll preview output up (k / Up)",
+                &["scroll", "up", "k"],
+                "Preview",
+            ));
+            actions.push(Self::palette_action(
+                PALETTE_CMD_SCROLL_DOWN,
+                "Scroll Down",
+                "Scroll preview output down (j / Down)",
+                &["scroll", "down", "j"],
+                "Preview",
+            ));
+            actions.push(Self::palette_action(
+                PALETTE_CMD_PAGE_UP,
+                "Page Up",
+                "Scroll preview up by one page (PgUp)",
+                &["pageup", "pgup", "scroll"],
+                "Preview",
+            ));
+            actions.push(Self::palette_action(
+                PALETTE_CMD_PAGE_DOWN,
+                "Page Down",
+                "Scroll preview down by one page (PgDn)",
+                &["pagedown", "pgdn", "scroll"],
+                "Preview",
+            ));
+            actions.push(Self::palette_action(
+                PALETTE_CMD_SCROLL_BOTTOM,
+                "Jump To Bottom",
+                "Jump preview output to bottom (G)",
+                &["bottom", "latest", "G"],
+                "Preview",
+            ));
+        }
+
+        actions
+    }
+
+    fn refresh_command_palette_actions(&mut self) {
+        self.command_palette
+            .replace_actions(self.build_command_palette_actions());
+    }
+
+    pub(super) fn open_command_palette(&mut self) {
+        if !self.can_open_command_palette() {
+            return;
+        }
+
+        self.refresh_command_palette_actions();
+        self.command_palette.open();
+    }
+
+    fn execute_command_palette_action(&mut self, id: &str) -> bool {
+        match id {
+            PALETTE_CMD_TOGGLE_FOCUS => {
+                reduce(&mut self.state, Action::ToggleFocus);
+                false
+            }
+            PALETTE_CMD_OPEN_PREVIEW => {
+                self.enter_preview_or_interactive();
+                false
+            }
+            PALETTE_CMD_ENTER_INTERACTIVE => {
+                self.enter_interactive(Instant::now());
+                false
+            }
+            PALETTE_CMD_FOCUS_LIST => {
+                reduce(&mut self.state, Action::EnterListMode);
+                false
+            }
+            PALETTE_CMD_MOVE_SELECTION_UP => {
+                self.move_selection(Action::MoveSelectionUp);
+                false
+            }
+            PALETTE_CMD_MOVE_SELECTION_DOWN => {
+                self.move_selection(Action::MoveSelectionDown);
+                false
+            }
+            PALETTE_CMD_SCROLL_UP => {
+                if self.preview_agent_tab_is_focused() {
+                    self.scroll_preview(-1);
+                }
+                false
+            }
+            PALETTE_CMD_SCROLL_DOWN => {
+                if self.preview_agent_tab_is_focused() {
+                    self.scroll_preview(1);
+                }
+                false
+            }
+            PALETTE_CMD_PAGE_UP => {
+                if self.preview_agent_tab_is_focused() {
+                    self.scroll_preview(-5);
+                }
+                false
+            }
+            PALETTE_CMD_PAGE_DOWN => {
+                if self.preview_agent_tab_is_focused() {
+                    self.scroll_preview(5);
+                }
+                false
+            }
+            PALETTE_CMD_SCROLL_BOTTOM => {
+                if self.preview_agent_tab_is_focused() {
+                    self.jump_preview_to_bottom();
+                }
+                false
+            }
+            PALETTE_CMD_NEW_WORKSPACE => {
+                self.open_create_dialog();
+                false
+            }
+            PALETTE_CMD_EDIT_WORKSPACE => {
+                self.open_edit_dialog();
+                false
+            }
+            PALETTE_CMD_START_AGENT => {
+                if self.preview_agent_tab_is_focused() {
+                    self.open_start_dialog();
+                }
+                false
+            }
+            PALETTE_CMD_STOP_AGENT => {
+                if self.preview_agent_tab_is_focused() {
+                    self.stop_selected_workspace_agent();
+                }
+                false
+            }
+            PALETTE_CMD_DELETE_WORKSPACE => {
+                self.open_delete_dialog();
+                false
+            }
+            PALETTE_CMD_OPEN_SETTINGS => {
+                self.open_settings_dialog();
+                false
+            }
+            PALETTE_CMD_TOGGLE_UNSAFE => {
+                self.launch_skip_permissions = !self.launch_skip_permissions;
+                false
+            }
+            PALETTE_CMD_OPEN_HELP => {
+                self.open_keybind_help();
+                false
+            }
+            PALETTE_CMD_QUIT => true,
+            _ => false,
+        }
+    }
+
+    pub(super) fn modal_open(&self) -> bool {
+        self.has_non_palette_modal_open() || self.command_palette.is_visible()
+    }
+
+    pub(super) fn refresh_preview_summary(&mut self) {
+        self.preview
+            .apply_capture(&self.selected_workspace_summary());
+    }
+
+    pub(super) fn preview_output_dimensions(&self) -> Option<(u16, u16)> {
+        let layout = self.view_layout();
+        if layout.preview.is_empty() {
+            return None;
+        }
+
+        let inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        if inner.is_empty() || inner.width == 0 {
+            return None;
+        }
+
+        let output_height = inner.height.saturating_sub(PREVIEW_METADATA_ROWS).max(1);
+        Some((inner.width, output_height))
+    }
+
     fn handle_paste_event(&mut self, paste_event: PasteEvent) -> Cmd<Msg> {
         let input_seq = self.next_input_seq();
         let received_at = Instant::now();
