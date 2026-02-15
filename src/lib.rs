@@ -1,6 +1,5 @@
 pub mod application;
 pub mod domain;
-pub mod hardening;
 pub mod infrastructure;
 pub mod tui;
 pub mod ui;
