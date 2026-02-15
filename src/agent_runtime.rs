@@ -748,6 +748,37 @@ pub enum CommandExecutionMode<'a> {
     Delegating(&'a mut dyn FnMut(&[String]) -> std::io::Result<()>),
 }
 
+pub fn execute_launch_request_for_mode(
+    request: &LaunchRequest,
+    multiplexer: MultiplexerKind,
+    mode: CommandExecutionMode<'_>,
+) -> (String, Result<(), String>) {
+    let launch_plan = build_launch_plan(request, multiplexer);
+    let session_name = launch_plan.session_name.clone();
+    let result = execute_launch_plan_for_mode(&launch_plan, mode);
+    (session_name, result)
+}
+
+pub fn execute_shell_launch_request_for_mode(
+    request: &ShellLaunchRequest,
+    multiplexer: MultiplexerKind,
+    mode: CommandExecutionMode<'_>,
+) -> (String, Result<(), String>) {
+    let launch_plan = build_shell_launch_plan(request, multiplexer);
+    let session_name = launch_plan.session_name.clone();
+    let result = execute_launch_plan_for_mode(&launch_plan, mode);
+    (session_name, result)
+}
+
+pub fn execute_stop_session_for_mode(
+    session_name: &str,
+    multiplexer: MultiplexerKind,
+    mode: CommandExecutionMode<'_>,
+) -> Result<(), String> {
+    let commands = stop_plan(session_name, multiplexer);
+    execute_commands_for_mode(&commands, mode)
+}
+
 pub fn execute_launch_plan_for_mode(
     launch_plan: &LaunchPlan,
     mode: CommandExecutionMode<'_>,

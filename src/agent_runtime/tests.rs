@@ -11,8 +11,9 @@ use super::{
     detect_status_with_session_override_in_home, detect_waiting_prompt, evaluate_capture_change,
     execute_command_with, execute_commands, execute_commands_for_mode, execute_commands_with,
     execute_commands_with_executor, execute_launch_plan, execute_launch_plan_for_mode,
-    execute_launch_plan_with, execute_launch_plan_with_executor, git_preview_session_if_ready,
-    git_session_name_for_workspace, kill_workspace_session_command, live_preview_agent_session,
+    execute_launch_plan_with, execute_launch_plan_with_executor, execute_launch_request_for_mode,
+    execute_stop_session_for_mode, git_preview_session_if_ready, git_session_name_for_workspace,
+    kill_workspace_session_command, live_preview_agent_session,
     live_preview_capture_target_for_tab, live_preview_session_for_tab,
     normalized_agent_command_override, poll_interval, reconcile_with_sessions,
     sanitize_workspace_name, session_name_for_workspace, session_name_for_workspace_ref, stop_plan,
@@ -507,6 +508,64 @@ fn execute_commands_for_mode_process_returns_string_errors() {
     let error_text = result.expect_err("missing program should error");
 
     assert!(!error_text.is_empty());
+}
+
+#[test]
+fn execute_launch_request_for_mode_returns_session_name_on_error() {
+    let request = LaunchRequest {
+        project_name: None,
+        workspace_name: "auth-flow".to_string(),
+        workspace_path: PathBuf::from("/repos/grove-auth-flow"),
+        agent: AgentType::Claude,
+        prompt: None,
+        pre_launch_command: None,
+        skip_permissions: false,
+        capture_cols: None,
+        capture_rows: None,
+    };
+    let (session_name, result) = execute_launch_request_for_mode(
+        &request,
+        MultiplexerKind::Tmux,
+        CommandExecutionMode::Delegating(&mut |_command| {
+            Err(std::io::Error::other("synthetic execution failure"))
+        }),
+    );
+
+    assert_eq!(session_name, "grove-ws-auth-flow");
+    assert!(result.is_err());
+}
+
+#[test]
+fn execute_stop_session_for_mode_delegating_runs_stop_sequence() {
+    let mut commands = Vec::new();
+    let result = execute_stop_session_for_mode(
+        "grove-ws-auth-flow",
+        MultiplexerKind::Tmux,
+        CommandExecutionMode::Delegating(&mut |command| {
+            commands.push(command.to_vec());
+            Ok(())
+        }),
+    );
+
+    assert!(result.is_ok());
+    assert_eq!(
+        commands,
+        vec![
+            vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                "grove-ws-auth-flow".to_string(),
+                "C-c".to_string(),
+            ],
+            vec![
+                "tmux".to_string(),
+                "kill-session".to_string(),
+                "-t".to_string(),
+                "grove-ws-auth-flow".to_string(),
+            ],
+        ]
+    );
 }
 
 #[test]

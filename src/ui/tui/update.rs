@@ -668,11 +668,12 @@ impl GroveApp {
             capture_cols: Some(capture_cols),
             capture_rows: Some(capture_rows),
         };
-        let launch_plan = build_shell_launch_plan(&launch_request, self.multiplexer);
-        if let Err(error) = execute_launch_plan_for_mode(
-            &launch_plan,
+        let (_, launch_result) = execute_shell_launch_request_for_mode(
+            &launch_request,
+            self.multiplexer,
             CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
-        ) {
+        );
+        if let Err(error) = launch_result {
             self.last_tmux_error = Some(error);
             self.show_toast("lazygit launch failed", true);
             self.lazygit_failed_sessions.insert(session_name);
@@ -1668,16 +1669,16 @@ impl GroveApp {
             pre_launch_command,
             skip_permissions,
         };
-        let launch_plan = build_launch_plan(&request, self.multiplexer);
         let workspace_name = request.workspace_name.clone();
         let workspace_path = request.workspace_path.clone();
-        let session_name = launch_plan.session_name.clone();
 
         if !self.tmux_input.supports_background_send() {
-            if let Err(error) = execute_launch_plan_for_mode(
-                &launch_plan,
+            let (session_name, result) = execute_launch_request_for_mode(
+                &request,
+                self.multiplexer,
                 CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
-            ) {
+            );
+            if let Err(error) = result {
                 self.last_tmux_error = Some(error);
                 self.show_toast("agent start failed", true);
                 return;
@@ -1693,8 +1694,13 @@ impl GroveApp {
         }
 
         self.start_in_flight = true;
+        let multiplexer = self.multiplexer;
         self.queue_cmd(Cmd::task(move || {
-            let result = execute_launch_plan_for_mode(&launch_plan, CommandExecutionMode::Process);
+            let (session_name, result) = execute_launch_request_for_mode(
+                &request,
+                multiplexer,
+                CommandExecutionMode::Process,
+            );
             Msg::StartAgentCompleted(StartAgentCompletion {
                 workspace_name,
                 workspace_path,
@@ -1795,11 +1801,11 @@ impl GroveApp {
         let workspace_name = workspace.name.clone();
         let workspace_path = workspace.path.clone();
         let session_name = session_name_for_workspace_ref(workspace);
-        let stop_commands = stop_plan(&session_name, self.multiplexer);
 
         if !self.tmux_input.supports_background_send() {
-            if let Err(error) = execute_commands_for_mode(
-                &stop_commands,
+            if let Err(error) = execute_stop_session_for_mode(
+                &session_name,
+                self.multiplexer,
                 CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
             ) {
                 self.last_tmux_error = Some(error);
@@ -1817,8 +1823,13 @@ impl GroveApp {
         }
 
         self.stop_in_flight = true;
+        let multiplexer = self.multiplexer;
         self.queue_cmd(Cmd::task(move || {
-            let result = execute_commands_for_mode(&stop_commands, CommandExecutionMode::Process);
+            let result = execute_stop_session_for_mode(
+                &session_name,
+                multiplexer,
+                CommandExecutionMode::Process,
+            );
             Msg::StopAgentCompleted(StopAgentCompletion {
                 workspace_name,
                 workspace_path,
