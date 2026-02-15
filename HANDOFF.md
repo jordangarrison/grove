@@ -1200,9 +1200,29 @@
   - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 67)
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6ar, inline typed lifecycle execution paths in `agent_runtime`
+- Commit: `5ce9c52`
+- Changes:
+  - removed now-redundant private tuple helpers in `src/agent_runtime.rs`:
+    - `execute_launch_request_for_mode`
+    - `execute_stop_session_for_mode`
+    - `execute_stop_workspace_for_mode`
+  - inlined lifecycle execution logic directly into typed helpers:
+    - `execute_launch_request_with_result_for_mode`
+    - `execute_stop_workspace_with_result_for_mode`
+  - updated runtime tests in `src/agent_runtime/tests.rs`:
+    - removed coverage tied to deleted tuple helpers
+    - expanded typed stop helper test to assert full command sequence and project-scoped session
+  - no behavior changes, internal call-depth/API cleanup only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 64)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
-- Worktree is clean after phase 6aq commit.
+- Worktree is clean after phase 6ar commit.
 - Recent refactor commits on local `master`:
+  - `5ce9c52` refactor(runtime): inline typed lifecycle execution paths
+  - `3d61013` docs(handoff): record phase 6aq
   - `2085f6a` refactor(runtime): scope tuple lifecycle executors to module
   - `93283d7` docs(handoff): record phase 6ap
   - `d80e32f` refactor(ui): move lifecycle outcome conversion into msg
@@ -1307,7 +1327,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: inline now-private tuple lifecycle helpers into typed `*_with_result_for_mode` functions to collapse duplicate call depth inside `agent_runtime`
+- next candidate: run a phase-6 boundary sweep for remaining non-UI logic in `ui/tui/update.rs` (if none, close phase 6 and start phase-7 crate-tree alignment)
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
