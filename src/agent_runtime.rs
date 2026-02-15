@@ -793,17 +793,6 @@ pub enum CommandExecutionMode<'a> {
     Delegating(&'a mut dyn FnMut(&[String]) -> std::io::Result<()>),
 }
 
-fn execute_launch_request_for_mode(
-    request: &LaunchRequest,
-    multiplexer: MultiplexerKind,
-    mode: CommandExecutionMode<'_>,
-) -> (String, Result<(), String>) {
-    let launch_plan = build_launch_plan(request, multiplexer);
-    let session_name = launch_plan.session_name.clone();
-    let result = execute_launch_plan_for_mode(&launch_plan, mode);
-    (session_name, result)
-}
-
 pub fn execute_launch_request_with_result_for_mode(
     request: &LaunchRequest,
     multiplexer: MultiplexerKind,
@@ -811,7 +800,9 @@ pub fn execute_launch_request_with_result_for_mode(
 ) -> SessionExecutionResult {
     let workspace_name = request.workspace_name.clone();
     let workspace_path = request.workspace_path.clone();
-    let (session_name, result) = execute_launch_request_for_mode(request, multiplexer, mode);
+    let launch_plan = build_launch_plan(request, multiplexer);
+    let session_name = launch_plan.session_name.clone();
+    let result = execute_launch_plan_for_mode(&launch_plan, mode);
     SessionExecutionResult {
         workspace_name,
         workspace_path,
@@ -831,25 +822,6 @@ pub fn execute_shell_launch_request_for_mode(
     (session_name, result)
 }
 
-fn execute_stop_session_for_mode(
-    session_name: &str,
-    multiplexer: MultiplexerKind,
-    mode: CommandExecutionMode<'_>,
-) -> Result<(), String> {
-    let commands = stop_plan(session_name, multiplexer);
-    execute_commands_for_mode(&commands, mode)
-}
-
-fn execute_stop_workspace_for_mode(
-    workspace: &Workspace,
-    multiplexer: MultiplexerKind,
-    mode: CommandExecutionMode<'_>,
-) -> (String, Result<(), String>) {
-    let session_name = session_name_for_workspace_ref(workspace);
-    let result = execute_stop_session_for_mode(&session_name, multiplexer, mode);
-    (session_name, result)
-}
-
 pub fn execute_stop_workspace_with_result_for_mode(
     workspace: &Workspace,
     multiplexer: MultiplexerKind,
@@ -857,7 +829,9 @@ pub fn execute_stop_workspace_with_result_for_mode(
 ) -> SessionExecutionResult {
     let workspace_name = workspace.name.clone();
     let workspace_path = workspace.path.clone();
-    let (session_name, result) = execute_stop_workspace_for_mode(workspace, multiplexer, mode);
+    let session_name = session_name_for_workspace_ref(workspace);
+    let commands = stop_plan(&session_name, multiplexer);
+    let result = execute_commands_for_mode(&commands, mode);
     SessionExecutionResult {
         workspace_name,
         workspace_path,
