@@ -47,7 +47,7 @@ use crate::agent_runtime::{
     session_name_for_workspace, stop_plan, zellij_capture_log_path, zellij_config_path,
 };
 use crate::config::{GroveConfig, MultiplexerKind};
-use crate::domain::{AgentType, Workspace, WorkspaceStatus};
+use crate::domain::{AgentType, WorkspaceStatus};
 use crate::event_log::{Event as LogEvent, EventLogger, FileEventLogger, NullEventLogger};
 #[cfg(test)]
 use crate::interactive::render_cursor_overlay;
@@ -109,7 +109,8 @@ const MAX_PENDING_INPUT_TRACES: usize = 256;
 const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 const FAST_ANIMATION_INTERVAL_MS: u64 = 100;
 const ACTIVE_SPINNER_GRACE_MS: u64 = 3_000;
-const FAST_SPINNER_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const STATUS_BADGE_WIDTH: usize = 7;
+const FAST_SPINNER_FRAMES: [&str; 4] = ["run.   ", "run..  ", "run... ", "run...."];
 
 #[derive(Debug, Clone, Copy)]
 struct UiTheme {
@@ -6908,7 +6909,7 @@ impl GroveApp {
             WorkspaceStatus::Main => theme.lavender,
             WorkspaceStatus::Idle => theme.overlay0,
             WorkspaceStatus::Active | WorkspaceStatus::Thinking => theme.green,
-            WorkspaceStatus::Waiting => theme.yellow,
+            WorkspaceStatus::Waiting => theme.peach,
             WorkspaceStatus::Done => theme.teal,
             WorkspaceStatus::Error => theme.red,
             WorkspaceStatus::Unknown | WorkspaceStatus::Unsupported => theme.peach,
@@ -6918,44 +6919,37 @@ impl GroveApp {
     fn workspace_agent_color(&self, agent: AgentType) -> PackedRgba {
         let theme = ui_theme();
         match agent {
-            AgentType::Claude => theme.mauve,
-            AgentType::Codex => theme.blue,
+            AgentType::Claude => theme.peach,
+            AgentType::Codex => theme.text,
         }
     }
 
-    fn agent_marker(agent: AgentType) -> &'static str {
-        match agent {
-            AgentType::Claude => "◇",
-            AgentType::Codex => "□",
-        }
-    }
-
-    fn status_indicator(&self, status: WorkspaceStatus, is_selected: bool) -> &'static str {
+    fn status_badge_label(&self, status: WorkspaceStatus, is_selected: bool) -> &'static str {
         if self.status_is_visually_working(status, is_selected) {
             return FAST_SPINNER_FRAMES[self.fast_animation_frame % FAST_SPINNER_FRAMES.len()];
         }
 
-        status.icon()
+        match status {
+            WorkspaceStatus::Main => "main",
+            WorkspaceStatus::Idle => "paused",
+            WorkspaceStatus::Active => "running",
+            WorkspaceStatus::Thinking => "thinking",
+            WorkspaceStatus::Waiting => "ACTION!",
+            WorkspaceStatus::Done => "done",
+            WorkspaceStatus::Error => "error",
+            WorkspaceStatus::Unknown => "unknown",
+            WorkspaceStatus::Unsupported => "unsup",
+        }
     }
 
-    fn workspace_status_glyph(&self, workspace: &Workspace, is_selected: bool) -> String {
+    fn status_badge(&self, status: WorkspaceStatus, is_selected: bool) -> String {
         format!(
-            "{}{}",
-            Self::agent_marker(workspace.agent),
-            self.status_indicator(workspace.status, is_selected)
+            "[{}]",
+            pad_or_truncate_to_display_width(
+                self.status_badge_label(status, is_selected),
+                STATUS_BADGE_WIDTH,
+            )
         )
-    }
-
-    fn status_icon(&self, status: WorkspaceStatus, is_selected: bool) -> &'static str {
-        self.status_indicator(status, is_selected)
-    }
-
-    fn activity_spinner_slot(&self, status: WorkspaceStatus, is_selected: bool) -> &'static str {
-        if self.status_is_visually_working(status, is_selected) {
-            return FAST_SPINNER_FRAMES[self.fast_animation_frame % FAST_SPINNER_FRAMES.len()];
-        }
-
-        " "
     }
 
     fn relative_age_label(&self, unix_secs: Option<i64>) -> String {
@@ -6993,10 +6987,8 @@ impl GroveApp {
         let selected_workspace = self.state.selected_workspace();
         let selected_status =
             selected_workspace.map_or(WorkspaceStatus::Unknown, |workspace| workspace.status);
-        let selected_icon = selected_workspace
-            .map(|workspace| self.workspace_status_glyph(workspace, true))
-            .unwrap_or_else(|| format!(".{}", self.status_indicator(selected_status, true)));
-        let activity_chip = format!("{} {}", selected_icon, self.selected_status_hint());
+        let selected_status_badge = self.status_badge(selected_status, true);
+        let activity_chip = format!("{} {}", selected_status_badge, self.selected_status_hint());
 
         let base_header = StatusLine::new()
             .separator("  ")
@@ -7018,11 +7010,7 @@ impl GroveApp {
             return;
         }
 
-        let header = base_header
-            .right(StatusItem::text(activity_chip.as_str()))
-            .right(StatusItem::text(
-                self.activity_spinner_slot(selected_status, true),
-            ));
+        let header = base_header.right(StatusItem::text(activity_chip.as_str()));
         header.render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_HEADER));
     }
@@ -7074,20 +7062,8 @@ impl GroveApp {
                     } else {
                         " "
                     };
-                    let status_icon = self.status_icon(workspace.status, is_selected);
-                    let agent_icon = Self::agent_marker(workspace.agent);
+                    let status_badge = self.status_badge(workspace.status, is_selected);
                     let age = self.relative_age_label(workspace.last_activity_unix_secs);
-
-                    let secondary = format!(
-                        "  {} | {}{}",
-                        workspace.branch,
-                        workspace.agent.label(),
-                        if workspace.is_orphaned {
-                            " | session ended"
-                        } else {
-                            ""
-                        }
-                    );
 
                     let row_background = if idx == self.state.selected_index {
                         if self.state.focus == PaneFocus::WorkspaceList && !self.modal_open() {
@@ -7096,7 +7072,7 @@ impl GroveApp {
                             Some(theme.surface0)
                         }
                     } else if workspace.status == WorkspaceStatus::Waiting {
-                        Some(theme.surface0)
+                        Some(theme.surface1)
                     } else {
                         None
                     };
@@ -7114,17 +7090,12 @@ impl GroveApp {
                     let mut primary_spans = vec![
                         FtSpan::styled(format!("{selected} "), primary_style),
                         FtSpan::styled(
-                            agent_icon.to_string(),
-                            primary_style
-                                .fg(self.workspace_agent_color(workspace.agent))
-                                .bold(),
-                        ),
-                        FtSpan::styled(
-                            format!("{status_icon} "),
+                            status_badge,
                             primary_style
                                 .fg(self.workspace_status_color(workspace.status))
                                 .bold(),
                         ),
+                        FtSpan::styled(" ", primary_style),
                         FtSpan::styled(workspace.name.clone(), primary_style),
                     ];
                     if !age.is_empty() {
@@ -7133,10 +7104,30 @@ impl GroveApp {
                     }
 
                     lines.push(FtLine::from_spans(primary_spans));
-                    lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                        secondary,
-                        secondary_style,
-                    )]));
+
+                    let mut secondary_spans = vec![
+                        FtSpan::styled("  ", secondary_style),
+                        FtSpan::styled(format!("{} | ", workspace.branch), secondary_style),
+                        FtSpan::styled(
+                            workspace.agent.label().to_string(),
+                            secondary_style
+                                .fg(self.workspace_agent_color(workspace.agent))
+                                .bold(),
+                        ),
+                    ];
+                    if workspace.status == WorkspaceStatus::Waiting {
+                        secondary_spans.push(FtSpan::styled(
+                            " | NEEDS INPUT",
+                            secondary_style.fg(theme.yellow).bold(),
+                        ));
+                    }
+                    if workspace.is_orphaned {
+                        secondary_spans.push(FtSpan::styled(
+                            " | session ended",
+                            secondary_style.fg(theme.peach),
+                        ));
+                    }
+                    lines.push(FtLine::from_spans(secondary_spans));
 
                     if let Ok(data) = u64::try_from(idx) {
                         let row_y = inner.y.saturating_add(
@@ -7232,7 +7223,7 @@ impl GroveApp {
                 let detail = format!(
                     "{} | {} | {}",
                     workspace.agent.label(),
-                    self.workspace_status_glyph(workspace, false),
+                    self.status_badge(workspace.status, false),
                     workspace.path.display()
                 );
                 (format!("{mode_label} | {name_label}"), detail)
@@ -7936,11 +7927,12 @@ impl GroveApp {
                         " "
                     };
                     lines.push(format!(
-                        "{} {} {} | {} | {}{}",
+                        "{} {} {} | {} | {} | {}{}",
                         selected,
-                        self.workspace_status_glyph(workspace, idx == self.state.selected_index),
+                        self.status_badge(workspace.status, idx == self.state.selected_index),
                         workspace.name,
                         workspace.branch,
+                        workspace.agent.label(),
                         workspace.path.display(),
                         if workspace.is_orphaned {
                             " | session ended"
@@ -8959,7 +8951,7 @@ mod tests {
     }
 
     #[test]
-    fn sidebar_icons_are_agent_distinct() {
+    fn shell_lines_show_status_badges_and_agent_labels() {
         let app = fixture_app();
         let lines = app.shell_lines(12);
         let Some(main_line) = lines.iter().find(|line| line.contains("grove | main")) else {
@@ -8972,12 +8964,20 @@ mod tests {
             panic!("feature workspace shell line should be present");
         };
         assert!(
-            main_line.contains("◇"),
-            "claude workspace should show claude marker, got: {main_line}"
+            main_line.contains("[main"),
+            "main workspace should show main status badge, got: {main_line}"
         );
         assert!(
-            feature_line.contains("□"),
-            "codex workspace should show codex marker, got: {feature_line}"
+            feature_line.contains("[paused"),
+            "feature workspace should show paused status badge, got: {feature_line}"
+        );
+        assert!(
+            main_line.contains("Claude"),
+            "main workspace should include Claude label, got: {main_line}"
+        );
+        assert!(
+            feature_line.contains("Codex"),
+            "feature workspace should include Codex label, got: {feature_line}"
         );
     }
 
@@ -8999,8 +8999,8 @@ mod tests {
             };
             let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
             assert!(
-                sidebar_row_text.contains("●"),
-                "active workspace should show static active icon, got: {sidebar_row_text}"
+                sidebar_row_text.contains("[running"),
+                "active workspace should show static running badge, got: {sidebar_row_text}"
             );
             assert!(
                 !contains_spinner_frame(&sidebar_row_text),
@@ -9061,6 +9061,36 @@ mod tests {
             assert!(
                 contains_spinner_frame(&sidebar_row_text),
                 "active workspace should animate when output is changing, got: {sidebar_row_text}"
+            );
+        });
+    }
+
+    #[test]
+    fn waiting_workspace_row_calls_out_required_input() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Waiting, Vec::new());
+        app.state.selected_index = 1;
+        app.sidebar_width_pct = 70;
+
+        let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 120, 24, |frame| {
+            let Some(selected_row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
+                panic!("selected workspace row should be rendered");
+            };
+            let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
+            assert!(
+                sidebar_row_text.contains("[ACTION!"),
+                "waiting workspace should show action badge, got: {sidebar_row_text}"
+            );
+
+            let secondary_row = selected_row.saturating_add(1);
+            let secondary_text = row_text(frame, secondary_row, x_start, x_end);
+            assert!(
+                secondary_text.contains("NEEDS INPUT"),
+                "waiting workspace should call out required input, got: {secondary_text}"
             );
         });
     }

@@ -39,20 +39,6 @@ impl WorkspaceStatus {
     pub const fn is_running(self) -> bool {
         matches!(self, Self::Active | Self::Thinking | Self::Waiting)
     }
-
-    pub const fn icon(self) -> &'static str {
-        match self {
-            Self::Main => "◉",
-            Self::Idle => "⏸",
-            Self::Active => "●",
-            Self::Thinking => "◐",
-            Self::Waiting => "⧗",
-            Self::Done => "✓",
-            Self::Error => "✗",
-            Self::Unknown => "?",
-            Self::Unsupported => "!",
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -209,21 +195,9 @@ mod tests {
         .with_supported_agent(false);
 
         assert_eq!(workspace.agent.label(), "Codex");
-        assert_eq!(workspace.status.icon(), "?");
         assert_eq!(workspace.path, PathBuf::from("/repos/grove-feature-x"));
         assert_eq!(workspace.base_branch.as_deref(), Some("main"));
         assert!(workspace.is_orphaned);
         assert!(!workspace.supported_agent);
-    }
-
-    #[test]
-    fn status_icons_cover_phase_four_plus_states() {
-        assert_eq!(WorkspaceStatus::Idle.icon(), "⏸");
-        assert_eq!(WorkspaceStatus::Active.icon(), "●");
-        assert_eq!(WorkspaceStatus::Thinking.icon(), "◐");
-        assert_eq!(WorkspaceStatus::Waiting.icon(), "⧗");
-        assert_eq!(WorkspaceStatus::Done.icon(), "✓");
-        assert_eq!(WorkspaceStatus::Error.icon(), "✗");
-        assert_eq!(WorkspaceStatus::Unsupported.icon(), "!");
     }
 }
