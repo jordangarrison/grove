@@ -126,6 +126,19 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 276)
 
+### Phase 5e, move paste and non-interactive key flow into `update.rs`
+- Commit: pending
+- Changes:
+  - moved from `src/ui/tui/mod.rs` to `src/ui/tui/update.rs`:
+    - `handle_paste_event`
+    - `enter_preview_or_interactive`
+    - `handle_non_interactive_key`
+  - `enter_preview_or_interactive` now `pub(super)` because it is called from parent-module command palette action handling
+  - no behavior changes, relocation only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
 ## Current State
 - Worktree includes Phase 5a module extraction changes + this handoff update.
 - Local branch includes prior refactor commits:
@@ -141,6 +154,7 @@ Status:
 - dialog key handlers moved into `dialogs.rs`.
 - dialog and overlay render helpers moved into `view.rs`.
 - key and mouse dispatch moved into `update.rs`.
+- paste and non-interactive key flow moved into `update.rs`.
 - Remaining work is further decomposition of large `GroveApp` impl blocks inside `mod.rs`.
 
 Next sub-targets:
