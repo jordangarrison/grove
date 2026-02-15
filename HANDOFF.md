@@ -337,9 +337,25 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 276)
 
+### Phase 5u, extract shared text/formatting helpers into `text.rs`
+- Commit: `912bb07`
+- Changes:
+  - added `src/ui/tui/text.rs`
+    - moved pure text/formatting helpers out of `src/ui/tui/mod.rs`:
+      - preview text helpers (`line_visual_width`, `visual_substring`, `visual_grapheme_at`)
+      - truncation/padding helpers (`truncate_for_log`, `truncate_to_display_width`, `pad_or_truncate_to_display_width`)
+      - chrome/status composition helpers (`chrome_bar_line`, `keybind_hint_spans`)
+      - ANSI text stripping helper (`ansi_line_to_plain_text`)
+  - wired `mod text;` + imports in `src/ui/tui/mod.rs`
+  - no behavior changes, relocation only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
 ## Current State
 - Worktree has local changes only in `HANDOFF.md` (this update).
 - Recent refactor commits on local `master`:
+  - `912bb07` phase 5u
   - `f634be8` phase 5t
   - `805390d` phase 5s
   - `ec108ab` phase 5r
@@ -362,10 +378,11 @@ Status:
 - lifecycle execution/completions moved into `update.rs`.
 - preview polling/capture/runtime integration moved into `update.rs`.
 - adaptive polling/activity tracking moved into `update.rs`.
+- shared text/formatting helpers moved into `text.rs`.
 - `mod.rs` is now mostly module root, shared types/constants/helpers, constructors, and logging utilities.
 
 Next sub-targets:
-- optional: split shared utility helpers from `mod.rs` into focused helper modules (selection/text, formatting, logging)
+- optional: split remaining shared utility helpers from `mod.rs` into focused helper modules (selection, logging)
 - keep behavior unchanged while shrinking `mod.rs` further only if necessary for readability
 
 Rules:
