@@ -5,13 +5,14 @@ use std::process;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::{
-    CaptureChange, CommandExecutor, LaunchPlan, LaunchRequest, LauncherScript, LivePreviewTarget,
-    SessionActivity, build_launch_plan, default_agent_command, detect_agent_session_status_in_home,
-    detect_status, detect_status_with_session_override_in_home, detect_waiting_prompt,
-    evaluate_capture_change, execute_command_with, execute_commands, execute_commands_result,
+    CaptureChange, CommandExecutionMode, CommandExecutor, LaunchPlan, LaunchRequest,
+    LauncherScript, LivePreviewTarget, SessionActivity, build_launch_plan, default_agent_command,
+    detect_agent_session_status_in_home, detect_status,
+    detect_status_with_session_override_in_home, detect_waiting_prompt, evaluate_capture_change,
+    execute_command_with, execute_commands, execute_commands_for_mode, execute_commands_result,
     execute_commands_with, execute_commands_with_executor, execute_commands_with_result,
-    execute_launch_plan, execute_launch_plan_result, execute_launch_plan_with,
-    execute_launch_plan_with_executor, execute_launch_plan_with_result,
+    execute_launch_plan, execute_launch_plan_for_mode, execute_launch_plan_result,
+    execute_launch_plan_with, execute_launch_plan_with_executor, execute_launch_plan_with_result,
     git_preview_session_if_ready, git_session_name_for_workspace, kill_workspace_session_command,
     live_preview_agent_session, live_preview_capture_target_for_tab, live_preview_session_for_tab,
     normalized_agent_command_override, poll_interval, reconcile_with_sessions,
@@ -510,6 +511,18 @@ fn execute_commands_result_returns_string_errors() {
 }
 
 #[test]
+fn execute_commands_for_mode_process_returns_string_errors() {
+    let commands = vec![vec![
+        "grove-this-command-does-not-exist".to_string(),
+        "arg".to_string(),
+    ]];
+    let result = execute_commands_for_mode(&commands, CommandExecutionMode::Process);
+    let error_text = result.expect_err("missing program should error");
+
+    assert!(!error_text.is_empty());
+}
+
+#[test]
 fn execute_launch_plan_writes_launcher_script_and_executes_commands() {
     let temp_dir = unique_test_dir("execute-launch-plan");
     let script_path = temp_dir.join(".grove-start.sh");
@@ -683,6 +696,30 @@ fn execute_launch_plan_with_result_prefixes_script_write_errors() {
     };
 
     let result = execute_launch_plan_with_result(&launch_plan, |_command| Ok(()));
+    let error_text = result.expect_err("script write should fail");
+
+    assert!(error_text.starts_with("launcher script write failed: "));
+}
+
+#[test]
+fn execute_launch_plan_for_mode_delegating_prefixes_script_write_errors() {
+    let temp_dir = unique_test_dir("execute-launch-plan-sync-mode");
+    let missing_dir = temp_dir.join("missing");
+    let launch_plan = LaunchPlan {
+        session_name: "grove-ws-test".to_string(),
+        pane_lookup_cmd: Vec::new(),
+        pre_launch_cmds: Vec::new(),
+        launch_cmd: vec!["sh".to_string(), "-lc".to_string(), "true".to_string()],
+        launcher_script: Some(LauncherScript {
+            path: missing_dir.join(".grove-start.sh"),
+            contents: "#!/usr/bin/env bash\necho hi\n".to_string(),
+        }),
+    };
+
+    let result = execute_launch_plan_for_mode(
+        &launch_plan,
+        CommandExecutionMode::Delegating(&mut |_command| Ok(())),
+    );
     let error_text = result.expect_err("script write should fail");
 
     assert!(error_text.starts_with("launcher script write failed: "));

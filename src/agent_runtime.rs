@@ -743,8 +743,32 @@ pub fn execute_launch_plan(launch_plan: LaunchPlan) -> std::io::Result<()> {
     execute_launch_plan_with_executor(&launch_plan, &mut executor)
 }
 
+pub enum CommandExecutionMode<'a> {
+    Process,
+    Delegating(&'a mut dyn FnMut(&[String]) -> std::io::Result<()>),
+}
+
+pub fn execute_launch_plan_for_mode(
+    launch_plan: &LaunchPlan,
+    mode: CommandExecutionMode<'_>,
+) -> Result<(), String> {
+    match mode {
+        CommandExecutionMode::Process => {
+            let mut executor = ProcessCommandExecutor;
+            execute_launch_plan_with_executor(launch_plan, &mut executor)
+                .map_err(|error| error.to_string())
+        }
+        CommandExecutionMode::Delegating(execute) => {
+            let mut executor = DelegatingCommandExecutor::new(execute)
+                .with_script_write_error_prefix("launcher script write failed: ");
+            execute_launch_plan_with_executor(launch_plan, &mut executor)
+                .map_err(|error| error.to_string())
+        }
+    }
+}
+
 pub fn execute_launch_plan_result(launch_plan: LaunchPlan) -> Result<(), String> {
-    execute_launch_plan(launch_plan).map_err(|error| error.to_string())
+    execute_launch_plan_for_mode(&launch_plan, CommandExecutionMode::Process)
 }
 
 pub fn execute_commands(commands: &[Vec<String>]) -> std::io::Result<()> {
@@ -752,8 +776,26 @@ pub fn execute_commands(commands: &[Vec<String>]) -> std::io::Result<()> {
     execute_commands_with_executor(commands, &mut executor)
 }
 
+pub fn execute_commands_for_mode(
+    commands: &[Vec<String>],
+    mode: CommandExecutionMode<'_>,
+) -> Result<(), String> {
+    match mode {
+        CommandExecutionMode::Process => {
+            let mut executor = ProcessCommandExecutor;
+            execute_commands_with_executor(commands, &mut executor)
+                .map_err(|error| error.to_string())
+        }
+        CommandExecutionMode::Delegating(execute) => {
+            let mut executor = DelegatingCommandExecutor::new(execute);
+            execute_commands_with_executor(commands, &mut executor)
+                .map_err(|error| error.to_string())
+        }
+    }
+}
+
 pub fn execute_commands_result(commands: &[Vec<String>]) -> Result<(), String> {
-    execute_commands(commands).map_err(|error| error.to_string())
+    execute_commands_for_mode(commands, CommandExecutionMode::Process)
 }
 
 pub fn execute_command_with(
@@ -777,9 +819,9 @@ pub fn execute_commands_with(
 
 pub fn execute_commands_with_result(
     commands: &[Vec<String>],
-    execute: impl FnMut(&[String]) -> std::io::Result<()>,
+    mut execute: impl FnMut(&[String]) -> std::io::Result<()>,
 ) -> Result<(), String> {
-    execute_commands_with(commands, execute).map_err(|error| error.to_string())
+    execute_commands_for_mode(commands, CommandExecutionMode::Delegating(&mut execute))
 }
 
 pub fn execute_launch_plan_with(
@@ -793,9 +835,9 @@ pub fn execute_launch_plan_with(
 
 pub fn execute_launch_plan_with_result(
     launch_plan: &LaunchPlan,
-    execute: impl FnMut(&[String]) -> std::io::Result<()>,
+    mut execute: impl FnMut(&[String]) -> std::io::Result<()>,
 ) -> Result<(), String> {
-    execute_launch_plan_with(launch_plan, execute).map_err(|error| error.to_string())
+    execute_launch_plan_for_mode(launch_plan, CommandExecutionMode::Delegating(&mut execute))
 }
 
 pub trait CommandExecutor {

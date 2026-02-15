@@ -669,9 +669,10 @@ impl GroveApp {
             capture_rows: Some(capture_rows),
         };
         let launch_plan = build_shell_launch_plan(&launch_request, self.multiplexer);
-        if let Err(error) = execute_launch_plan_with_result(&launch_plan, |command| {
-            self.execute_tmux_command(command)
-        }) {
+        if let Err(error) = execute_launch_plan_for_mode(
+            &launch_plan,
+            CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
+        ) {
             self.last_tmux_error = Some(error);
             self.show_toast("lazygit launch failed", true);
             self.lazygit_failed_sessions.insert(session_name);
@@ -1673,9 +1674,10 @@ impl GroveApp {
         let session_name = launch_plan.session_name.clone();
 
         if !self.tmux_input.supports_background_send() {
-            if let Err(error) = execute_launch_plan_with_result(&launch_plan, |command| {
-                self.execute_tmux_command(command)
-            }) {
+            if let Err(error) = execute_launch_plan_for_mode(
+                &launch_plan,
+                CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
+            ) {
                 self.last_tmux_error = Some(error);
                 self.show_toast("agent start failed", true);
                 return;
@@ -1692,7 +1694,7 @@ impl GroveApp {
 
         self.start_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let result = execute_launch_plan_result(launch_plan);
+            let result = execute_launch_plan_for_mode(&launch_plan, CommandExecutionMode::Process);
             Msg::StartAgentCompleted(StartAgentCompletion {
                 workspace_name,
                 workspace_path,
@@ -1796,9 +1798,10 @@ impl GroveApp {
         let stop_commands = stop_plan(&session_name, self.multiplexer);
 
         if !self.tmux_input.supports_background_send() {
-            if let Err(error) = execute_commands_with_result(&stop_commands, |command| {
-                self.execute_tmux_command(command)
-            }) {
+            if let Err(error) = execute_commands_for_mode(
+                &stop_commands,
+                CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
+            ) {
                 self.last_tmux_error = Some(error);
                 self.show_toast("agent stop failed", true);
                 return;
@@ -1815,7 +1818,7 @@ impl GroveApp {
 
         self.stop_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let result = execute_commands_result(&stop_commands);
+            let result = execute_commands_for_mode(&stop_commands, CommandExecutionMode::Process);
             Msg::StopAgentCompleted(StopAgentCompletion {
                 workspace_name,
                 workspace_path,
