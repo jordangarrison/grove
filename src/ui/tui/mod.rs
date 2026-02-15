@@ -63,8 +63,8 @@ use crate::application::workspace_lifecycle::{
 use crate::config::{GroveConfig, MultiplexerKind, ProjectConfig};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::event_log::{Event as LogEvent, EventLogger};
-use crate::state::{Action, AppState, PaneFocus, UiMode, reduce};
 use crate::ui::mouse::{clamp_sidebar_ratio, ratio_from_drag, serialize_sidebar_ratio};
+use crate::ui::state::{Action, AppState, PaneFocus, UiMode, reduce};
 
 mod ansi;
 #[cfg(test)]

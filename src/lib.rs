@@ -5,7 +5,6 @@ pub mod domain;
 pub mod event_log;
 pub mod hardening;
 pub mod infrastructure;
-pub mod state;
 pub mod tui;
 pub mod ui;
 

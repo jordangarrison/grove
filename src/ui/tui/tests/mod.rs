@@ -28,7 +28,7 @@ use crate::application::workspace_lifecycle::{
 use crate::config::{MultiplexerKind, ProjectConfig};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
-use crate::state::{PaneFocus, UiMode};
+use crate::ui::state::{PaneFocus, UiMode};
 use ftui::core::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
     PasteEvent,
@@ -5372,7 +5372,7 @@ fn preview_mode_keys_scroll_and_jump_to_bottom() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
     );
-    assert_eq!(app.state.mode, crate::state::UiMode::Preview);
+    assert_eq!(app.state.mode, crate::ui::state::UiMode::Preview);
 
     let was_auto_scroll = app.preview.auto_scroll;
     ftui::Model::update(
