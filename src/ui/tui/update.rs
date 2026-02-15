@@ -1722,7 +1722,7 @@ impl GroveApp {
 
         self.start_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let result = Self::run_start_agent_plan(launch_plan).map_err(|error| error.to_string());
+            let result = execute_launch_plan(launch_plan).map_err(|error| error.to_string());
             Msg::StartAgentCompleted(StartAgentCompletion {
                 workspace_name,
                 workspace_path,
@@ -1730,18 +1730,6 @@ impl GroveApp {
                 result,
             })
         }));
-    }
-
-    fn run_start_agent_plan(launch_plan: crate::agent_runtime::LaunchPlan) -> std::io::Result<()> {
-        if let Some(script) = &launch_plan.launcher_script {
-            fs::write(&script.path, &script.contents)?;
-        }
-
-        for command in &launch_plan.pre_launch_cmds {
-            CommandTmuxInput::execute_command(command)?;
-        }
-
-        CommandTmuxInput::execute_command(&launch_plan.launch_cmd)
     }
 
     fn apply_start_agent_completion(&mut self, completion: StartAgentCompletion) {
@@ -1857,7 +1845,7 @@ impl GroveApp {
 
         self.stop_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let result = Self::run_stop_commands(&stop_commands).map_err(|error| error.to_string());
+            let result = execute_commands(&stop_commands).map_err(|error| error.to_string());
             Msg::StopAgentCompleted(StopAgentCompletion {
                 workspace_name,
                 workspace_path,
@@ -1865,13 +1853,6 @@ impl GroveApp {
                 result,
             })
         }));
-    }
-
-    fn run_stop_commands(commands: &[Vec<String>]) -> std::io::Result<()> {
-        for command in commands {
-            CommandTmuxInput::execute_command(command)?;
-        }
-        Ok(())
     }
 
     fn apply_stop_agent_completion(&mut self, completion: StopAgentCompletion) {

@@ -4,6 +4,7 @@ use std::fs::{self, File};
 use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{Duration, SystemTime};
 
 use crate::config::MultiplexerKind;
@@ -735,6 +736,48 @@ pub fn stop_plan(session_name: &str, multiplexer: MultiplexerKind) -> Vec<Vec<St
             ],
         ],
     }
+}
+
+pub fn execute_launch_plan(launch_plan: LaunchPlan) -> std::io::Result<()> {
+    if let Some(script) = &launch_plan.launcher_script {
+        fs::write(&script.path, &script.contents)?;
+    }
+
+    execute_commands(&launch_plan.pre_launch_cmds)?;
+    execute_command(&launch_plan.launch_cmd)
+}
+
+pub fn execute_commands(commands: &[Vec<String>]) -> std::io::Result<()> {
+    for command in commands {
+        execute_command(command)?;
+    }
+    Ok(())
+}
+
+fn execute_command(command: &[String]) -> std::io::Result<()> {
+    if command.is_empty() {
+        return Ok(());
+    }
+
+    let output = Command::new(&command[0]).args(&command[1..]).output()?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    Err(std::io::Error::other(format!(
+        "command failed: {}; {}",
+        command.join(" "),
+        stderr_or_status(&output),
+    )))
+}
+
+fn stderr_or_status(output: &std::process::Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if !stderr.is_empty() {
+        return stderr;
+    }
+
+    format!("exit status {}", output.status)
 }
 
 pub fn kill_workspace_session_command(
