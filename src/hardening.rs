@@ -29,7 +29,6 @@ pub fn orphaned_sessions(
 ) -> Vec<String> {
     let expected_sessions: HashSet<String> = workspaces
         .iter()
-        .filter(|workspace| !workspace.is_main)
         .map(|workspace| {
             session_name_for_workspace_in_project(
                 workspace.project_name.as_deref(),
@@ -158,6 +157,7 @@ mod tests {
             workspace("feature-a", false, PathBuf::from("/repo/grove-feature-a")),
         ];
         let running = HashSet::from([
+            "grove-ws-grove".to_string(),
             "grove-ws-feature-a".to_string(),
             "grove-ws-lost".to_string(),
         ]);

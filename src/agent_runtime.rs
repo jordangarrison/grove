@@ -591,7 +591,7 @@ pub(crate) fn detect_status(
     has_live_session: bool,
     supported_agent: bool,
 ) -> WorkspaceStatus {
-    if is_main {
+    if is_main && !has_live_session {
         return WorkspaceStatus::Main;
     }
 
@@ -1057,11 +1057,6 @@ pub fn reconcile_with_sessions(
 
     for workspace in workspaces {
         let mut updated = workspace.clone();
-        if workspace.is_main {
-            mapped_workspaces.push(updated);
-            continue;
-        }
-
         let session_name = session_name_for_workspace_in_project(
             workspace.project_name.as_deref(),
             &workspace.name,
@@ -1072,7 +1067,7 @@ pub fn reconcile_with_sessions(
             updated.status = detect_status(
                 "",
                 SessionActivity::Active,
-                false,
+                workspace.is_main,
                 true,
                 updated.supported_agent,
             );
@@ -1081,11 +1076,15 @@ pub fn reconcile_with_sessions(
             updated.status = detect_status(
                 "",
                 SessionActivity::Idle,
-                false,
+                workspace.is_main,
                 false,
                 updated.supported_agent,
             );
-            updated.is_orphaned = previously_running_workspace_names.contains(&workspace.name);
+            updated.is_orphaned = if workspace.is_main {
+                false
+            } else {
+                previously_running_workspace_names.contains(&workspace.name)
+            };
         }
 
         mapped_workspaces.push(updated);
@@ -1909,6 +1908,14 @@ mod tests {
             ),
             WorkspaceStatus::Waiting
         );
+        assert_eq!(
+            detect_status("", SessionActivity::Active, true, true, true),
+            WorkspaceStatus::Active
+        );
+        assert_eq!(
+            detect_status("", SessionActivity::Idle, true, false, true),
+            WorkspaceStatus::Main
+        );
     }
 
     #[test]
@@ -1965,12 +1972,14 @@ mod tests {
         ];
 
         let running_sessions = HashSet::from([
+            "grove-ws-grove".to_string(),
             "grove-ws-feature-a".to_string(),
             "grove-ws-zombie".to_string(),
         ]);
         let previously_running = HashSet::from(["feature-b".to_string()]);
 
         let result = reconcile_with_sessions(&workspaces, &running_sessions, &previously_running);
+        assert_eq!(result.workspaces[0].status, WorkspaceStatus::Active);
         assert_eq!(result.workspaces[1].status, WorkspaceStatus::Active);
         assert_eq!(result.workspaces[2].status, WorkspaceStatus::Idle);
         assert!(result.workspaces[2].is_orphaned);

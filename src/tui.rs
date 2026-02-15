@@ -2927,7 +2927,7 @@ impl GroveApp {
         self.state
             .selected_workspace()
             .map(|workspace| {
-                if workspace.is_main {
+                if workspace.is_main && !workspace.status.has_session() {
                     return self.main_worktree_splash();
                 }
                 format!(
@@ -3289,10 +3289,6 @@ impl GroveApp {
 
     fn selected_session_for_live_preview(&self) -> Option<(String, bool)> {
         let workspace = self.state.selected_workspace()?;
-        if workspace.is_main {
-            return None;
-        }
-
         if workspace.status.has_session() {
             return Some((Self::workspace_session_name(workspace), true));
         }
@@ -3314,11 +3310,14 @@ impl GroveApp {
             .workspaces
             .iter()
             .filter(|workspace| {
-                if workspace.is_main || !workspace.supported_agent {
+                if !workspace.supported_agent {
                     return false;
                 }
 
                 if self.multiplexer == MultiplexerKind::Zellij {
+                    if workspace.is_main {
+                        return workspace.status.has_session();
+                    }
                     return true;
                 }
 
@@ -3355,20 +3354,18 @@ impl GroveApp {
         else {
             return;
         };
-        if self.state.workspaces[workspace_index].is_main {
-            return;
-        }
 
         match capture.result {
             Ok(output) => {
                 self.capture_changed_cleaned_for_workspace(&capture.workspace_path, &output);
                 let workspace_path = self.state.workspaces[workspace_index].path.clone();
                 let workspace_agent = self.state.workspaces[workspace_index].agent;
+                let workspace_is_main = self.state.workspaces[workspace_index].is_main;
                 let workspace = &mut self.state.workspaces[workspace_index];
                 workspace.status = detect_status_with_session_override(
                     output.as_str(),
                     SessionActivity::Active,
-                    false,
+                    workspace_is_main,
                     true,
                     supported_agent,
                     workspace_agent,
@@ -3380,8 +3377,16 @@ impl GroveApp {
                 if Self::tmux_capture_error_indicates_missing_session(&error) {
                     let workspace = &mut self.state.workspaces[workspace_index];
                     let previously_had_live_session = workspace.status.has_session();
-                    workspace.status = WorkspaceStatus::Idle;
-                    workspace.is_orphaned = previously_had_live_session || workspace.is_orphaned;
+                    workspace.status = if workspace.is_main {
+                        WorkspaceStatus::Main
+                    } else {
+                        WorkspaceStatus::Idle
+                    };
+                    workspace.is_orphaned = if workspace.is_main {
+                        false
+                    } else {
+                        previously_had_live_session || workspace.is_orphaned
+                    };
                     self.clear_status_tracking_for_workspace_path(&capture.workspace_path);
                 }
             }
@@ -3472,9 +3477,7 @@ impl GroveApp {
                 self.push_agent_activity_frame(self.agent_output_changing);
                 let selected_workspace_index =
                     self.state.selected_workspace().and_then(|workspace| {
-                        if workspace.is_main
-                            || Self::workspace_session_name(workspace) != session_name
-                        {
+                        if Self::workspace_session_name(workspace) != session_name {
                             return None;
                         }
                         Some(self.state.selected_index)
@@ -3483,11 +3486,12 @@ impl GroveApp {
                     let supported_agent = self.state.workspaces[index].supported_agent;
                     let workspace_path = self.state.workspaces[index].path.clone();
                     let workspace_agent = self.state.workspaces[index].agent;
+                    let workspace_is_main = self.state.workspaces[index].is_main;
                     self.capture_changed_cleaned_for_workspace(&workspace_path, output.as_str());
                     let resolved_status = detect_status_with_session_override(
                         output.as_str(),
                         SessionActivity::Active,
-                        false,
+                        workspace_is_main,
                         true,
                         supported_agent,
                         workspace_agent,
@@ -3628,12 +3632,15 @@ impl GroveApp {
                     Self::tmux_capture_error_indicates_missing_session(&message);
                 if capture_error_indicates_missing_session {
                     if let Some(workspace) = self.state.selected_workspace_mut()
-                        && !workspace.is_main
                         && Self::workspace_session_name(workspace) == session_name
                     {
                         let workspace_path = workspace.path.clone();
-                        workspace.status = WorkspaceStatus::Idle;
-                        workspace.is_orphaned = true;
+                        workspace.status = if workspace.is_main {
+                            WorkspaceStatus::Main
+                        } else {
+                            WorkspaceStatus::Idle
+                        };
+                        workspace.is_orphaned = !workspace.is_main;
                         self.clear_status_tracking_for_workspace_path(&workspace_path);
                     }
                     if self
@@ -4178,7 +4185,7 @@ impl GroveApp {
             return false;
         };
 
-        !workspace.is_main && workspace.status.has_session()
+        workspace.status.has_session()
     }
 
     fn enter_interactive(&mut self, now: Instant) -> bool {
@@ -4216,13 +4223,14 @@ impl GroveApp {
         let Some(workspace) = self.state.selected_workspace() else {
             return false;
         };
-        if workspace.is_main || !workspace.supported_agent {
+        if !workspace.supported_agent {
             return false;
         }
 
         matches!(
             workspace.status,
-            WorkspaceStatus::Idle
+            WorkspaceStatus::Main
+                | WorkspaceStatus::Idle
                 | WorkspaceStatus::Done
                 | WorkspaceStatus::Error
                 | WorkspaceStatus::Unknown
@@ -4634,7 +4642,7 @@ impl GroveApp {
         self.state
             .workspaces
             .iter()
-            .any(|workspace| !workspace.is_main && workspace.status.has_session())
+            .any(|workspace| workspace.status.has_session())
     }
 
     fn apply_settings_dialog_save(&mut self) {
@@ -4739,10 +4747,6 @@ impl GroveApp {
             self.show_flash("no workspace selected", true);
             return;
         };
-        if workspace.is_main {
-            self.show_flash("cannot start agent in main workspace", true);
-            return;
-        }
         if !workspace.supported_agent {
             self.show_flash("unsupported workspace agent marker", true);
             return;
@@ -5996,7 +6000,7 @@ impl GroveApp {
         let Some(workspace) = self.state.selected_workspace() else {
             return false;
         };
-        !workspace.is_main && workspace.status.has_session()
+        workspace.status.has_session()
     }
 
     fn stop_selected_workspace_agent(&mut self) {
@@ -6073,7 +6077,11 @@ impl GroveApp {
                     .iter_mut()
                     .find(|workspace| workspace.path == completion.workspace_path)
                 {
-                    workspace.status = WorkspaceStatus::Idle;
+                    workspace.status = if workspace.is_main {
+                        WorkspaceStatus::Main
+                    } else {
+                        WorkspaceStatus::Idle
+                    };
                     workspace.is_orphaned = false;
                 }
                 self.clear_status_tracking_for_workspace_path(&completion.workspace_path);
@@ -12758,7 +12766,7 @@ mod tests {
     }
 
     #[test]
-    fn start_key_ignores_main_workspace() {
+    fn start_key_opens_dialog_for_main_workspace() {
         let (mut app, commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
 
@@ -12768,16 +12776,12 @@ mod tests {
         );
 
         assert!(commands.borrow().is_empty());
-        assert!(app.launch_dialog.is_none());
+        assert!(app.launch_dialog.is_some());
         assert_eq!(
             app.state
                 .selected_workspace()
                 .map(|workspace| workspace.status),
             Some(WorkspaceStatus::Main)
-        );
-        assert!(
-            app.status_bar_line()
-                .contains("cannot start agent in main workspace")
         );
     }
 
@@ -12819,6 +12823,43 @@ mod tests {
     }
 
     #[test]
+    fn stop_key_on_active_main_workspace_stops_agent() {
+        let (mut app, commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+        app.state.workspaces[0].status = WorkspaceStatus::Active;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+        );
+
+        assert_eq!(
+            commands.borrow().as_slice(),
+            &[
+                vec![
+                    "tmux".to_string(),
+                    "send-keys".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-grove".to_string(),
+                    "C-c".to_string(),
+                ],
+                vec![
+                    "tmux".to_string(),
+                    "kill-session".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-grove".to_string(),
+                ],
+            ]
+        );
+        assert_eq!(
+            app.state
+                .selected_workspace()
+                .map(|workspace| workspace.status),
+            Some(WorkspaceStatus::Main)
+        );
+    }
+
+    #[test]
     fn enter_on_active_workspace_starts_interactive_mode() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -12833,6 +12874,27 @@ mod tests {
         );
 
         assert!(app.interactive.is_some());
+        assert_eq!(app.mode_label(), "Interactive");
+    }
+
+    #[test]
+    fn enter_on_active_main_workspace_starts_interactive_mode() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+        app.state.workspaces[0].status = WorkspaceStatus::Active;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+        );
+
+        assert!(app.interactive.is_some());
+        assert_eq!(
+            app.interactive
+                .as_ref()
+                .map(|state| state.target_session.as_str()),
+            Some("grove-ws-grove")
+        );
         assert_eq!(app.mode_label(), "Interactive");
     }
 
