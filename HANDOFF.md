@@ -784,9 +784,25 @@
   - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 47)
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6t, centralize workspace stop eligibility policy in `agent_runtime`
+- Commit: `c61c1da`
+- Changes:
+  - added runtime helper in `src/agent_runtime.rs`:
+    - `workspace_can_stop_agent(Option<&Workspace>) -> bool`
+  - updated UI caller in `src/ui/tui/update.rs`:
+    - `can_stop_selected_workspace` now delegates session-status policy to runtime helper and keeps only `stop_in_flight` UI gating
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime test in `src/agent_runtime/tests.rs`:
+    - `workspace_can_stop_agent_depends_on_session_status`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 48)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `c61c1da` phase 6t
   - `d3cba15` phase 6s
   - `0a46446` phase 6r
   - `ce477d5` phase 6q
