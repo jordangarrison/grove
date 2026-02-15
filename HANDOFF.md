@@ -364,9 +364,24 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 276)
 
+### Phase 5w, extract label/timing helpers into `logging.rs`
+- Commit: `d16af8c`
+- Changes:
+  - added `src/ui/tui/logging.rs`
+    - moved helper methods from `src/ui/tui/mod.rs`:
+      - mode/focus/region labels (`mode_label`, `focus_label`, `focus_name`, `mode_name`, `hit_region_name`)
+      - shared timing/message-kind helpers (`duration_millis`, `msg_kind`)
+  - methods exposed as `pub(super)` for sibling module callers (`update.rs`, `view.rs`, tests)
+  - wired `mod logging;` in `src/ui/tui/mod.rs`
+  - no behavior changes, relocation only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `d16af8c` phase 5w
   - `0858c4f` phase 5v
   - `912bb07` phase 5u
   - `f634be8` phase 5t
@@ -393,6 +408,7 @@ Status:
 - adaptive polling/activity tracking moved into `update.rs`.
 - shared text/formatting helpers moved into `text.rs`.
 - text selection structs/state moved into `selection.rs`.
+- shared label/timing helpers moved into `logging.rs`.
 - `mod.rs` is now mostly module root, shared types/constants/helpers, constructors, and logging utilities.
 
 Next sub-targets:
