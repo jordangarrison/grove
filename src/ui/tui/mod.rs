@@ -135,6 +135,7 @@ struct GroveApp {
     workspace_output_changing: HashMap<String, bool>,
     lazygit_ready_sessions: HashSet<String>,
     lazygit_failed_sessions: HashSet<String>,
+    lazygit_launch_in_flight: HashSet<String>,
     viewport_width: u16,
     viewport_height: u16,
     sidebar_width_pct: u16,

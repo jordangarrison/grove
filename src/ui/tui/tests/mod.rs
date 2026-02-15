@@ -12,7 +12,7 @@ use super::{
     AppDependencies, AppPaths, ClipboardAccess, CommandZellijInput, CreateDialogField,
     CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, GroveApp, HIT_ID_HEADER,
     HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
-    LaunchDialogState, LivePreviewCapture, Msg, PALETTE_CMD_FOCUS_LIST,
+    LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, Msg, PALETTE_CMD_FOCUS_LIST,
     PALETTE_CMD_MOVE_SELECTION_DOWN, PALETTE_CMD_OPEN_PREVIEW, PALETTE_CMD_SCROLL_DOWN,
     PALETTE_CMD_START_AGENT, PREVIEW_METADATA_ROWS, PendingResizeVerification,
     PreviewPollCompletion, PreviewTab, StartAgentCompletion, StopAgentCompletion,
@@ -222,6 +222,45 @@ impl TmuxInput for BackgroundOnlyTmuxInput {
     }
 
     fn supports_background_send(&self) -> bool {
+        true
+    }
+}
+
+#[derive(Clone)]
+struct BackgroundLaunchTmuxInput;
+
+impl TmuxInput for BackgroundLaunchTmuxInput {
+    fn execute(&self, _command: &[String]) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn capture_output(
+        &self,
+        _target_session: &str,
+        _scrollback_lines: usize,
+        _include_escape_sequences: bool,
+    ) -> std::io::Result<String> {
+        Ok(String::new())
+    }
+
+    fn capture_cursor_metadata(&self, _target_session: &str) -> std::io::Result<String> {
+        Ok("1 0 0 120 40".to_string())
+    }
+
+    fn resize_session(
+        &self,
+        _target_session: &str,
+        _target_width: u16,
+        _target_height: u16,
+    ) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn paste_buffer(&self, _target_session: &str, _text: &str) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn supports_background_launch(&self) -> bool {
         true
     }
 }
@@ -5457,6 +5496,29 @@ fn git_tab_renders_lazygit_placeholder_and_launches_session() {
 }
 
 #[test]
+fn git_tab_queues_async_lazygit_launch_when_supported() {
+    let sidebar_ratio_path = unique_sidebar_ratio_path("background-lazygit-launch");
+    let mut app = GroveApp::from_parts(
+        fixture_bootstrap(WorkspaceStatus::Idle),
+        Box::new(BackgroundLaunchTmuxInput),
+        AppPaths::new(
+            sidebar_ratio_path,
+            unique_config_path("background-lazygit-launch"),
+        ),
+        MultiplexerKind::Tmux,
+        Box::new(NullEventLogger),
+        None,
+    );
+
+    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
+    let cmd = ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
+
+    assert_eq!(app.preview_tab, PreviewTab::Git);
+    assert!(cmd_contains_task(&cmd));
+    assert!(app.lazygit_launch_in_flight.contains("grove-ws-grove-git"));
+}
+
+#[test]
 fn git_tab_launches_lazygit_with_dedicated_tmux_session() {
     let (mut app, commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
@@ -5494,6 +5556,46 @@ fn git_tab_launches_lazygit_with_dedicated_tmux_session() {
             ],
         ]
     );
+}
+
+#[test]
+fn lazygit_launch_completion_success_marks_session_ready() {
+    let mut app = fixture_app();
+    app.lazygit_launch_in_flight
+        .insert("grove-ws-grove-git".to_string());
+
+    ftui::Model::update(
+        &mut app,
+        Msg::LazygitLaunchCompleted(LazygitLaunchCompletion {
+            session_name: "grove-ws-grove-git".to_string(),
+            duration_ms: 12,
+            result: Ok(()),
+        }),
+    );
+
+    assert!(app.lazygit_ready_sessions.contains("grove-ws-grove-git"));
+    assert!(!app.lazygit_launch_in_flight.contains("grove-ws-grove-git"));
+    assert!(!app.lazygit_failed_sessions.contains("grove-ws-grove-git"));
+}
+
+#[test]
+fn lazygit_launch_completion_failure_marks_session_failed() {
+    let mut app = fixture_app();
+    app.lazygit_launch_in_flight
+        .insert("grove-ws-grove-git".to_string());
+
+    ftui::Model::update(
+        &mut app,
+        Msg::LazygitLaunchCompleted(LazygitLaunchCompletion {
+            session_name: "grove-ws-grove-git".to_string(),
+            duration_ms: 9,
+            result: Err("spawn failed".to_string()),
+        }),
+    );
+
+    assert!(app.lazygit_failed_sessions.contains("grove-ws-grove-git"));
+    assert!(!app.lazygit_launch_in_flight.contains("grove-ws-grove-git"));
+    assert!(app.status_bar_line().contains("lazygit launch failed"));
 }
 
 #[test]

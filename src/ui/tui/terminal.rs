@@ -30,6 +30,10 @@ pub(super) trait TmuxInput {
     fn supports_background_send(&self) -> bool {
         false
     }
+
+    fn supports_background_launch(&self) -> bool {
+        false
+    }
 }
 
 pub(super) trait ClipboardAccess {
@@ -235,6 +239,10 @@ impl TmuxInput for CommandTmuxInput {
     fn supports_background_send(&self) -> bool {
         false
     }
+
+    fn supports_background_launch(&self) -> bool {
+        true
+    }
 }
 
 #[derive(Default)]
@@ -306,6 +314,10 @@ impl TmuxInput for CommandZellijInput {
 
     fn supports_background_send(&self) -> bool {
         false
+    }
+
+    fn supports_background_launch(&self) -> bool {
+        true
     }
 }
 

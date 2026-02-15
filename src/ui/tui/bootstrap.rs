@@ -410,6 +410,7 @@ impl GroveApp {
             workspace_output_changing: HashMap::new(),
             lazygit_ready_sessions: HashSet::new(),
             lazygit_failed_sessions: HashSet::new(),
+            lazygit_launch_in_flight: HashSet::new(),
             viewport_width: 120,
             viewport_height: 40,
             sidebar_width_pct,
