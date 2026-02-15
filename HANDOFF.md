@@ -79,6 +79,23 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 276)
 
+### Phase 5b, move dialog key handlers into `dialogs.rs`
+- Commit: pending
+- Changes:
+  - moved modal/key handler methods from `src/ui/tui/mod.rs` into `src/ui/tui/dialogs.rs`:
+    - `handle_keybind_help_key`
+    - `handle_project_add_dialog_key`
+    - `handle_project_dialog_key`
+    - `handle_settings_dialog_key`
+    - `handle_delete_dialog_key`
+    - `handle_create_dialog_key`
+    - `handle_edit_dialog_key`
+    - `handle_launch_dialog_key`
+  - updated method visibility to `pub(super)` for cross-submodule calls from other `GroveApp` impl blocks
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
 ## Current State
 - Worktree includes Phase 5a module extraction changes + this handoff update.
 - Local branch includes prior refactor commits:
@@ -91,10 +108,10 @@
 ### Phase 5, split remaining `src/ui/tui/mod.rs`
 Status:
 - `msg`, `update`, `view`, `dialogs` created and wired.
+- dialog key handlers moved into `dialogs.rs`.
 - Remaining work is further decomposition of large `GroveApp` impl blocks inside `mod.rs`.
 
 Next sub-targets:
-- move dialog key handlers into `dialogs.rs`
 - move remaining render helpers and pane rendering into `view.rs`
 - move remaining input/event orchestration into `update.rs`
 
