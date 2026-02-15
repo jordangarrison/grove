@@ -669,25 +669,7 @@ impl GroveApp {
             capture_rows: Some(capture_rows),
         };
         let launch_plan = build_shell_launch_plan(&launch_request, self.multiplexer);
-
-        if let Some(script) = &launch_plan.launcher_script
-            && let Err(error) = fs::write(&script.path, &script.contents)
-        {
-            self.last_tmux_error = Some(format!("launcher script write failed: {error}"));
-            self.show_toast("lazygit launch failed", true);
-            self.lazygit_failed_sessions.insert(session_name);
-            return None;
-        }
-
-        for command in &launch_plan.pre_launch_cmds {
-            if let Err(error) = self.execute_tmux_command(command) {
-                self.last_tmux_error = Some(error.to_string());
-                self.show_toast("lazygit launch failed", true);
-                self.lazygit_failed_sessions.insert(session_name);
-                return None;
-            }
-        }
-        if let Err(error) = self.execute_tmux_command(&launch_plan.launch_cmd) {
+        if let Err(error) = self.execute_launch_plan_sync(&launch_plan) {
             self.last_tmux_error = Some(error.to_string());
             self.show_toast("lazygit launch failed", true);
             self.lazygit_failed_sessions.insert(session_name);

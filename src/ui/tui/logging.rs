@@ -205,7 +205,9 @@ impl GroveApp {
         launch_plan: &crate::agent_runtime::LaunchPlan,
     ) -> std::io::Result<()> {
         if let Some(script) = &launch_plan.launcher_script {
-            fs::write(&script.path, &script.contents)?;
+            fs::write(&script.path, &script.contents).map_err(|error| {
+                std::io::Error::other(format!("launcher script write failed: {error}"))
+            })?;
         }
         self.execute_tmux_commands(&launch_plan.pre_launch_cmds)?;
         self.execute_tmux_command(&launch_plan.launch_cmd)
