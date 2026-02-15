@@ -165,6 +165,36 @@ enum HitRegion {
     Outside,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum PreviewTab {
+    #[default]
+    Agent,
+    Git,
+}
+
+impl PreviewTab {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Agent => "Agent",
+            Self::Git => "Git",
+        }
+    }
+
+    const fn next(self) -> Self {
+        match self {
+            Self::Agent => Self::Git,
+            Self::Git => Self::Agent,
+        }
+    }
+
+    const fn previous(self) -> Self {
+        match self {
+            Self::Agent => Self::Git,
+            Self::Git => Self::Agent,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ViewLayout {
     header: Rect,
@@ -2210,6 +2240,7 @@ struct GroveApp {
     projects: Vec<ProjectConfig>,
     state: AppState,
     discovery_state: DiscoveryState,
+    preview_tab: PreviewTab,
     preview: PreviewState,
     flash: Option<FlashMessage>,
     interactive: Option<InteractiveState>,
@@ -2397,6 +2428,7 @@ impl GroveApp {
             projects,
             state: AppState::new(bootstrap.workspaces),
             discovery_state: bootstrap.discovery_state,
+            preview_tab: PreviewTab::Agent,
             preview: PreviewState::new(),
             flash: None,
             interactive: None,
@@ -3108,10 +3140,41 @@ impl GroveApp {
             return "Esc Esc / Ctrl+\\ exit, Alt+C copy, Alt+V paste";
         }
         if self.state.mode == UiMode::Preview {
-            return "j/k scroll, PgUp/PgDn, G bottom, h/l pane, Enter open, n new, e edit, p projects, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit";
+            return "[/] tabs, j/k scroll, PgUp/PgDn, G bottom, h/l pane, Enter open, n new, e edit, p projects, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit";
         }
 
         "j/k move, h/l pane, Enter open, n new, e edit, p projects, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit"
+    }
+
+    fn cycle_preview_tab(&mut self, direction: i8) {
+        let next_tab = if direction.is_negative() {
+            self.preview_tab.previous()
+        } else {
+            self.preview_tab.next()
+        };
+        if next_tab == self.preview_tab {
+            return;
+        }
+
+        self.preview_tab = next_tab;
+        self.clear_preview_selection();
+        if self.preview_tab == PreviewTab::Agent {
+            self.poll_preview();
+        }
+    }
+
+    const fn workspace_status_label(status: WorkspaceStatus) -> &'static str {
+        match status {
+            WorkspaceStatus::Main => "main",
+            WorkspaceStatus::Idle => "idle",
+            WorkspaceStatus::Active => "active",
+            WorkspaceStatus::Thinking => "thinking",
+            WorkspaceStatus::Waiting => "waiting",
+            WorkspaceStatus::Done => "done",
+            WorkspaceStatus::Error => "error",
+            WorkspaceStatus::Unknown => "unknown",
+            WorkspaceStatus::Unsupported => "unsupported",
+        }
     }
 
     fn selected_workspace_summary(&self) -> String {
@@ -6955,31 +7018,51 @@ impl GroveApp {
                     self.poll_preview();
                 }
             }
+            KeyCode::Char('[') => {
+                if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
+                    self.cycle_preview_tab(-1);
+                }
+            }
+            KeyCode::Char(']') => {
+                if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
+                    self.cycle_preview_tab(1);
+                }
+            }
             KeyCode::PageUp => {
                 if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
-                    self.scroll_preview(-5);
+                    if self.preview_tab == PreviewTab::Agent {
+                        self.scroll_preview(-5);
+                    }
                 }
             }
             KeyCode::PageDown => {
                 if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
-                    self.scroll_preview(5);
+                    if self.preview_tab == PreviewTab::Agent {
+                        self.scroll_preview(5);
+                    }
                 }
             }
             KeyCode::Char('G') => {
                 if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
-                    self.jump_preview_to_bottom();
+                    if self.preview_tab == PreviewTab::Agent {
+                        self.jump_preview_to_bottom();
+                    }
                 }
             }
             KeyCode::Char('j') | KeyCode::Down => {
                 if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
-                    self.scroll_preview(1);
+                    if self.preview_tab == PreviewTab::Agent {
+                        self.scroll_preview(1);
+                    }
                 } else {
                     self.move_selection(Action::MoveSelectionDown);
                 }
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
-                    self.scroll_preview(-1);
+                    if self.preview_tab == PreviewTab::Agent {
+                        self.scroll_preview(-1);
+                    }
                 } else {
                     self.move_selection(Action::MoveSelectionUp);
                 }
@@ -7208,6 +7291,10 @@ impl GroveApp {
     }
 
     fn preview_text_point_at(&self, x: u16, y: u16) -> Option<TextSelectionPoint> {
+        if self.preview_tab != PreviewTab::Agent {
+            return None;
+        }
+
         let viewport = self.preview_content_viewport()?;
         if y < viewport.output_y {
             return None;
@@ -7833,14 +7920,18 @@ impl GroveApp {
                 if matches!(region, HitRegion::Preview) {
                     self.state.mode = UiMode::Preview;
                     self.state.focus = PaneFocus::Preview;
-                    self.scroll_preview(-1);
+                    if self.preview_tab == PreviewTab::Agent {
+                        self.scroll_preview(-1);
+                    }
                 }
             }
             MouseEventKind::ScrollDown => {
                 if matches!(region, HitRegion::Preview) {
                     self.state.mode = UiMode::Preview;
                     self.state.focus = PaneFocus::Preview;
-                    self.scroll_preview(1);
+                    if self.preview_tab == PreviewTab::Agent {
+                        self.scroll_preview(1);
+                    }
                 }
             }
             _ => {}
@@ -8604,63 +8695,88 @@ impl GroveApp {
             .saturating_sub(metadata_rows)
             .max(1);
 
-        let mut text_lines = vec![
-            if let Some((name_label, branch_label, age_label, is_working, agent, is_orphaned)) =
-                selected_workspace_header.as_ref()
-            {
-                let mut spans = vec![FtSpan::styled(
-                    name_label.clone(),
-                    if *is_working {
-                        Style::new().fg(self.workspace_agent_color(*agent)).bold()
-                    } else {
-                        Style::new().fg(theme.text).bold()
-                    },
-                )];
-                if let Some(branch_label) = branch_label {
-                    spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
-                    spans.push(FtSpan::styled(
-                        branch_label.clone(),
-                        Style::new().fg(theme.subtext0),
-                    ));
-                }
+        let mut text_lines = vec![if let Some((
+            name_label,
+            branch_label,
+            age_label,
+            is_working,
+            agent,
+            is_orphaned,
+        )) = selected_workspace_header.as_ref()
+        {
+            let mut spans = vec![FtSpan::styled(
+                name_label.clone(),
+                if *is_working {
+                    Style::new().fg(self.workspace_agent_color(*agent)).bold()
+                } else {
+                    Style::new().fg(theme.text).bold()
+                },
+            )];
+            if let Some(branch_label) = branch_label {
                 spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
                 spans.push(FtSpan::styled(
-                    agent.label().to_string(),
-                    Style::new().fg(self.workspace_agent_color(*agent)).bold(),
-                ));
-                if !age_label.is_empty() {
-                    spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
-                    spans.push(FtSpan::styled(
-                        age_label.clone(),
-                        Style::new().fg(theme.overlay0),
-                    ));
-                }
-                if *is_orphaned {
-                    spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
-                    spans.push(FtSpan::styled(
-                        "session ended",
-                        Style::new().fg(theme.peach),
-                    ));
-                }
-                FtLine::from_spans(spans)
-            } else {
-                FtLine::from_spans(vec![FtSpan::styled(
-                    "none selected",
+                    branch_label.clone(),
                     Style::new().fg(theme.subtext0),
-                )])
-            },
-            if let Some(workspace) = selected_workspace {
-                FtLine::from_spans(vec![FtSpan::styled(
-                    workspace.path.display().to_string(),
+                ));
+            }
+            spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+            spans.push(FtSpan::styled(
+                agent.label().to_string(),
+                Style::new().fg(self.workspace_agent_color(*agent)).bold(),
+            ));
+            if !age_label.is_empty() {
+                spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+                spans.push(FtSpan::styled(
+                    age_label.clone(),
                     Style::new().fg(theme.overlay0),
-                )])
+                ));
+            }
+            if *is_orphaned {
+                spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+                spans.push(FtSpan::styled(
+                    "session ended",
+                    Style::new().fg(theme.peach),
+                ));
+            }
+            FtLine::from_spans(spans)
+        } else {
+            FtLine::from_spans(vec![FtSpan::styled(
+                "none selected",
+                Style::new().fg(theme.subtext0),
+            )])
+        }];
+        let tab_active_style = Style::new().fg(theme.base).bg(theme.blue).bold();
+        let tab_inactive_style = Style::new().fg(theme.subtext0).bg(theme.surface0);
+        let mut tab_spans = Vec::new();
+        for (index, tab) in [PreviewTab::Agent, PreviewTab::Git]
+            .iter()
+            .copied()
+            .enumerate()
+        {
+            if index > 0 {
+                tab_spans.push(FtSpan::raw(" ".to_string()));
+            }
+            let style = if tab == self.preview_tab {
+                tab_active_style
             } else {
-                FtLine::from_spans(vec![FtSpan::styled(
-                    "no workspace",
-                    Style::new().fg(theme.overlay0),
-                )])
-            },
-        ];
+                tab_inactive_style
+            };
+            tab_spans.push(FtSpan::styled(format!(" {} ", tab.label()), style));
+        }
+        if let Some(workspace) = selected_workspace {
+            tab_spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+            tab_spans.push(FtSpan::styled(
+                workspace.path.display().to_string(),
+                Style::new().fg(theme.overlay0),
+            ));
+        } else {
+            tab_spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+            tab_spans.push(FtSpan::styled(
+                "no workspace",
+                Style::new().fg(theme.overlay0),
+            ));
+        }
+        text_lines.push(FtLine::from_spans(tab_spans));
         if let Some((name_label, branch_label, _, true, agent, _)) =
             selected_workspace_header.as_ref()
         {
@@ -8679,45 +8795,98 @@ impl GroveApp {
             ));
         }
 
-        let (visible_start, visible_end) = self.preview_visible_range_for_height(preview_height);
-        let visible_plain_lines = self.preview_plain_lines_range(visible_start, visible_end);
-        let mut visible_render_lines = if self.preview.render_lines.is_empty() {
-            Vec::new()
-        } else {
-            let render_start = visible_start.min(self.preview.render_lines.len());
-            let render_end = visible_end.min(self.preview.render_lines.len());
-            if render_start < render_end {
-                self.preview.render_lines[render_start..render_end].to_vec()
-            } else {
-                Vec::new()
-            }
-        };
-        if visible_render_lines.len() < visible_plain_lines.len() {
-            visible_render_lines.extend(
-                visible_plain_lines[visible_render_lines.len()..]
-                    .iter()
-                    .cloned(),
-            );
-        }
-        if visible_render_lines.is_empty() && !visible_plain_lines.is_empty() {
-            visible_render_lines = visible_plain_lines.clone();
-        }
-        if allow_cursor_overlay {
-            self.apply_interactive_cursor_overlay_render(
-                &visible_plain_lines,
-                &mut visible_render_lines,
-                preview_height,
-            );
-        }
+        let mut visible_start = 0usize;
+        let mut visible_plain_lines = Vec::new();
+        match self.preview_tab {
+            PreviewTab::Agent => {
+                let visible_range = self.preview_visible_range_for_height(preview_height);
+                visible_start = visible_range.0;
+                let visible_end = visible_range.1;
+                visible_plain_lines = self.preview_plain_lines_range(visible_start, visible_end);
+                let mut visible_render_lines = if self.preview.render_lines.is_empty() {
+                    Vec::new()
+                } else {
+                    let render_start = visible_start.min(self.preview.render_lines.len());
+                    let render_end = visible_end.min(self.preview.render_lines.len());
+                    if render_start < render_end {
+                        self.preview.render_lines[render_start..render_end].to_vec()
+                    } else {
+                        Vec::new()
+                    }
+                };
+                if visible_render_lines.len() < visible_plain_lines.len() {
+                    visible_render_lines.extend(
+                        visible_plain_lines[visible_render_lines.len()..]
+                            .iter()
+                            .cloned(),
+                    );
+                }
+                if visible_render_lines.is_empty() && !visible_plain_lines.is_empty() {
+                    visible_render_lines = visible_plain_lines.clone();
+                }
+                if allow_cursor_overlay {
+                    self.apply_interactive_cursor_overlay_render(
+                        &visible_plain_lines,
+                        &mut visible_render_lines,
+                        preview_height,
+                    );
+                }
 
-        if visible_render_lines.is_empty() {
-            text_lines.push(FtLine::raw("(no preview output)"));
-        } else {
-            text_lines.extend(
-                visible_render_lines
-                    .iter()
-                    .map(|line| ansi_line_to_styled_line(line)),
-            );
+                if visible_render_lines.is_empty() {
+                    text_lines.push(FtLine::raw("(no preview output)"));
+                } else {
+                    text_lines.extend(
+                        visible_render_lines
+                            .iter()
+                            .map(|line| ansi_line_to_styled_line(line)),
+                    );
+                }
+            }
+            PreviewTab::Git => {
+                if let Some(workspace) = selected_workspace {
+                    let base_branch = workspace.base_branch.as_deref().unwrap_or("-");
+                    let project_name = workspace.project_name.as_deref().unwrap_or("-");
+                    let project_path = workspace
+                        .project_path
+                        .as_ref()
+                        .map_or_else(|| "-".to_string(), |path| path.display().to_string());
+                    let age_label = self.relative_age_label(workspace.last_activity_unix_secs);
+                    let last_activity = if age_label.is_empty() {
+                        "unknown".to_string()
+                    } else {
+                        age_label
+                    };
+                    let session_state = if workspace.is_orphaned {
+                        "orphaned"
+                    } else if workspace.status.has_session() {
+                        "running"
+                    } else {
+                        "not running"
+                    };
+                    let lines = vec![
+                        format!("Branch: {}", workspace.branch),
+                        format!("Base branch: {base_branch}"),
+                        format!("Status: {}", Self::workspace_status_label(workspace.status)),
+                        format!("Session: {session_state}"),
+                        format!(
+                            "Main worktree: {}",
+                            if workspace.is_main { "yes" } else { "no" }
+                        ),
+                        format!("Project: {project_name}"),
+                        format!("Project path: {project_path}"),
+                        format!("Workspace path: {}", workspace.path.display()),
+                        format!("Last activity: {last_activity}"),
+                    ];
+                    text_lines.extend(lines.into_iter().take(preview_height).map(|line| {
+                        FtLine::from_spans(vec![FtSpan::styled(line, Style::new().fg(theme.text))])
+                    }));
+                } else {
+                    text_lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                        "No workspace selected",
+                        Style::new().fg(theme.subtext0),
+                    )]));
+                }
+            }
         }
 
         Paragraph::new(FtText::from_lines(text_lines)).render(inner, frame);
@@ -9276,7 +9445,7 @@ impl GroveApp {
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "  j/k or Up/Down scroll, PgUp/PgDn page, G bottom",
+                    "  [/] switch tab, j/k or Up/Down scroll, PgUp/PgDn page, G bottom",
                     content_width,
                 ),
                 Style::new().fg(theme.text),
@@ -10053,7 +10222,7 @@ mod tests {
         HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW,
         LaunchDialogField, LaunchDialogState, LivePreviewCapture, Msg, PALETTE_CMD_FOCUS_LIST,
         PALETTE_CMD_MOVE_SELECTION_DOWN, PALETTE_CMD_OPEN_PREVIEW, PALETTE_CMD_SCROLL_DOWN,
-        PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion,
+        PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
         StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput,
         WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line,
         parse_cursor_metadata, ui_theme,
@@ -15363,6 +15532,70 @@ mod tests {
         );
         assert_eq!(app.preview.offset, 0);
         assert!(app.preview.auto_scroll);
+    }
+
+    #[test]
+    fn preview_mode_bracket_keys_cycle_tabs() {
+        let mut app = fixture_app();
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
+        assert_eq!(app.preview_tab, PreviewTab::Agent);
+
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
+        assert_eq!(app.preview_tab, PreviewTab::Git);
+
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
+        assert_eq!(app.preview_tab, PreviewTab::Agent);
+
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('['))));
+        assert_eq!(app.preview_tab, PreviewTab::Git);
+    }
+
+    #[test]
+    fn preview_mode_scroll_keys_noop_in_git_tab() {
+        let mut app = fixture_app();
+        app.preview.lines = (1..=120).map(|value| value.to_string()).collect();
+        app.preview.render_lines = app.preview.lines.clone();
+        app.preview.offset = 0;
+        app.preview.auto_scroll = true;
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
+        assert_eq!(app.preview_tab, PreviewTab::Git);
+
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('k'))));
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::PageDown)));
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('G'))));
+
+        assert_eq!(app.preview.offset, 0);
+        assert!(app.preview.auto_scroll);
+    }
+
+    #[test]
+    fn git_tab_renders_git_details() {
+        let mut app = fixture_app();
+        ftui::Model::update(
+            &mut app,
+            Msg::Resize {
+                width: 100,
+                height: 40,
+            },
+        );
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
+
+        let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+        let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+        let x_start = preview_inner.x;
+        let x_end = preview_inner.right();
+
+        with_rendered_frame(&app, 100, 40, |frame| {
+            let tabs_line = row_text(frame, preview_inner.y.saturating_add(1), x_start, x_end);
+            let output_line = row_text(frame, output_y, x_start, x_end);
+
+            assert!(tabs_line.contains("Agent"));
+            assert!(tabs_line.contains("Git"));
+            assert!(output_line.contains("Branch:"));
+        });
     }
 
     #[test]
