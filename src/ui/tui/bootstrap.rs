@@ -8,7 +8,7 @@ use crate::adapters::{
     DiscoveryState, MultiplexerAdapter, bootstrap_data,
 };
 use crate::config::{GroveConfig, MultiplexerKind, ProjectConfig};
-use crate::mouse::parse_sidebar_ratio;
+use crate::ui::mouse::parse_sidebar_ratio;
 
 use super::*;
 
