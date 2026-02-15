@@ -139,6 +139,19 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 276)
 
+### Phase 5f, move workspace selection helpers into `update.rs`
+- Commit: pending
+- Changes:
+  - moved from `src/ui/tui/mod.rs` to `src/ui/tui/update.rs`:
+    - `sidebar_workspace_index_at_y`
+    - `select_workspace_by_mouse`
+    - `select_workspace_by_index`
+  - `select_workspace_by_index` now `pub(super)` because it is used by parent-module project focus logic
+  - no behavior changes, relocation only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
 ## Current State
 - Worktree includes Phase 5a module extraction changes + this handoff update.
 - Local branch includes prior refactor commits:
@@ -155,6 +168,7 @@ Status:
 - dialog and overlay render helpers moved into `view.rs`.
 - key and mouse dispatch moved into `update.rs`.
 - paste and non-interactive key flow moved into `update.rs`.
+- workspace selection helpers moved into `update.rs`.
 - Remaining work is further decomposition of large `GroveApp` impl blocks inside `mod.rs`.
 
 Next sub-targets:
