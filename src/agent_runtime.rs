@@ -151,6 +151,21 @@ pub fn git_session_name_for_workspace(workspace: &Workspace) -> String {
     )
 }
 
+pub fn workspace_should_poll_status(workspace: &Workspace, multiplexer: MultiplexerKind) -> bool {
+    if !workspace.supported_agent {
+        return false;
+    }
+
+    if multiplexer == MultiplexerKind::Zellij {
+        if workspace.is_main {
+            return workspace.status.has_session();
+        }
+        return true;
+    }
+
+    workspace.status.has_session()
+}
+
 pub fn session_name_for_workspace_in_project(
     project_name: Option<&str>,
     workspace_name: &str,

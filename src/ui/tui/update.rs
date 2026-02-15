@@ -734,20 +734,7 @@ impl GroveApp {
         self.state
             .workspaces
             .iter()
-            .filter(|workspace| {
-                if !workspace.supported_agent {
-                    return false;
-                }
-
-                if self.multiplexer == MultiplexerKind::Zellij {
-                    if workspace.is_main {
-                        return workspace.status.has_session();
-                    }
-                    return true;
-                }
-
-                workspace.status.has_session()
-            })
+            .filter(|workspace| workspace_should_poll_status(workspace, self.multiplexer))
             .map(|workspace| WorkspaceStatusPollTarget {
                 workspace_name: workspace.name.clone(),
                 workspace_path: workspace.path.clone(),
