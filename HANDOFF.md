@@ -1304,9 +1304,25 @@
 - Gates:
   - `cargo test --lib` (pass, 314)
 
+### Phase 7g, move `state` module under `src/ui/`
+- Commit: `5baa43d`
+- Changes:
+  - moved module files:
+    - `src/state.rs` -> `src/ui/state.rs`
+    - `src/state/tests.rs` -> `src/ui/state/tests.rs`
+  - updated `src/ui/mod.rs` with `mod state;`
+  - updated crate root in `src/lib.rs`:
+    - removed `pub mod state;`
+  - updated imports from `crate::state::...` to `crate::ui::state::...` in TUI modules and tests
+  - no behavior changes, crate-tree alignment move only
+- Gates:
+  - `cargo test --lib` (pass, 314)
+
 ## Current State
-- Worktree is clean after phase 7f commit.
+- Worktree is clean after phase 7g commit.
 - Recent refactor commits on local `master`:
+  - `5baa43d` refactor(ui): move state module under ui
+  - `2ff2ce2` docs(handoff): record phase 7f
   - `2a4dc5d` refactor(ui): move mouse module under ui
   - `d213859` docs(handoff): record phase 7e
   - `a969cee` refactor(application): move interactive module under application
@@ -1426,7 +1442,7 @@ Status:
 Next sub-targets:
 - phase 6 runtime-boundary extraction is functionally complete for lifecycle start/stop flow
 - continue phase 7 crate-tree alignment in small compile-safe moves
-- next candidate: move remaining root modules into DDD buckets (`state`, `adapters`, `config`, `event_log`, `hardening`) with compile-safe import rewrites
+- next candidate: move remaining root modules into DDD buckets (`adapters`, `config`, `event_log`, `hardening`) with compile-safe import rewrites
 
 Rules:
 - keep behavior unchanged
