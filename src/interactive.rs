@@ -403,7 +403,7 @@ pub fn render_cursor_overlay_ansi(
                 rendered.push(next);
                 match next {
                     '[' => {
-                        while let Some(value) = chars.next() {
+                        for value in chars.by_ref() {
                             rendered.push(value);
                             if ('\u{40}'..='\u{7e}').contains(&value) {
                                 break;

@@ -814,7 +814,7 @@ fn strip_sgr_sequences(input: &str) -> String {
         if character == '\u{1b}' {
             if chars.next_if_eq(&'[').is_some() {
                 let mut did_end = false;
-                while let Some(value) = chars.next() {
+                for value in chars.by_ref() {
                     if ('\u{40}'..='\u{7e}').contains(&value) {
                         did_end = true;
                         break;
@@ -839,7 +839,7 @@ fn consume_csi_sequence<I>(chars: &mut std::iter::Peekable<I>, buffer: &mut Stri
 where
     I: Iterator<Item = char>,
 {
-    while let Some(character) = chars.next() {
+    for character in chars.by_ref() {
         buffer.push(character);
         if ('\u{40}'..='\u{7e}').contains(&character) {
             return Some(character);

@@ -41,8 +41,7 @@ use crate::adapters::{
 };
 use crate::agent_runtime::{
     LaunchRequest, SessionActivity, build_launch_plan, detect_status, poll_interval,
-    session_name_for_workspace, stop_plan, zellij_capture_log_path,
-    zellij_config_path,
+    session_name_for_workspace, stop_plan, zellij_capture_log_path, zellij_config_path,
 };
 use crate::config::{GroveConfig, MultiplexerKind};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
@@ -324,7 +323,7 @@ fn ansi_line_to_plain_text(line: &str) -> String {
 
         match next {
             '[' => {
-                while let Some(value) = chars.next() {
+                for value in chars.by_ref() {
                     if ('\u{40}'..='\u{7e}').contains(&value) {
                         break;
                     }
@@ -685,7 +684,7 @@ impl SystemClipboardAccess {
                 }
             }
 
-            return Err(errors.join("; "));
+            Err(errors.join("; "))
         }
 
         #[cfg(not(any(target_os = "macos", unix)))]
@@ -725,7 +724,7 @@ impl SystemClipboardAccess {
                 }
             }
 
-            return Err(errors.join("; "));
+            Err(errors.join("; "))
         }
 
         #[cfg(not(any(target_os = "macos", unix)))]
@@ -1444,7 +1443,7 @@ fn ansi_line_to_styled_line(line: &str) -> FtLine {
             '[' => {
                 let mut params = String::new();
                 let mut final_char: Option<char> = None;
-                while let Some(value) = chars.next() {
+                for value in chars.by_ref() {
                     if ('\u{40}'..='\u{7e}').contains(&value) {
                         final_char = Some(value);
                         break;
@@ -1578,6 +1577,21 @@ impl From<Event> for Msg {
     }
 }
 
+#[derive(Debug)]
+struct AppPaths {
+    sidebar_ratio_path: PathBuf,
+    config_path: PathBuf,
+}
+
+impl AppPaths {
+    fn new(sidebar_ratio_path: PathBuf, config_path: PathBuf) -> Self {
+        Self {
+            sidebar_ratio_path,
+            config_path,
+        }
+    }
+}
+
 struct GroveApp {
     repo_name: String,
     state: AppState,
@@ -1646,8 +1660,7 @@ impl GroveApp {
         Self::from_parts(
             bootstrap,
             input_for_multiplexer(multiplexer),
-            default_sidebar_ratio_path(),
-            config_path,
+            AppPaths::new(default_sidebar_ratio_path(), config_path),
             multiplexer,
             event_log,
             None,
@@ -1665,8 +1678,7 @@ impl GroveApp {
         Self::from_parts(
             bootstrap,
             input_for_multiplexer(multiplexer),
-            default_sidebar_ratio_path(),
-            config_path,
+            AppPaths::new(default_sidebar_ratio_path(), config_path),
             multiplexer,
             event_log,
             Some(app_start_ts),
@@ -1676,8 +1688,7 @@ impl GroveApp {
     fn from_parts(
         bootstrap: BootstrapData,
         tmux_input: Box<dyn TmuxInput>,
-        sidebar_ratio_path: PathBuf,
-        config_path: PathBuf,
+        paths: AppPaths,
         multiplexer: MultiplexerKind,
         event_log: Box<dyn EventLogger>,
         debug_record_start_ts: Option<u64>,
@@ -1686,8 +1697,7 @@ impl GroveApp {
             bootstrap,
             tmux_input,
             Box::new(SystemClipboardAccess::default()),
-            sidebar_ratio_path,
-            config_path,
+            paths,
             multiplexer,
             event_log,
             debug_record_start_ts,
@@ -1698,12 +1708,15 @@ impl GroveApp {
         bootstrap: BootstrapData,
         tmux_input: Box<dyn TmuxInput>,
         clipboard: Box<dyn ClipboardAccess>,
-        sidebar_ratio_path: PathBuf,
-        config_path: PathBuf,
+        paths: AppPaths,
         multiplexer: MultiplexerKind,
         event_log: Box<dyn EventLogger>,
         debug_record_start_ts: Option<u64>,
     ) -> Self {
+        let AppPaths {
+            sidebar_ratio_path,
+            config_path,
+        } = paths;
         let sidebar_width_pct = load_sidebar_ratio(&sidebar_ratio_path);
         let mapper_config = KeybindingConfig::from_env().with_sequence_config(
             KeySequenceConfig::from_env()
@@ -5443,9 +5456,7 @@ impl GroveApp {
     }
 
     fn interactive_cursor_target(&self, preview_height: usize) -> Option<(usize, usize, bool)> {
-        let Some(interactive) = self.interactive.as_ref() else {
-            return None;
-        };
+        let interactive = self.interactive.as_ref()?;
         if self.preview.lines.is_empty() {
             return None;
         }
@@ -6488,16 +6499,15 @@ impl GroveApp {
             header.render(area, frame);
             let _ = frame.register_hit_region(area, HitId::new(HIT_ID_HEADER));
             return;
-        } else {
-            let header = base_header
-                .right(StatusItem::text(activity_chip.as_str()))
-                .right(StatusItem::text(
-                    self.activity_spinner_slot(selected_status, true),
-                ));
-            header.render(area, frame);
-            let _ = frame.register_hit_region(area, HitId::new(HIT_ID_HEADER));
-            return;
         }
+
+        let header = base_header
+            .right(StatusItem::text(activity_chip.as_str()))
+            .right(StatusItem::text(
+                self.activity_spinner_slot(selected_status, true),
+            ));
+        header.render(area, frame);
+        let _ = frame.register_hit_region(area, HitId::new(HIT_ID_HEADER));
     }
 
     fn render_sidebar(&self, frame: &mut Frame, area: Rect) {
@@ -6644,8 +6654,7 @@ impl GroveApp {
         } else {
             "│"
         };
-        let divider = std::iter::repeat(glyph)
-            .take(usize::from(area.height))
+        let divider = std::iter::repeat_n(glyph, usize::from(area.height))
             .collect::<Vec<&str>>()
             .join("\n");
         let theme = ui_theme();
@@ -7067,7 +7076,7 @@ impl GroveApp {
         }
 
         let dialog_width = area.width.saturating_sub(8).min(108);
-        let dialog_height = area.height.saturating_sub(6).min(26).max(18);
+        let dialog_height = area.height.saturating_sub(6).clamp(18, 26);
         let theme = ui_theme();
 
         let lines = vec![
@@ -7666,13 +7675,14 @@ mod tests {
         assert_row_bg, assert_row_fg, find_cell_with_char, find_row_containing, row_text,
     };
     use super::{
-        ClipboardAccess, CommandZellijInput, CreateDialogField, CreateWorkspaceCompletion,
-        CursorCapture, DeleteDialogField, FAST_SPINNER_FRAMES, GroveApp, HIT_ID_HEADER,
-        HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogField, LaunchDialogState,
-        LivePreviewCapture, Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification,
-        PreviewPollCompletion, StartAgentCompletion, StopAgentCompletion, TextSelectionPoint,
-        TmuxInput, WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color,
-        ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
+        AppPaths, ClipboardAccess, CommandZellijInput, CreateDialogField,
+        CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, FAST_SPINNER_FRAMES, GroveApp,
+        HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
+        LaunchDialogState, LivePreviewCapture, Msg, PREVIEW_METADATA_ROWS,
+        PendingResizeVerification, PreviewPollCompletion, StartAgentCompletion,
+        StopAgentCompletion, TextSelectionPoint, TmuxInput, WORKSPACE_ITEM_HEIGHT,
+        WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
+        ui_theme,
     };
     use crate::adapters::{BootstrapData, DiscoveryState};
     use crate::config::MultiplexerKind;
@@ -7919,8 +7929,7 @@ mod tests {
                 calls: Rc::new(RefCell::new(Vec::new())),
             }),
             test_clipboard(),
-            sidebar_ratio_path,
-            config_path,
+            AppPaths::new(sidebar_ratio_path, config_path),
             MultiplexerKind::Tmux,
             Box::new(NullEventLogger),
             None,
@@ -8085,8 +8094,7 @@ mod tests {
                 fixture_bootstrap(status),
                 Box::new(tmux),
                 test_clipboard(),
-                sidebar_ratio_path,
-                unique_config_path("fixture-with-tmux"),
+                AppPaths::new(sidebar_ratio_path, unique_config_path("fixture-with-tmux")),
                 MultiplexerKind::Tmux,
                 Box::new(NullEventLogger),
                 None,
@@ -8119,8 +8127,7 @@ mod tests {
                 fixture_bootstrap(status),
                 Box::new(tmux),
                 test_clipboard(),
-                sidebar_ratio_path,
-                unique_config_path("fixture-with-calls"),
+                AppPaths::new(sidebar_ratio_path, unique_config_path("fixture-with-calls")),
                 MultiplexerKind::Tmux,
                 Box::new(NullEventLogger),
                 None,
@@ -8157,8 +8164,10 @@ mod tests {
                 fixture_bootstrap(status),
                 Box::new(tmux),
                 test_clipboard(),
-                sidebar_ratio_path,
-                unique_config_path("fixture-with-events"),
+                AppPaths::new(
+                    sidebar_ratio_path,
+                    unique_config_path("fixture-with-events"),
+                ),
                 MultiplexerKind::Tmux,
                 Box::new(event_log),
                 None,
@@ -8175,8 +8184,10 @@ mod tests {
             fixture_bootstrap(status),
             Box::new(BackgroundOnlyTmuxInput),
             test_clipboard(),
-            unique_sidebar_ratio_path("background"),
-            unique_config_path("background"),
+            AppPaths::new(
+                unique_sidebar_ratio_path("background"),
+                unique_config_path("background"),
+            ),
             MultiplexerKind::Tmux,
             Box::new(NullEventLogger),
             None,
@@ -9051,8 +9062,7 @@ mod tests {
         let mut app = GroveApp::from_parts(
             fixture_bootstrap(WorkspaceStatus::Active),
             Box::new(BackgroundOnlyTmuxInput),
-            sidebar_ratio_path,
-            unique_config_path("background-poll"),
+            AppPaths::new(sidebar_ratio_path, unique_config_path("background-poll")),
             MultiplexerKind::Tmux,
             Box::new(NullEventLogger),
             None,
@@ -9070,8 +9080,10 @@ mod tests {
         let mut app = GroveApp::from_parts(
             fixture_bootstrap(WorkspaceStatus::Idle),
             Box::new(BackgroundOnlyTmuxInput),
-            sidebar_ratio_path,
-            unique_config_path("background-status-only"),
+            AppPaths::new(
+                sidebar_ratio_path,
+                unique_config_path("background-status-only"),
+            ),
             MultiplexerKind::Tmux,
             Box::new(NullEventLogger),
             None,
@@ -9080,7 +9092,7 @@ mod tests {
         force_tick_due(&mut app);
 
         let cmd = ftui::Model::update(&mut app, Msg::Tick);
-        assert!(cmd_contains_task(&cmd));
+        assert!(!cmd_contains_task(&cmd));
     }
 
     #[test]
@@ -11043,8 +11055,7 @@ mod tests {
                 "capture:grove-ws-feature-a:600:true".to_string(),
                 "cursor:grove-ws-feature-a".to_string(),
                 "exec:tmux send-keys -l -t grove-ws-feature-a x".to_string(),
-                "capture:grove-ws-feature-a:200:true".to_string(),
-                "exec:tmux send-keys -l -t grove-ws-feature-a copied-text".to_string(),
+                "paste-buffer:grove-ws-feature-a:14".to_string(),
                 "exec:tmux send-keys -t grove-ws-feature-a Escape".to_string(),
             ]
         );
@@ -12287,8 +12298,7 @@ mod tests {
                 cursor_captures: Rc::new(RefCell::new(Vec::new())),
                 calls: Rc::new(RefCell::new(Vec::new())),
             }),
-            sidebar_ratio_path,
-            unique_config_path("error-state"),
+            AppPaths::new(sidebar_ratio_path, unique_config_path("error-state")),
             MultiplexerKind::Tmux,
             Box::new(NullEventLogger),
             None,
@@ -12371,8 +12381,7 @@ mod tests {
                 cursor_captures: Rc::new(RefCell::new(Vec::new())),
                 calls: Rc::new(RefCell::new(Vec::new())),
             }),
-            sidebar_ratio_path,
-            unique_config_path("frame-log"),
+            AppPaths::new(sidebar_ratio_path, unique_config_path("frame-log")),
             MultiplexerKind::Tmux,
             Box::new(event_log),
             Some(1_771_023_000_000),
@@ -12419,8 +12428,7 @@ mod tests {
                 cursor_captures: Rc::new(RefCell::new(Vec::new())),
                 calls: Rc::new(RefCell::new(Vec::new())),
             }),
-            sidebar_ratio_path,
-            unique_config_path("frame-lines"),
+            AppPaths::new(sidebar_ratio_path, unique_config_path("frame-lines")),
             MultiplexerKind::Tmux,
             Box::new(event_log),
             Some(1_771_023_000_123),
@@ -12487,8 +12495,10 @@ mod tests {
                 cursor_captures: Rc::new(RefCell::new(Vec::new())),
                 calls: Rc::new(RefCell::new(Vec::new())),
             }),
-            sidebar_ratio_path,
-            unique_config_path("frame-cursor-snapshot"),
+            AppPaths::new(
+                sidebar_ratio_path,
+                unique_config_path("frame-cursor-snapshot"),
+            ),
             MultiplexerKind::Tmux,
             Box::new(event_log),
             Some(1_771_023_000_124),

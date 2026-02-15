@@ -89,10 +89,10 @@ fn main() -> std::io::Result<()> {
         return Ok(());
     }
 
-    if cli.debug_record {
-        if let Some(path) = event_log_path {
-            return grove::run_tui_with_debug_record(path, app_start_ts);
-        }
+    if cli.debug_record
+        && let Some(path) = event_log_path
+    {
+        return grove::run_tui_with_debug_record(path, app_start_ts);
     }
 
     grove::run_tui_with_event_log(event_log_path)
