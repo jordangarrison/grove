@@ -80,6 +80,8 @@ mod dialogs;
 use dialogs::*;
 mod msg;
 use msg::*;
+mod selection;
+use selection::{TextSelectionPoint, TextSelectionState};
 mod text;
 use text::{
     ansi_line_to_plain_text, chrome_bar_line, keybind_hint_spans, line_visual_width,
@@ -235,98 +237,6 @@ struct CursorMetadata {
     cursor_row: u16,
     pane_width: u16,
     pane_height: u16,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct TextSelectionPoint {
-    line: usize,
-    col: usize,
-}
-
-impl TextSelectionPoint {
-    fn before(self, other: Self) -> bool {
-        self.line < other.line || (self.line == other.line && self.col < other.col)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-struct TextSelectionState {
-    active: bool,
-    start: Option<TextSelectionPoint>,
-    end: Option<TextSelectionPoint>,
-    anchor: Option<TextSelectionPoint>,
-}
-
-impl TextSelectionState {
-    fn clear(&mut self) {
-        self.active = false;
-        self.start = None;
-        self.end = None;
-        self.anchor = None;
-    }
-
-    fn has_selection(&self) -> bool {
-        self.start.is_some() && self.end.is_some()
-    }
-
-    fn prepare_drag(&mut self, point: TextSelectionPoint) {
-        self.active = false;
-        self.start = None;
-        self.end = None;
-        self.anchor = Some(point);
-    }
-
-    fn handle_drag(&mut self, point: TextSelectionPoint) {
-        let Some(anchor) = self.anchor else {
-            return;
-        };
-        if self.start.is_none() {
-            self.start = Some(anchor);
-            self.end = Some(anchor);
-        }
-
-        self.active = true;
-        if point.before(anchor) {
-            self.start = Some(point);
-            self.end = Some(anchor);
-        } else {
-            self.start = Some(anchor);
-            self.end = Some(point);
-        }
-    }
-
-    fn finish_drag(&mut self) {
-        if self.start.is_none() {
-            self.clear();
-            return;
-        }
-
-        self.active = false;
-        self.anchor = None;
-    }
-
-    fn bounds(&self) -> Option<(TextSelectionPoint, TextSelectionPoint)> {
-        Some((self.start?, self.end?))
-    }
-
-    fn line_selection_cols(&self, line_idx: usize) -> Option<(usize, Option<usize>)> {
-        let (start, end) = self.bounds()?;
-        if line_idx < start.line || line_idx > end.line {
-            return None;
-        }
-
-        if start.line == end.line {
-            return Some((start.col, Some(end.col)));
-        }
-        if line_idx == start.line {
-            return Some((start.col, None));
-        }
-        if line_idx == end.line {
-            return Some((0, Some(end.col)));
-        }
-
-        Some((0, None))
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
