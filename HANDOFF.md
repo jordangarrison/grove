@@ -465,9 +465,30 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib --quiet` (pass, 276)
 
+### Phase 5ae, move shared TUI constants/types/theme into `shared.rs`
+- Commit: `9ce1826`
+- Changes:
+  - added `src/ui/tui/shared.rs`
+    - moved shared constants from `src/ui/tui/mod.rs`:
+      - layout + hit IDs
+      - command palette action IDs
+      - polling/animation/input constants
+    - moved shared types/theme from `src/ui/tui/mod.rs`:
+      - `UiTheme` + `ui_theme`
+      - `HitRegion`, `PreviewTab`, `ViewLayout`
+      - cursor/preview/input structs (`CursorMetadata`, `PreviewContentViewport`, `InputTraceContext`, pending interactive structs)
+  - updated `src/ui/tui/mod.rs`:
+    - wired `mod shared;` + `use shared::*;`
+    - removed moved definitions
+  - no behavior changes, relocation only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 276)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `9ce1826` phase 5ae
   - `0d9b21d` phase 5ad
   - `aa91ca5` phase 5ac
   - `e5686a0` phase 5ab
@@ -510,11 +531,12 @@ Status:
 - workspace helper methods moved into `update.rs`.
 - app bootstrap constructors moved into `bootstrap.rs`.
 - app path/dependency structs moved into `bootstrap.rs`.
-- `mod.rs` is now mostly module root, shared types/constants/helpers, and run entrypoints.
+- shared constants/types/theme moved into `shared.rs`.
+- `mod.rs` is now mostly module root, app state struct, and run entrypoints.
 
 Next sub-targets:
-- optional: split remaining shared utility helpers from `mod.rs` into focused helper modules (logging)
-- keep behavior unchanged while shrinking `mod.rs` further only if necessary for readability
+- optional: extract remaining `run*` entrypoint glue from `mod.rs` if it improves readability
+- begin phase 6 boundary work for non-UI runtime logic
 
 Rules:
 - keep behavior unchanged
