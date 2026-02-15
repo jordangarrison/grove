@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use grove::agent_runtime::reconcile_with_sessions;
+use grove::application::agent_runtime::reconcile_with_sessions;
+use grove::application::hardening::{missing_workspace_paths, orphaned_sessions};
 use grove::domain::{AgentType, Workspace, WorkspaceStatus};
-use grove::hardening::{missing_workspace_paths, orphaned_sessions};
 
 fn workspace(name: &str, status: WorkspaceStatus, is_main: bool, path: PathBuf) -> Workspace {
     Workspace::try_new(

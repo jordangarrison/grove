@@ -281,10 +281,7 @@ pub fn workspace_session_for_preview_tab(
     git_preview_session: Option<&str>,
 ) -> Option<String> {
     if preview_tab_is_git {
-        if workspace.is_none() {
-            return None;
-        }
-
+        workspace?;
         return git_preview_session.map(str::to_string);
     }
 

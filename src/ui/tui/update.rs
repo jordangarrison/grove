@@ -642,9 +642,7 @@ impl GroveApp {
     }
 
     fn ensure_lazygit_session_for_selected_workspace(&mut self) -> Option<String> {
-        let Some(workspace) = self.state.selected_workspace() else {
-            return None;
-        };
+        let workspace = self.state.selected_workspace()?;
         let session_name = git_session_name_for_workspace(workspace);
 
         if self.lazygit_ready_sessions.contains(&session_name) {
