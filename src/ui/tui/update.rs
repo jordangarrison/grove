@@ -1025,4 +1025,212 @@ impl GroveApp {
             }
         }
     }
+
+    fn is_quit_key(key_event: &KeyEvent) -> bool {
+        matches!(
+            key_event.code,
+            KeyCode::Char('q')
+                if key_event.kind == KeyEventKind::Press && key_event.modifiers.is_empty()
+        )
+    }
+
+    fn is_ctrl_char_key(key_event: &KeyEvent, character: char) -> bool {
+        matches!(
+            key_event.code,
+            KeyCode::Char(value)
+                if value == character
+                    && key_event.kind == KeyEventKind::Press
+                    && key_event.modifiers == Modifiers::CTRL
+        )
+    }
+
+    fn keybinding_task_running(&self) -> bool {
+        self.refresh_in_flight
+            || self.delete_in_flight
+            || self.create_in_flight
+            || self.start_in_flight
+            || self.stop_in_flight
+    }
+
+    fn keybinding_input_nonempty(&self) -> bool {
+        if let Some(dialog) = self.launch_dialog.as_ref() {
+            return !dialog.prompt.is_empty() || !dialog.pre_launch_command.is_empty();
+        }
+        if let Some(dialog) = self.create_dialog.as_ref() {
+            return !dialog.workspace_name.is_empty() || !dialog.base_branch.is_empty();
+        }
+        if let Some(project_dialog) = self.project_dialog.as_ref() {
+            if !project_dialog.filter.is_empty() {
+                return true;
+            }
+            if let Some(add_dialog) = project_dialog.add_dialog.as_ref() {
+                return !add_dialog.name.is_empty() || !add_dialog.path.is_empty();
+            }
+        }
+
+        false
+    }
+
+    fn keybinding_state(&self) -> KeybindingAppState {
+        KeybindingAppState::new()
+            .with_input(self.keybinding_input_nonempty())
+            .with_task(self.keybinding_task_running())
+            .with_modal(self.modal_open())
+    }
+
+    pub(super) fn preview_agent_tab_is_focused(&self) -> bool {
+        self.state.mode == UiMode::Preview
+            && self.state.focus == PaneFocus::Preview
+            && self.preview_tab == PreviewTab::Agent
+    }
+
+    pub(super) fn preview_git_tab_is_focused(&self) -> bool {
+        self.state.mode == UiMode::Preview
+            && self.state.focus == PaneFocus::Preview
+            && self.preview_tab == PreviewTab::Git
+    }
+
+    fn apply_keybinding_action(&mut self, action: KeybindingAction) -> bool {
+        match action {
+            KeybindingAction::DismissModal => {
+                if self.create_dialog.is_some() {
+                    self.log_dialog_event("create", "dialog_cancelled");
+                    self.create_dialog = None;
+                    self.clear_create_branch_picker();
+                } else if self.edit_dialog.is_some() {
+                    self.log_dialog_event("edit", "dialog_cancelled");
+                    self.edit_dialog = None;
+                } else if self.launch_dialog.is_some() {
+                    self.log_dialog_event("launch", "dialog_cancelled");
+                    self.launch_dialog = None;
+                } else if self.delete_dialog.is_some() {
+                    self.log_dialog_event("delete", "dialog_cancelled");
+                    self.delete_dialog = None;
+                } else if self.settings_dialog.is_some() {
+                    self.log_dialog_event("settings", "dialog_cancelled");
+                    self.settings_dialog = None;
+                } else if self.project_dialog.is_some() {
+                    self.project_dialog = None;
+                } else if self.keybind_help_open {
+                    self.keybind_help_open = false;
+                }
+                false
+            }
+            KeybindingAction::ClearInput => {
+                if let Some(dialog) = self.launch_dialog.as_mut() {
+                    match dialog.focused_field {
+                        LaunchDialogField::Prompt => dialog.prompt.clear(),
+                        LaunchDialogField::PreLaunchCommand => dialog.pre_launch_command.clear(),
+                        LaunchDialogField::Unsafe
+                        | LaunchDialogField::StartButton
+                        | LaunchDialogField::CancelButton => {}
+                    }
+                    return false;
+                }
+                if let Some(dialog) = self.create_dialog.as_mut() {
+                    let mut refresh_base_branch = false;
+                    match dialog.focused_field {
+                        CreateDialogField::WorkspaceName => dialog.workspace_name.clear(),
+                        CreateDialogField::BaseBranch => {
+                            dialog.base_branch.clear();
+                            refresh_base_branch = true;
+                        }
+                        CreateDialogField::Project
+                        | CreateDialogField::Agent
+                        | CreateDialogField::CreateButton
+                        | CreateDialogField::CancelButton => {}
+                    }
+                    if refresh_base_branch {
+                        self.refresh_create_branch_filtered();
+                    }
+                }
+                false
+            }
+            KeybindingAction::CancelTask => {
+                self.show_toast("cannot cancel running lifecycle task", true);
+                false
+            }
+            KeybindingAction::Quit | KeybindingAction::HardQuit => true,
+            KeybindingAction::SoftQuit => !self.keybinding_task_running(),
+            KeybindingAction::CloseOverlay
+            | KeybindingAction::ToggleTreeView
+            | KeybindingAction::Bell
+            | KeybindingAction::PassThrough => false,
+        }
+    }
+
+    pub(super) fn can_enter_interactive(&self) -> bool {
+        if self.preview_tab == PreviewTab::Git {
+            return self.state.selected_workspace().is_some();
+        }
+
+        let Some(workspace) = self.state.selected_workspace() else {
+            return false;
+        };
+
+        workspace.status.has_session()
+    }
+
+    pub(super) fn enter_interactive(&mut self, now: Instant) -> bool {
+        if !self.can_enter_interactive() {
+            return false;
+        }
+
+        let session_name = if self.preview_tab == PreviewTab::Git {
+            let Some((session_name, _)) = self.prepare_live_preview_session() else {
+                return false;
+            };
+            session_name
+        } else {
+            let Some(workspace) = self.state.selected_workspace() else {
+                return false;
+            };
+            Self::workspace_session_name(workspace)
+        };
+
+        self.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            session_name,
+            now,
+            self.viewport_height,
+            self.viewport_width,
+        ));
+        self.interactive_poll_due_at = None;
+        self.last_tmux_error = None;
+        self.state.mode = UiMode::Preview;
+        self.state.focus = PaneFocus::Preview;
+        self.clear_preview_selection();
+        self.sync_interactive_session_geometry();
+        self.poll_preview();
+        true
+    }
+
+    pub(super) fn can_start_selected_workspace(&self) -> bool {
+        if self.start_in_flight {
+            return false;
+        }
+
+        let Some(workspace) = self.state.selected_workspace() else {
+            return false;
+        };
+        if !workspace.supported_agent {
+            return false;
+        }
+
+        matches!(
+            workspace.status,
+            WorkspaceStatus::Main
+                | WorkspaceStatus::Idle
+                | WorkspaceStatus::Done
+                | WorkspaceStatus::Error
+                | WorkspaceStatus::Unknown
+        )
+    }
+
+    pub(super) fn open_keybind_help(&mut self) {
+        if self.modal_open() {
+            return;
+        }
+        self.keybind_help_open = true;
+    }
 }
