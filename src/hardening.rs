@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use crate::agent_runtime::session_name_for_workspace_in_project;
+use crate::application::agent_runtime::session_name_for_workspace_in_project;
 use crate::domain::Workspace;
 
 pub fn recover_working_directory(current_dir: &Path, repo_root: &Path) -> PathBuf {

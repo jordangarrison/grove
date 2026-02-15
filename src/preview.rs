@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::agent_runtime::{OutputDigest, evaluate_capture_change};
+use crate::application::agent_runtime::{OutputDigest, evaluate_capture_change};
 
 const SCROLL_DEBOUNCE_MS: u64 = 40;
 const SCROLL_BURST_DEBOUNCE_MS: u64 = 120;

@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use crate::agent_runtime::zellij_config_path;
+use crate::application::agent_runtime::zellij_config_path;
 use crate::config::MultiplexerKind;
 
 const DOUBLE_ESCAPE_WINDOW_MS: u64 = 150;

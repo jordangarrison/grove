@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 use std::io;
 use std::path::Path;
 
-use crate::agent_runtime::{ZELLIJ_CAPTURE_COLS, ZELLIJ_CAPTURE_ROWS};
+use crate::application::agent_runtime::{ZELLIJ_CAPTURE_COLS, ZELLIJ_CAPTURE_ROWS};
 use frankenterm_core::{Cell, Color, SgrAttrs, SgrFlags, TerminalEngine};
 
 const RESET_SGR: &str = "\u{1b}[0m";

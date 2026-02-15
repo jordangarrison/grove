@@ -20,7 +20,7 @@ use super::{
     ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
 };
 use crate::adapters::{BootstrapData, DiscoveryState};
-use crate::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
+use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
 use crate::config::{MultiplexerKind, ProjectConfig};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
@@ -1465,7 +1465,7 @@ fn zellij_capture_session_output_emulates_ansi_from_session_log() {
         "grove-ws-zellij-emulator-test-{}-{timestamp}",
         std::process::id()
     );
-    let log_path = crate::agent_runtime::zellij_capture_log_path(&session_name);
+    let log_path = crate::application::agent_runtime::zellij_capture_log_path(&session_name);
     let log_dir = log_path
         .parent()
         .expect("capture log path should have parent")

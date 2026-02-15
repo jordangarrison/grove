@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::agent_runtime::{TMUX_SESSION_PREFIX, reconcile_with_sessions};
+use crate::application::agent_runtime::{TMUX_SESSION_PREFIX, reconcile_with_sessions};
 use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::workspace_lifecycle::{

@@ -1,5 +1,5 @@
 use super::*;
-use crate::agent_runtime::{SessionExecutionResult, WorkspaceStatusTarget};
+use crate::application::agent_runtime::{SessionExecutionResult, WorkspaceStatusTarget};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Msg {

@@ -1,5 +1,5 @@
 pub mod adapters;
-pub mod agent_runtime;
+pub mod application;
 pub mod config;
 pub mod domain;
 pub mod event_log;
