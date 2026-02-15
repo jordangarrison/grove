@@ -1005,8 +1005,31 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
   - `cargo test --lib` (pass, 308)
 
+### Phase 6ag, centralize runtime execution result shaping helpers
+- Commit: `(pending, uncommitted)`
+- Changes:
+  - added runtime result helpers in `src/agent_runtime.rs`:
+    - `execute_launch_plan_result(LaunchPlan) -> Result<(), String>`
+    - `execute_launch_plan_with_result(&LaunchPlan, impl FnMut(&[String]) -> std::io::Result<()>) -> Result<(), String>`
+    - `execute_commands_result(&[Vec<String>]) -> Result<(), String>`
+    - `execute_commands_with_result(&[Vec<String>], impl FnMut(&[String]) -> std::io::Result<()>) -> Result<(), String>`
+  - updated UI callers in `src/ui/tui/update.rs`:
+    - sync launch/stop paths now use `*_with_result` helpers directly (no local `to_string` mapping)
+    - background launch/stop tasks now use `*_result` helpers directly (no local `map_err` mapping)
+  - updated runtime imports in `src/ui/tui/mod.rs`
+  - added focused runtime tests in `src/agent_runtime/tests.rs`:
+    - `execute_commands_result_returns_string_errors`
+    - `execute_commands_with_result_returns_string_errors`
+    - `execute_launch_plan_with_result_prefixes_script_write_errors`
+    - `execute_launch_plan_result_keeps_unprefixed_script_write_errors`
+  - no behavior changes, boundary/result-shaping move only
+- Gates:
+  - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 62)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 312)
+
 ## Current State
-- Worktree has uncommitted changes for phase 6af.
+- Worktree has uncommitted changes for phases 6af and 6ag.
 - Recent refactor commits on local `master`:
   - `b6d262b` docs(handoff): record phases 6ac-6ae
   - `2d637bc` refactor(runtime): route sync execution through runtime command helpers
@@ -1088,7 +1111,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: add runtime helper for launch/stop execution result shaping (success/error mapping) so UI paths only decide toasts/events/state updates
+- next candidate: introduce runtime launch/stop dispatch helper that chooses sync/delegated vs process execution, so UI only passes execution strategy and handles post-result state/toasts
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
