@@ -833,9 +833,34 @@
 - Gates:
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6x, move delete-workspace execution into `workspace_lifecycle`
+- Commit: `e6ffffc`
+- Changes:
+  - added delete lifecycle boundary in `src/workspace_lifecycle.rs`:
+    - `DeleteWorkspaceRequest`
+    - `delete_workspace(DeleteWorkspaceRequest, MultiplexerKind) -> (Result<(), String>, Vec<String>)`
+    - private git/command execution helpers used by delete flow
+  - updated UI caller in `src/ui/tui/dialogs.rs`:
+    - `confirm_delete_dialog` now builds `DeleteWorkspaceRequest` and delegates delete execution to `workspace_lifecycle::delete_workspace`
+  - removed delete execution helpers from `src/ui/tui/update.rs`:
+    - `run_delete_workspace`
+    - `run_delete_worktree_git`
+    - `run_delete_local_branch_git`
+    - `run_git_command`
+  - updated module imports in `src/ui/tui/mod.rs`
+  - added focused lifecycle tests in `src/workspace_lifecycle/tests.rs`:
+    - `delete_workspace_prunes_missing_worktree`
+    - `delete_workspace_records_branch_delete_failure_as_warning`
+  - no behavior changes, ownership/boundary move only
+- Gates:
+  - `cargo test --lib workspace_lifecycle::tests -- --nocapture` (pass, 12)
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 297)
+
 ## Current State
 - Worktree is clean.
 - Recent refactor commits on local `master`:
+  - `e6ffffc` phase 6x
   - `a5f5bff` phase 6w
   - `824ffce` phase 6v
   - `2b37bac` phase 6u
@@ -909,7 +934,7 @@ Status:
 
 Next sub-targets:
 - continue phase 6 boundary work for non-UI runtime logic
-- next candidate: remove remaining `workspace_status_poll_targets` UI wrapper and call runtime helper directly at poll callsites, while keeping lazygit launch orchestration local
+- next candidate: move `workspace_lifecycle_error_message` out of `src/ui/tui/update.rs` to `workspace_lifecycle` (or equivalent non-UI boundary), then switch UI callsites
 - keep phase-6 moves tiny and parity-safe across both multiplexers
 
 Rules:
