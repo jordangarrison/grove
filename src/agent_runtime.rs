@@ -556,9 +556,7 @@ pub(crate) fn detect_waiting_prompt(output: &str) -> Option<String> {
 
     if let Some(last_non_empty) = tail_lines.iter().rev().find(|line| !line.trim().is_empty()) {
         let trimmed = last_non_empty.trim_start();
-        let Some(prefix) = trimmed.chars().next() else {
-            return None;
-        };
+        let prefix = trimmed.chars().next()?;
         if matches!(prefix, '>' | '›' | '❯' | '»') {
             return Some(trimmed.to_string());
         }
@@ -633,7 +631,7 @@ pub(crate) fn detect_status_with_session_override(
     workspace_path: &Path,
 ) -> WorkspaceStatus {
     let home_dir = dirs::home_dir();
-    detect_status_with_session_override_in_home(
+    detect_status_with_session_override_in_home(StatusOverrideContext {
         output,
         session_activity,
         is_main,
@@ -641,42 +639,51 @@ pub(crate) fn detect_status_with_session_override(
         supported_agent,
         agent,
         workspace_path,
-        home_dir.as_deref(),
-        SESSION_ACTIVITY_THRESHOLD,
-    )
+        home_dir: home_dir.as_deref(),
+        activity_threshold: SESSION_ACTIVITY_THRESHOLD,
+    })
 }
 
-fn detect_status_with_session_override_in_home(
-    output: &str,
+struct StatusOverrideContext<'a> {
+    output: &'a str,
     session_activity: SessionActivity,
     is_main: bool,
     has_live_session: bool,
     supported_agent: bool,
     agent: AgentType,
-    workspace_path: &Path,
-    home_dir: Option<&Path>,
+    workspace_path: &'a Path,
+    home_dir: Option<&'a Path>,
     activity_threshold: Duration,
+}
+
+fn detect_status_with_session_override_in_home(
+    context: StatusOverrideContext<'_>,
 ) -> WorkspaceStatus {
     let detected = detect_status(
-        output,
-        session_activity,
-        is_main,
-        has_live_session,
-        supported_agent,
+        context.output,
+        context.session_activity,
+        context.is_main,
+        context.has_live_session,
+        context.supported_agent,
     );
     if !matches!(detected, WorkspaceStatus::Active | WorkspaceStatus::Waiting) {
         return detected;
     }
 
-    let Some(home_dir) = home_dir else {
+    let Some(home_dir) = context.home_dir else {
         return detected;
     };
-    if !workspace_path.exists() {
+    if !context.workspace_path.exists() {
         return detected;
     }
 
-    detect_agent_session_status_in_home(agent, workspace_path, home_dir, activity_threshold)
-        .unwrap_or(detected)
+    detect_agent_session_status_in_home(
+        context.agent,
+        context.workspace_path,
+        home_dir,
+        context.activity_threshold,
+    )
+    .unwrap_or(detected)
 }
 
 fn detect_agent_session_status_in_home(
@@ -1797,17 +1804,17 @@ mod tests {
         fs::write(&session_file, "{\"type\":\"assistant\"}\n")
             .expect("session file should be written");
 
-        let status = detect_status_with_session_override_in_home(
-            "plain output",
-            SessionActivity::Active,
-            false,
-            true,
-            true,
-            AgentType::Claude,
-            &workspace_path,
-            Some(&home),
-            Duration::from_secs(0),
-        );
+        let status = detect_status_with_session_override_in_home(super::StatusOverrideContext {
+            output: "plain output",
+            session_activity: SessionActivity::Active,
+            is_main: false,
+            has_live_session: true,
+            supported_agent: true,
+            agent: AgentType::Claude,
+            workspace_path: &workspace_path,
+            home_dir: Some(&home),
+            activity_threshold: Duration::from_secs(0),
+        });
         assert_eq!(status, WorkspaceStatus::Waiting);
 
         let _ = fs::remove_dir_all(root);
