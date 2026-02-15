@@ -3317,21 +3317,7 @@ impl GroveApp {
             return false;
         }
 
-        let Some(workspace) = self.state.selected_workspace() else {
-            return false;
-        };
-        if !workspace.supported_agent {
-            return false;
-        }
-
-        matches!(
-            workspace.status,
-            WorkspaceStatus::Main
-                | WorkspaceStatus::Idle
-                | WorkspaceStatus::Done
-                | WorkspaceStatus::Error
-                | WorkspaceStatus::Unknown
-        )
+        workspace_can_start_agent(self.state.selected_workspace())
     }
 
     pub(super) fn open_keybind_help(&mut self) {

@@ -201,6 +201,25 @@ pub fn workspace_can_enter_interactive(
     live_preview_agent_session(workspace).is_some()
 }
 
+pub fn workspace_can_start_agent(workspace: Option<&Workspace>) -> bool {
+    let workspace = match workspace {
+        Some(workspace) => workspace,
+        None => return false,
+    };
+    if !workspace.supported_agent {
+        return false;
+    }
+
+    matches!(
+        workspace.status,
+        WorkspaceStatus::Main
+            | WorkspaceStatus::Idle
+            | WorkspaceStatus::Done
+            | WorkspaceStatus::Error
+            | WorkspaceStatus::Unknown
+    )
+}
+
 pub fn workspace_session_for_preview_tab(
     workspace: Option<&Workspace>,
     preview_tab_is_git: bool,

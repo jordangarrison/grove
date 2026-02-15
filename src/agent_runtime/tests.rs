@@ -13,7 +13,7 @@ use super::{
     normalized_agent_command_override, poll_interval, reconcile_with_sessions,
     sanitize_workspace_name, session_name_for_workspace, session_name_for_workspace_ref, stop_plan,
     strip_mouse_fragments, tmux_capture_error_indicates_missing_session,
-    workspace_can_enter_interactive, workspace_session_for_preview_tab,
+    workspace_can_enter_interactive, workspace_can_start_agent, workspace_session_for_preview_tab,
     workspace_should_poll_status, workspace_status_session_target,
     workspace_status_targets_for_polling, workspace_status_targets_for_polling_with_live_preview,
     zellij_capture_log_path, zellij_capture_log_path_in, zellij_config_path,
@@ -213,6 +213,24 @@ fn workspace_can_enter_interactive_depends_on_preview_tab_mode() {
         Some(&active_workspace),
         false
     ));
+}
+
+#[test]
+fn workspace_can_start_agent_depends_on_status_and_support() {
+    let idle_workspace = fixture_workspace("feature", false);
+    assert!(workspace_can_start_agent(Some(&idle_workspace)));
+    assert!(!workspace_can_start_agent(None));
+
+    let unsupported_workspace = fixture_workspace("feature", false).with_supported_agent(false);
+    assert!(!workspace_can_start_agent(Some(&unsupported_workspace)));
+
+    let mut waiting_workspace = fixture_workspace("feature", false);
+    waiting_workspace.status = WorkspaceStatus::Waiting;
+    assert!(!workspace_can_start_agent(Some(&waiting_workspace)));
+
+    let mut done_workspace = fixture_workspace("feature", false);
+    done_workspace.status = WorkspaceStatus::Done;
+    assert!(workspace_can_start_agent(Some(&done_workspace)));
 }
 
 #[test]
