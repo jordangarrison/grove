@@ -172,7 +172,7 @@ impl MultiplexerAdapter for CommandMultiplexerAdapter {
                 .args(["list-sessions", "-F", "#{session_name}"])
                 .output(),
             MultiplexerKind::Zellij => Command::new("zellij")
-                .args(["list-sessions", "--short"])
+                .args(["list-sessions", "--no-formatting"])
                 .output(),
         };
 
