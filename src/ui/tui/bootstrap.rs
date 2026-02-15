@@ -12,6 +12,30 @@ use crate::mouse::parse_sidebar_ratio;
 
 use super::*;
 
+#[derive(Debug)]
+pub(super) struct AppPaths {
+    sidebar_ratio_path: PathBuf,
+    config_path: PathBuf,
+}
+
+impl AppPaths {
+    pub(super) fn new(sidebar_ratio_path: PathBuf, config_path: PathBuf) -> Self {
+        Self {
+            sidebar_ratio_path,
+            config_path,
+        }
+    }
+}
+
+pub(super) struct AppDependencies {
+    pub(super) tmux_input: Box<dyn TmuxInput>,
+    pub(super) clipboard: Box<dyn ClipboardAccess>,
+    pub(super) paths: AppPaths,
+    pub(super) multiplexer: MultiplexerKind,
+    pub(super) event_log: Box<dyn EventLogger>,
+    pub(super) debug_record_start_ts: Option<u64>,
+}
+
 pub(super) fn default_sidebar_ratio_path() -> PathBuf {
     match std::env::current_dir() {
         Ok(cwd) => cwd.join(SIDEBAR_RATIO_FILENAME),

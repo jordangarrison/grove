@@ -67,8 +67,8 @@ use ansi::ansi_16_color;
 use ansi::ansi_line_to_styled_line;
 mod bootstrap;
 use bootstrap::{
-    bootstrap_data_for_projects, filter_branches, input_for_multiplexer, load_local_branches,
-    project_display_name, project_paths_equal, read_workspace_launch_prompt,
+    AppDependencies, AppPaths, bootstrap_data_for_projects, filter_branches, input_for_multiplexer,
+    load_local_branches, project_display_name, project_paths_equal, read_workspace_launch_prompt,
 };
 mod terminal;
 use terminal::{
@@ -283,30 +283,6 @@ struct InteractiveSendCompletion {
     send: QueuedInteractiveSend,
     tmux_send_ms: u64,
     error: Option<String>,
-}
-
-#[derive(Debug)]
-struct AppPaths {
-    sidebar_ratio_path: PathBuf,
-    config_path: PathBuf,
-}
-
-impl AppPaths {
-    fn new(sidebar_ratio_path: PathBuf, config_path: PathBuf) -> Self {
-        Self {
-            sidebar_ratio_path,
-            config_path,
-        }
-    }
-}
-
-struct AppDependencies {
-    tmux_input: Box<dyn TmuxInput>,
-    clipboard: Box<dyn ClipboardAccess>,
-    paths: AppPaths,
-    multiplexer: MultiplexerKind,
-    event_log: Box<dyn EventLogger>,
-    debug_record_start_ts: Option<u64>,
 }
 
 struct GroveApp {
