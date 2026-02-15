@@ -27,7 +27,7 @@ use ftui::text::{
     graphemes as text_graphemes,
 };
 use ftui::widgets::Widget;
-use ftui::widgets::block::Block;
+use ftui::widgets::block::{Alignment as BlockAlignment, Block};
 use ftui::widgets::borders::Borders;
 use ftui::widgets::modal::{BackdropConfig, Modal, ModalSizeConstraints};
 use ftui::widgets::paragraph::Paragraph;
@@ -307,6 +307,41 @@ fn truncate_for_log(value: &str, max_chars: usize) -> String {
     value.chars().take(max_chars).collect()
 }
 
+fn truncate_to_display_width(value: &str, max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+    if text_display_width(value) <= max_width {
+        return value.to_string();
+    }
+    if max_width == 1 {
+        return "…".to_string();
+    }
+
+    let mut out = String::new();
+    let mut width = 0usize;
+    let target_width = max_width.saturating_sub(1);
+    for grapheme in text_graphemes(value) {
+        let grapheme_width = line_visual_width(grapheme);
+        if width.saturating_add(grapheme_width) > target_width {
+            break;
+        }
+        out.push_str(grapheme);
+        width = width.saturating_add(grapheme_width);
+    }
+    out.push('…');
+    out
+}
+
+fn pad_or_truncate_to_display_width(value: &str, width: usize) -> String {
+    let mut out = truncate_to_display_width(value, width);
+    let used = text_display_width(out.as_str());
+    if used < width {
+        out.push_str(&" ".repeat(width.saturating_sub(used)));
+    }
+    out
+}
+
 fn ansi_line_to_plain_text(line: &str) -> String {
     let mut plain = String::with_capacity(line.len());
     let mut chars = line.chars().peekable();
@@ -551,6 +586,7 @@ impl Widget for OverlayModalContent<'_> {
 
         let block = Block::new()
             .title(self.title)
+            .title_alignment(BlockAlignment::Center)
             .borders(Borders::ALL)
             .style(content_style)
             .border_style(Style::new().fg(self.border_color).bold());
@@ -6815,55 +6851,174 @@ impl GroveApp {
         let dialog_width = area.width.saturating_sub(8).min(100);
         let dialog_height = 11u16;
         let theme = ui_theme();
+        let content_width = usize::from(dialog_width.saturating_sub(2));
         let focused = |field| dialog.focused_field == field;
-        let input_line = |value: &str, placeholder: &str, is_focused: bool| {
-            let content = if value.is_empty() { placeholder } else { value };
-            if is_focused {
-                format!("> [{content}]")
-            } else {
-                format!("  [{content}]")
+        let truncate_to_width = |text: &str, max_width: usize| -> String {
+            if max_width == 0 {
+                return String::new();
             }
-        };
-        let unsafe_row = format!(
-            "{} Unsafe launch: {}",
-            if focused(LaunchDialogField::Unsafe) {
-                ">"
-            } else {
-                " "
-            },
-            if dialog.skip_permissions { "on" } else { "off" }
-        );
+            if text_display_width(text) <= max_width {
+                return text.to_string();
+            }
+            if max_width == 1 {
+                return "…".to_string();
+            }
 
-        let body = FtText::from_lines(vec![
-            FtLine::raw("Prompt:"),
-            FtLine::raw(input_line(
-                dialog.prompt.as_str(),
-                "(empty)",
-                focused(LaunchDialogField::Prompt),
-            )),
-            FtLine::raw(""),
-            FtLine::raw("Pre-launch Command:"),
-            FtLine::raw(input_line(
-                dialog.pre_launch_command.as_str(),
-                "(empty)",
-                focused(LaunchDialogField::PreLaunchCommand),
-            )),
-            FtLine::raw(""),
-            FtLine::raw(unsafe_row),
-            FtLine::raw(""),
-            FtLine::raw(format!(
-                "{} Start   {} Cancel",
-                if focused(LaunchDialogField::StartButton) {
-                    "[*]"
-                } else {
-                    "[ ]"
-                },
-                if focused(LaunchDialogField::CancelButton) {
-                    "[*]"
-                } else {
-                    "[ ]"
+            let mut out = String::new();
+            let mut width = 0usize;
+            let target_width = max_width.saturating_sub(1);
+            for grapheme in text_graphemes(text) {
+                let grapheme_width = line_visual_width(grapheme);
+                if width.saturating_add(grapheme_width) > target_width {
+                    break;
                 }
-            )),
+                out.push_str(grapheme);
+                width = width.saturating_add(grapheme_width);
+            }
+            out.push('…');
+            out
+        };
+        let padded_text = |text: &str| {
+            let mut out = truncate_to_width(text, content_width);
+            let width = text_display_width(out.as_str());
+            if width < content_width {
+                out.push_str(&" ".repeat(content_width.saturating_sub(width)));
+            }
+            out
+        };
+        let field_row = |label: &str, value: &str, placeholder: &str, is_focused: bool| {
+            let row_bg = if is_focused {
+                theme.surface1
+            } else {
+                theme.base
+            };
+            let marker = if is_focused { ">" } else { " " };
+            let badge = format!("[{label}] ");
+            let prefix = format!("{marker} {badge}");
+            let prefix_width = text_display_width(prefix.as_str());
+            let value_raw = if value.is_empty() { placeholder } else { value };
+            let value = truncate_to_width(value_raw, content_width.saturating_sub(prefix_width));
+            let value_width = text_display_width(value.as_str());
+            let pad =
+                " ".repeat(content_width.saturating_sub(prefix_width.saturating_add(value_width)));
+            let marker_style = Style::new()
+                .fg(if is_focused {
+                    theme.yellow
+                } else {
+                    theme.overlay0
+                })
+                .bg(row_bg)
+                .bold();
+            let badge_style = Style::new().fg(theme.blue).bg(row_bg).bold();
+            let value_style = Style::new()
+                .fg(if value.is_empty() {
+                    theme.overlay0
+                } else {
+                    theme.text
+                })
+                .bg(row_bg)
+                .bold();
+            FtLine::from_spans(vec![
+                FtSpan::styled(marker, marker_style),
+                FtSpan::styled(" ", Style::new().bg(row_bg)),
+                FtSpan::styled(badge, badge_style),
+                FtSpan::styled(value, value_style),
+                FtSpan::styled(pad, Style::new().bg(row_bg)),
+            ])
+        };
+        let unsafe_focused = focused(LaunchDialogField::Unsafe);
+        let unsafe_row_bg = if unsafe_focused {
+            theme.surface1
+        } else {
+            theme.base
+        };
+        let unsafe_marker_style = Style::new()
+            .fg(if unsafe_focused {
+                theme.yellow
+            } else {
+                theme.overlay0
+            })
+            .bg(unsafe_row_bg)
+            .bold();
+        let unsafe_badge_style = Style::new().fg(theme.peach).bg(unsafe_row_bg).bold();
+        let unsafe_state = if dialog.skip_permissions {
+            "on, bypass approvals and sandbox"
+        } else {
+            "off, standard safety checks"
+        };
+        let unsafe_prefix = "  [Unsafe] ";
+        let unsafe_value = truncate_to_width(
+            unsafe_state,
+            content_width.saturating_sub(text_display_width(unsafe_prefix)),
+        );
+        let unsafe_used = text_display_width(unsafe_prefix)
+            .saturating_add(text_display_width(unsafe_value.as_str()));
+        let unsafe_pad = " ".repeat(content_width.saturating_sub(unsafe_used));
+        let start_focused = focused(LaunchDialogField::StartButton);
+        let cancel_focused = focused(LaunchDialogField::CancelButton);
+        let actions_bg = if start_focused || cancel_focused {
+            theme.surface1
+        } else {
+            theme.base
+        };
+        let action_prefix = if start_focused || cancel_focused {
+            "> "
+        } else {
+            "  "
+        };
+        let start_label = if start_focused { "[Start]" } else { " Start " };
+        let cancel_label = if cancel_focused {
+            "[Cancel]"
+        } else {
+            " Cancel "
+        };
+        let actions_text = format!("{action_prefix}{start_label}   {cancel_label}");
+        let actions_full = padded_text(actions_text.as_str());
+        let action_hint = padded_text("Tab move, Space toggle unsafe, Enter start, Esc cancel");
+        let body = FtText::from_lines(vec![
+            FtLine::from_spans(vec![FtSpan::styled(
+                padded_text("Launch profile"),
+                Style::new().fg(theme.overlay0),
+            )]),
+            FtLine::raw(""),
+            field_row(
+                "Prompt",
+                dialog.prompt.as_str(),
+                "Describe initial task for the agent",
+                focused(LaunchDialogField::Prompt),
+            ),
+            field_row(
+                "PreLaunch",
+                dialog.pre_launch_command.as_str(),
+                "Optional command to run before launch",
+                focused(LaunchDialogField::PreLaunchCommand),
+            ),
+            FtLine::from_spans(vec![
+                FtSpan::styled(if unsafe_focused { ">" } else { " " }, unsafe_marker_style),
+                FtSpan::styled(" ", Style::new().bg(unsafe_row_bg)),
+                FtSpan::styled("[Unsafe] ", unsafe_badge_style),
+                FtSpan::styled(
+                    unsafe_value,
+                    Style::new()
+                        .fg(if dialog.skip_permissions {
+                            theme.red
+                        } else {
+                            theme.text
+                        })
+                        .bg(unsafe_row_bg)
+                        .bold(),
+                ),
+                FtSpan::styled(unsafe_pad, Style::new().bg(unsafe_row_bg)),
+            ]),
+            FtLine::raw(""),
+            FtLine::from_spans(vec![FtSpan::styled(
+                actions_full,
+                Style::new().fg(theme.text).bg(actions_bg).bold(),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                action_hint,
+                Style::new().fg(theme.overlay0),
+            )]),
         ]);
         let content = OverlayModalContent {
             title: "Start Agent",
@@ -6896,21 +7051,23 @@ impl GroveApp {
         let dialog_width = area.width.saturating_sub(8).min(96);
         let dialog_height = 16u16;
         let theme = ui_theme();
+        let content_width = usize::from(dialog_width.saturating_sub(2));
         let focused = |field| dialog.focused_field == field;
-        let checkbox = if dialog.delete_local_branch {
-            "[x]"
-        } else {
-            "[ ]"
+        let field_row = |label: &str, value: &str, value_fg: PackedRgba| {
+            let badge = format!("[{label}] ");
+            let prefix = format!("  {badge}");
+            let available = content_width.saturating_sub(text_display_width(prefix.as_str()));
+            let rendered = truncate_to_display_width(value, available);
+            let used = text_display_width(prefix.as_str())
+                .saturating_add(text_display_width(rendered.as_str()));
+            let pad = " ".repeat(content_width.saturating_sub(used));
+            FtLine::from_spans(vec![
+                FtSpan::styled("  ", Style::new().bg(theme.base)),
+                FtSpan::styled(badge, Style::new().fg(theme.blue).bg(theme.base).bold()),
+                FtSpan::styled(rendered, Style::new().fg(value_fg).bg(theme.base)),
+                FtSpan::styled(pad, Style::new().bg(theme.base)),
+            ])
         };
-        let checkbox_row = format!(
-            "{} {} Delete local branch",
-            if focused(DeleteDialogField::DeleteLocalBranch) {
-                ">"
-            } else {
-                " "
-            },
-            checkbox
-        );
         let warning_lines = if dialog.is_missing {
             (
                 "  • Directory already removed",
@@ -6922,28 +7079,76 @@ impl GroveApp {
                 "  • Uncommitted changes will be lost",
             )
         };
+        let cleanup_focused = focused(DeleteDialogField::DeleteLocalBranch);
+        let cleanup_bg = if cleanup_focused {
+            theme.surface1
+        } else {
+            theme.base
+        };
+        let cleanup_marker_style = Style::new()
+            .fg(if cleanup_focused {
+                theme.yellow
+            } else {
+                theme.overlay0
+            })
+            .bg(cleanup_bg)
+            .bold();
+        let cleanup_badge_style = Style::new().fg(theme.peach).bg(cleanup_bg).bold();
+        let cleanup_state = if dialog.delete_local_branch {
+            format!("enabled, remove '{}' branch locally", dialog.branch)
+        } else {
+            "disabled, keep local branch".to_string()
+        };
+        let cleanup_prefix = "  [BranchCleanup] ";
+        let cleanup_value = truncate_to_display_width(
+            cleanup_state.as_str(),
+            content_width.saturating_sub(text_display_width(cleanup_prefix)),
+        );
+        let cleanup_used = text_display_width(cleanup_prefix)
+            .saturating_add(text_display_width(cleanup_value.as_str()));
+        let cleanup_pad = " ".repeat(content_width.saturating_sub(cleanup_used));
+        let delete_focused = focused(DeleteDialogField::DeleteButton);
+        let cancel_focused = focused(DeleteDialogField::CancelButton);
+        let actions_bg = if delete_focused || cancel_focused {
+            theme.surface1
+        } else {
+            theme.base
+        };
+        let actions_prefix = if delete_focused || cancel_focused {
+            "> "
+        } else {
+            "  "
+        };
+        let delete_label = if delete_focused {
+            "[Delete]"
+        } else {
+            " Delete "
+        };
+        let cancel_label = if cancel_focused {
+            "[Cancel]"
+        } else {
+            " Cancel "
+        };
+        let actions_row = pad_or_truncate_to_display_width(
+            format!("{actions_prefix}{delete_label}   {cancel_label}").as_str(),
+            content_width,
+        );
+        let delete_hint = pad_or_truncate_to_display_width(
+            "Tab move, Space toggle branch cleanup, Enter or D delete, Esc cancel",
+            content_width,
+        );
+        let path = dialog.path.display().to_string();
         let body = FtText::from_lines(vec![
-            FtLine::from_spans(vec![
-                FtSpan::styled("Name:   ", Style::new().fg(theme.subtext0)),
-                FtSpan::styled(
-                    dialog.workspace_name.as_str(),
-                    Style::new().fg(theme.text).bold(),
-                ),
-            ]),
-            FtLine::from_spans(vec![
-                FtSpan::styled("Branch: ", Style::new().fg(theme.subtext0)),
-                FtSpan::styled(dialog.branch.as_str(), Style::new().fg(theme.text)),
-            ]),
-            FtLine::from_spans(vec![
-                FtSpan::styled("Path:   ", Style::new().fg(theme.subtext0)),
-                FtSpan::styled(
-                    dialog.path.display().to_string(),
-                    Style::new().fg(theme.overlay0),
-                ),
-            ]),
-            FtLine::raw(""),
             FtLine::from_spans(vec![FtSpan::styled(
-                "This will:",
+                pad_or_truncate_to_display_width("Deletion plan", content_width),
+                Style::new().fg(theme.overlay0),
+            )]),
+            FtLine::raw(""),
+            field_row("Name", dialog.workspace_name.as_str(), theme.text),
+            field_row("Branch", dialog.branch.as_str(), theme.text),
+            field_row("Path", path.as_str(), theme.overlay0),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width("  [Risk] Changes are destructive", content_width),
                 Style::new().fg(theme.peach).bold(),
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
@@ -6955,32 +7160,35 @@ impl GroveApp {
                 Style::new().fg(theme.subtext0),
             )]),
             FtLine::raw(""),
+            FtLine::from_spans(vec![
+                FtSpan::styled(
+                    if cleanup_focused { ">" } else { " " },
+                    cleanup_marker_style,
+                ),
+                FtSpan::styled(" ", Style::new().bg(cleanup_bg)),
+                FtSpan::styled("[BranchCleanup] ", cleanup_badge_style),
+                FtSpan::styled(
+                    cleanup_value,
+                    Style::new()
+                        .fg(if dialog.delete_local_branch {
+                            theme.red
+                        } else {
+                            theme.text
+                        })
+                        .bg(cleanup_bg)
+                        .bold(),
+                ),
+                FtSpan::styled(cleanup_pad, Style::new().bg(cleanup_bg)),
+            ]),
+            FtLine::raw(""),
             FtLine::from_spans(vec![FtSpan::styled(
-                "Branch Cleanup (Optional)",
-                Style::new().fg(theme.text).bold(),
+                actions_row,
+                Style::new().fg(theme.text).bg(actions_bg).bold(),
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
-                checkbox_row,
-                Style::new().fg(theme.text),
-            )]),
-            FtLine::from_spans(vec![FtSpan::styled(
-                format!("  Removes '{}' locally", dialog.branch),
+                delete_hint,
                 Style::new().fg(theme.overlay0),
             )]),
-            FtLine::raw(""),
-            FtLine::raw(format!(
-                "{} Delete   {} Cancel",
-                if focused(DeleteDialogField::DeleteButton) {
-                    "[*]"
-                } else {
-                    "[ ]"
-                },
-                if focused(DeleteDialogField::CancelButton) {
-                    "[*]"
-                } else {
-                    "[ ]"
-                }
-            )),
         ]);
 
         let content = OverlayModalContent {
@@ -7014,37 +7222,92 @@ impl GroveApp {
         let dialog_width = area.width.saturating_sub(12).min(72);
         let dialog_height = 12u16;
         let theme = ui_theme();
+        let content_width = usize::from(dialog_width.saturating_sub(2));
         let focused = |field| dialog.focused_field == field;
         let current = dialog.multiplexer.label();
+        let multiplexer_focused = focused(SettingsDialogField::Multiplexer);
+        let multiplexer_bg = if multiplexer_focused {
+            theme.surface1
+        } else {
+            theme.base
+        };
+        let multiplexer_marker_style = Style::new()
+            .fg(if multiplexer_focused {
+                theme.yellow
+            } else {
+                theme.overlay0
+            })
+            .bg(multiplexer_bg)
+            .bold();
+        let multiplexer_prefix = "  [Multiplexer] ";
+        let multiplexer_value = truncate_to_display_width(
+            current,
+            content_width.saturating_sub(text_display_width(multiplexer_prefix)),
+        );
+        let multiplexer_used = text_display_width(multiplexer_prefix)
+            .saturating_add(text_display_width(multiplexer_value.as_str()));
+        let multiplexer_pad = " ".repeat(content_width.saturating_sub(multiplexer_used));
+        let save_focused = focused(SettingsDialogField::SaveButton);
+        let cancel_focused = focused(SettingsDialogField::CancelButton);
+        let actions_bg = if save_focused || cancel_focused {
+            theme.surface1
+        } else {
+            theme.base
+        };
+        let actions_prefix = if save_focused || cancel_focused {
+            "> "
+        } else {
+            "  "
+        };
+        let save_label = if save_focused { "[Save]" } else { " Save " };
+        let cancel_label = if cancel_focused {
+            "[Cancel]"
+        } else {
+            " Cancel "
+        };
+        let actions_row = pad_or_truncate_to_display_width(
+            format!("{actions_prefix}{save_label}   {cancel_label}").as_str(),
+            content_width,
+        );
         let body = FtText::from_lines(vec![
-            FtLine::raw("Global Settings"),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width("Global settings", content_width),
+                Style::new().fg(theme.overlay0),
+            )]),
             FtLine::raw(""),
-            FtLine::raw(format!(
-                "{} Multiplexer: [{}]",
-                if focused(SettingsDialogField::Multiplexer) {
-                    ">"
-                } else {
-                    " "
-                },
-                current
-            )),
-            FtLine::raw("  h/l, Left/Right, Space toggles"),
+            FtLine::from_spans(vec![
+                FtSpan::styled(
+                    if multiplexer_focused { ">" } else { " " },
+                    multiplexer_marker_style,
+                ),
+                FtSpan::styled(" ", Style::new().bg(multiplexer_bg)),
+                FtSpan::styled(
+                    "[Multiplexer] ",
+                    Style::new().fg(theme.blue).bg(multiplexer_bg).bold(),
+                ),
+                FtSpan::styled(
+                    multiplexer_value,
+                    Style::new().fg(theme.text).bg(multiplexer_bg).bold(),
+                ),
+                FtSpan::styled(multiplexer_pad, Style::new().bg(multiplexer_bg)),
+            ]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width("  h/l, Left/Right, Space toggles", content_width),
+                Style::new().fg(theme.overlay0),
+            )]),
             FtLine::raw(""),
-            FtLine::raw(format!(
-                "{} Save   {} Cancel",
-                if focused(SettingsDialogField::SaveButton) {
-                    "[*]"
-                } else {
-                    "[ ]"
-                },
-                if focused(SettingsDialogField::CancelButton) {
-                    "[*]"
-                } else {
-                    "[ ]"
-                }
-            )),
+            FtLine::from_spans(vec![FtSpan::styled(
+                actions_row,
+                Style::new().fg(theme.text).bg(actions_bg).bold(),
+            )]),
             FtLine::raw(""),
-            FtLine::raw("Saved to ~/.config/grove/config.toml"),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    "Saved to ~/.config/grove/config.toml",
+                    content_width,
+                ),
+                Style::new().fg(theme.overlay0),
+            )]),
         ]);
 
         let content = OverlayModalContent {
@@ -7078,34 +7341,89 @@ impl GroveApp {
         let dialog_width = area.width.saturating_sub(8).min(108);
         let dialog_height = area.height.saturating_sub(6).clamp(18, 26);
         let theme = ui_theme();
+        let content_width = usize::from(dialog_width.saturating_sub(2));
 
         let lines = vec![
-            FtLine::raw("Global (list + preview):"),
-            FtLine::raw("  ? help, q quit, Tab/h/l switch pane, Enter open/attach, Esc list pane"),
-            FtLine::raw("  n new, s start, x stop, D delete, S settings, ! unsafe toggle"),
-            FtLine::raw(""),
-            FtLine::raw("List pane:"),
-            FtLine::raw("  j/k or Up/Down move selection"),
-            FtLine::raw(""),
-            FtLine::raw("Preview pane:"),
-            FtLine::raw("  j/k or Up/Down scroll, PgUp/PgDn page, G bottom"),
-            FtLine::raw(""),
-            FtLine::raw("Interactive mode:"),
-            FtLine::raw("  type sends input to agent"),
-            FtLine::raw("  Esc Esc or Ctrl+\\ exit, Alt+C copy, Alt+V paste"),
-            FtLine::raw(""),
-            FtLine::raw(
-                "Create dialog: Tab/S-Tab fields, j/k or C-n/C-p move, h/l buttons, Enter/Esc",
-            ),
-            FtLine::raw(
-                "Start dialog:  Tab/S-Tab fields, Space toggle unsafe, h/l buttons, Enter/Esc",
-            ),
-            FtLine::raw(
-                "Delete dialog: Tab/S-Tab fields, j/k move, Space toggle, Enter/D confirm, Esc",
-            ),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width("[Global]", content_width),
+                Style::new().fg(theme.blue).bold(),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    "  ? help, q quit, Tab/h/l switch pane, Enter open/attach, Esc list pane",
+                    content_width,
+                ),
+                Style::new().fg(theme.text),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    "  n new, s start, x stop, D delete, S settings, ! unsafe toggle",
+                    content_width,
+                ),
+                Style::new().fg(theme.text),
+            )]),
             FtLine::raw(""),
             FtLine::from_spans(vec![FtSpan::styled(
-                "Close help: Esc, Enter, or ?",
+                pad_or_truncate_to_display_width("[List]", content_width),
+                Style::new().fg(theme.blue).bold(),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width("  j/k or Up/Down move selection", content_width),
+                Style::new().fg(theme.text),
+            )]),
+            FtLine::raw(""),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width("[Preview]", content_width),
+                Style::new().fg(theme.blue).bold(),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    "  j/k or Up/Down scroll, PgUp/PgDn page, G bottom",
+                    content_width,
+                ),
+                Style::new().fg(theme.text),
+            )]),
+            FtLine::raw(""),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width("[Interactive]", content_width),
+                Style::new().fg(theme.blue).bold(),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width("  type sends input to agent", content_width),
+                Style::new().fg(theme.text),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    "  Esc Esc or Ctrl+\\ exit, Alt+C copy, Alt+V paste",
+                    content_width,
+                ),
+                Style::new().fg(theme.text),
+            )]),
+            FtLine::raw(""),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    "[Modals] Create: Tab/S-Tab fields, j/k or C-n/C-p move, h/l buttons, Enter/Esc",
+                    content_width,
+                ),
+                Style::new().fg(theme.subtext0),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    "[Modals] Start:  Tab/S-Tab fields, Space toggle unsafe, h/l buttons, Enter/Esc",
+                    content_width,
+                ),
+                Style::new().fg(theme.subtext0),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    "[Modals] Delete: Tab/S-Tab fields, j/k move, Space toggle, Enter/D confirm, Esc",
+                    content_width,
+                ),
+                Style::new().fg(theme.subtext0),
+            )]),
+            FtLine::raw(""),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width("Close help: Esc, Enter, or ?", content_width),
                 Style::new().fg(theme.lavender).bold(),
             )]),
         ];
@@ -7144,21 +7462,48 @@ impl GroveApp {
         let content_width = usize::from(dialog_width.saturating_sub(2));
 
         let focused = |field| dialog.focused_field == field;
-        let input_line = |value: &str, placeholder: &str, is_focused: bool| {
-            let content = if value.is_empty() { placeholder } else { value };
-            if is_focused {
-                format!("> [{content}]")
+        let field_row = |label: &str, value: &str, placeholder: &str, is_focused: bool| {
+            let row_bg = if is_focused {
+                theme.surface1
             } else {
-                format!("  [{content}]")
-            }
-        };
-        let pad_to_width = |text: String| {
-            let mut padded = text;
-            let width = text_display_width(padded.as_str());
-            if width < content_width {
-                padded.push_str(&" ".repeat(content_width - width));
-            }
-            padded
+                theme.base
+            };
+            let marker = if is_focused { ">" } else { " " };
+            let badge = format!("[{label}] ");
+            let prefix = format!("{marker} {badge}");
+            let prefix_width = text_display_width(prefix.as_str());
+            let value_raw = if value.is_empty() { placeholder } else { value };
+            let rendered =
+                truncate_to_display_width(value_raw, content_width.saturating_sub(prefix_width));
+            let used = prefix_width.saturating_add(text_display_width(rendered.as_str()));
+            let pad = " ".repeat(content_width.saturating_sub(used));
+            FtLine::from_spans(vec![
+                FtSpan::styled(
+                    marker,
+                    Style::new()
+                        .fg(if is_focused {
+                            theme.yellow
+                        } else {
+                            theme.overlay0
+                        })
+                        .bg(row_bg)
+                        .bold(),
+                ),
+                FtSpan::styled(" ", Style::new().bg(row_bg)),
+                FtSpan::styled(badge, Style::new().fg(theme.blue).bg(row_bg).bold()),
+                FtSpan::styled(
+                    rendered,
+                    Style::new()
+                        .fg(if value.is_empty() {
+                            theme.overlay0
+                        } else {
+                            theme.text
+                        })
+                        .bg(row_bg)
+                        .bold(),
+                ),
+                FtSpan::styled(pad, Style::new().bg(row_bg)),
+            ])
         };
         let selected_agent = dialog.agent;
         let selected_agent_style = Style::new()
@@ -7169,55 +7514,74 @@ impl GroveApp {
                 theme.surface0
             })
             .bold();
-        let unselected_agent_style = Style::new().fg(theme.subtext0);
+        let unselected_agent_style = Style::new().fg(theme.subtext0).bg(theme.base);
         let selected_dropdown_style = Style::new().fg(theme.text).bg(theme.surface1).bold();
-        let unselected_dropdown_style = Style::new().fg(theme.subtext0);
+        let unselected_dropdown_style = Style::new().fg(theme.subtext0).bg(theme.base);
         let agent_row = |agent: AgentType| {
             let is_selected = selected_agent == agent;
-            let prefix = if is_selected { "▸ " } else { "  " };
-            let line = format!("{prefix}{}", agent.label());
+            let prefix = if is_selected { "▸" } else { " " };
+            let line = pad_or_truncate_to_display_width(
+                format!("{} [Agent] {}", prefix, agent.label()).as_str(),
+                content_width,
+            );
             if is_selected {
-                FtLine::from_spans(vec![FtSpan::styled(
-                    pad_to_width(line),
-                    selected_agent_style,
-                )])
+                FtLine::from_spans(vec![FtSpan::styled(line, selected_agent_style)])
             } else {
                 FtLine::from_spans(vec![FtSpan::styled(line, unselected_agent_style)])
             }
         };
 
         let mut lines = vec![
-            FtLine::raw("Name:"),
-            FtLine::raw(input_line(
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width("Workspace setup", content_width),
+                Style::new().fg(theme.overlay0),
+            )]),
+            FtLine::raw(""),
+            field_row(
+                "Name",
                 dialog.workspace_name.as_str(),
                 "feature-name",
                 focused(CreateDialogField::WorkspaceName),
-            )),
-            FtLine::raw(""),
-            FtLine::raw("Base Branch (default: current):"),
-            FtLine::raw(input_line(
+            ),
+            field_row(
+                "BaseBranch",
                 dialog.base_branch.as_str(),
-                "main",
+                "main (default: current branch)",
                 focused(CreateDialogField::BaseBranch),
-            )),
+            ),
         ];
         if focused(CreateDialogField::BaseBranch) {
             if self.create_branch_all.is_empty() {
-                lines.push(FtLine::raw("  Loading branches..."));
+                lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                    pad_or_truncate_to_display_width(
+                        "  [Branches] Loading branches...",
+                        content_width,
+                    ),
+                    Style::new().fg(theme.overlay0),
+                )]));
             } else if self.create_branch_filtered.is_empty() {
-                lines.push(FtLine::raw("  No matching branches"));
+                lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                    pad_or_truncate_to_display_width(
+                        "  [Branches] No matching branches",
+                        content_width,
+                    ),
+                    Style::new().fg(theme.overlay0),
+                )]));
             } else {
-                let max_dropdown = 5usize;
+                let max_dropdown = 4usize;
                 for (index, branch) in self.create_branch_filtered.iter().enumerate() {
                     if index >= max_dropdown {
                         break;
                     }
                     let is_selected = index == self.create_branch_index;
-                    let prefix = if is_selected { "▸ " } else { "  " };
-                    let line = format!("{prefix}{branch}");
+                    let prefix = if is_selected { "▸" } else { " " };
+                    let line = pad_or_truncate_to_display_width(
+                        format!("{prefix} [Branches] {branch}").as_str(),
+                        content_width,
+                    );
                     if is_selected {
                         lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                            pad_to_width(line),
+                            line,
                             selected_dropdown_style,
                         )]));
                     } else {
@@ -7228,32 +7592,61 @@ impl GroveApp {
                     }
                 }
                 if self.create_branch_filtered.len() > max_dropdown {
-                    lines.push(FtLine::raw(format!(
-                        "  ... and {} more",
-                        self.create_branch_filtered.len() - max_dropdown
-                    )));
+                    lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                        pad_or_truncate_to_display_width(
+                            format!(
+                                "  [Branches] ... and {} more",
+                                self.create_branch_filtered.len() - max_dropdown
+                            )
+                            .as_str(),
+                            content_width,
+                        ),
+                        Style::new().fg(theme.overlay0),
+                    )]));
                 }
             }
         }
 
         lines.push(FtLine::raw(""));
-        lines.push(FtLine::raw("Agent:"));
         lines.push(agent_row(AgentType::Claude));
         lines.push(agent_row(AgentType::Codex));
         lines.push(FtLine::raw(""));
-        lines.push(FtLine::raw(format!(
-            "{} Create   {} Cancel",
-            if focused(CreateDialogField::CreateButton) {
-                "[*]"
-            } else {
-                "[ ]"
-            },
-            if focused(CreateDialogField::CancelButton) {
-                "[*]"
-            } else {
-                "[ ]"
-            }
-        )));
+        let create_focused = focused(CreateDialogField::CreateButton);
+        let cancel_focused = focused(CreateDialogField::CancelButton);
+        let actions_bg = if create_focused || cancel_focused {
+            theme.surface1
+        } else {
+            theme.base
+        };
+        let actions_prefix = if create_focused || cancel_focused {
+            "> "
+        } else {
+            "  "
+        };
+        let create_label = if create_focused {
+            "[Create]"
+        } else {
+            " Create "
+        };
+        let cancel_label = if cancel_focused {
+            "[Cancel]"
+        } else {
+            " Cancel "
+        };
+        lines.push(FtLine::from_spans(vec![FtSpan::styled(
+            pad_or_truncate_to_display_width(
+                format!("{actions_prefix}{create_label}   {cancel_label}").as_str(),
+                content_width,
+            ),
+            Style::new().fg(theme.text).bg(actions_bg).bold(),
+        )]));
+        lines.push(FtLine::from_spans(vec![FtSpan::styled(
+            pad_or_truncate_to_display_width(
+                "Tab move, j/k or C-n/C-p adjust fields, Enter create, Esc cancel",
+                content_width,
+            ),
+            Style::new().fg(theme.overlay0),
+        )]));
         let content = OverlayModalContent {
             title: "New Workspace",
             body: FtText::from_lines(lines),
