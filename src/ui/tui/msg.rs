@@ -1,4 +1,5 @@
 use super::*;
+use crate::agent_runtime::WorkspaceStatusTarget;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Msg {
@@ -41,13 +42,7 @@ pub(super) struct CursorCapture {
     pub(super) result: Result<String, String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct WorkspaceStatusPollTarget {
-    pub(super) workspace_name: String,
-    pub(super) workspace_path: PathBuf,
-    pub(super) session_name: String,
-    pub(super) supported_agent: bool,
-}
+pub(super) type WorkspaceStatusPollTarget = WorkspaceStatusTarget;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct WorkspaceStatusCapture {

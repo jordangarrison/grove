@@ -622,7 +622,7 @@
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
 ### Phase 6i, move workspace status poll target construction to `agent_runtime`
-- Commit: uncommitted (worktree changes)
+- Commit: `6136c11`
 - Changes:
   - added runtime struct + helper in `src/agent_runtime.rs`:
     - `WorkspaceStatusTarget`
@@ -638,13 +638,25 @@
   - `cargo test --lib agent_runtime::tests -- --nocapture` (pass, 41)
   - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
 
+### Phase 6j, dedupe poll-target type by aliasing UI to runtime target
+- Commit: uncommitted (worktree changes)
+- Changes:
+  - updated `src/ui/tui/msg.rs`:
+    - replaced local `WorkspaceStatusPollTarget` struct with type alias to runtime `WorkspaceStatusTarget`
+  - updated `src/ui/tui/update.rs`:
+    - removed now-redundant mapping shim in `workspace_status_poll_targets`
+    - method now returns runtime poll targets directly
+  - no behavior changes, type ownership/boundary cleanup only
+- Gates:
+  - `cargo test --lib ui::tui::tests -- --nocapture` (pass, 180)
+  - `cargo test --lib` (pass, 288)
+
 ## Current State
-- Worktree has uncommitted phase 6i changes:
-  - `src/agent_runtime.rs`
-  - `src/agent_runtime/tests.rs`
-  - `src/ui/tui/mod.rs`
+- Worktree has uncommitted phase 6j changes:
+  - `src/ui/tui/msg.rs`
   - `src/ui/tui/update.rs`
 - Recent refactor commits on local `master`:
+  - `6136c11` phase 6i
   - `af85ec7` phase 6h
   - `5bfd1a4` phase 6g
   - `a9c50a6` phase 6f

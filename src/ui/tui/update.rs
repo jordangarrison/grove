@@ -727,14 +727,6 @@ impl GroveApp {
             self.multiplexer,
             selected_live_session,
         )
-        .into_iter()
-        .map(|target| WorkspaceStatusPollTarget {
-            workspace_name: target.workspace_name,
-            workspace_path: target.workspace_path,
-            session_name: target.session_name,
-            supported_agent: target.supported_agent,
-        })
-        .collect()
     }
 
     fn apply_workspace_status_capture(&mut self, capture: WorkspaceStatusCapture) {
