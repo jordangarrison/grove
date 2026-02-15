@@ -24,10 +24,10 @@ use crate::application::interactive::InteractiveState;
 use crate::application::workspace_lifecycle::{
     BranchMode, CreateWorkspaceRequest, CreateWorkspaceResult,
 };
-use crate::config::{MultiplexerKind, ProjectConfig};
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
+use crate::infrastructure::config::{MultiplexerKind, ProjectConfig};
 use crate::ui::state::{PaneFocus, UiMode};
 use ftui::core::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
@@ -1395,7 +1395,8 @@ fn settings_dialog_save_switches_multiplexer_and_persists_config() {
 
     assert!(app.settings_dialog.is_none());
     assert_eq!(app.multiplexer, MultiplexerKind::Zellij);
-    let loaded = crate::config::load_from_path(&app.config_path).expect("config should load");
+    let loaded = crate::infrastructure::config::load_from_path(&app.config_path)
+        .expect("config should load");
     assert_eq!(loaded.multiplexer, MultiplexerKind::Zellij);
 }
 

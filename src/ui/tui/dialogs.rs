@@ -1267,7 +1267,7 @@ impl GroveApp {
             multiplexer: self.multiplexer,
             projects: self.projects.clone(),
         };
-        crate::config::save_to_path(&self.config_path, &config)
+        crate::infrastructure::config::save_to_path(&self.config_path, &config)
     }
 
     fn add_project_from_dialog(&mut self) {
@@ -1386,7 +1386,8 @@ impl GroveApp {
             multiplexer: selected,
             projects: self.projects.clone(),
         };
-        if let Err(error) = crate::config::save_to_path(&self.config_path, &config) {
+        if let Err(error) = crate::infrastructure::config::save_to_path(&self.config_path, &config)
+        {
             self.show_toast(format!("settings save failed: {error}"), true);
             return;
         }

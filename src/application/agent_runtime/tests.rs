@@ -25,8 +25,8 @@ use super::{
     workspace_status_targets_for_polling_with_live_preview, zellij_capture_log_path,
     zellij_capture_log_path_in, zellij_config_path,
 };
-use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
+use crate::infrastructure::config::MultiplexerKind;
 
 fn fixture_workspace(name: &str, is_main: bool) -> Workspace {
     Workspace::try_new(

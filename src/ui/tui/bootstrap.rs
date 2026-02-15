@@ -3,11 +3,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::config::{GroveConfig, MultiplexerKind, ProjectConfig};
 use crate::infrastructure::adapters::{
     BootstrapData, CommandGitAdapter, CommandMultiplexerAdapter, CommandSystemAdapter,
     DiscoveryState, MultiplexerAdapter, bootstrap_data,
 };
+use crate::infrastructure::config::{GroveConfig, MultiplexerKind, ProjectConfig};
 use crate::ui::mouse::parse_sidebar_ratio;
 
 use super::*;
@@ -52,7 +52,8 @@ pub(super) fn load_sidebar_ratio(path: &Path) -> u16 {
 }
 
 fn default_config_path() -> PathBuf {
-    crate::config::config_path().unwrap_or_else(|| PathBuf::from(".config/grove/config.toml"))
+    crate::infrastructure::config::config_path()
+        .unwrap_or_else(|| PathBuf::from(".config/grove/config.toml"))
 }
 
 fn current_repo_root() -> Option<PathBuf> {
@@ -105,11 +106,11 @@ fn ensure_current_repo_project(config: &mut GroveConfig, config_path: &Path) -> 
         name: project_display_name(&repo_root),
         path: repo_root,
     });
-    crate::config::save_to_path(config_path, config).err()
+    crate::infrastructure::config::save_to_path(config_path, config).err()
 }
 
 pub(super) fn load_runtime_config() -> (GroveConfig, PathBuf, Option<String>) {
-    let (mut config, config_path, load_error) = match crate::config::load() {
+    let (mut config, config_path, load_error) = match crate::infrastructure::config::load() {
         Ok(loaded) => (loaded.config, loaded.path, None),
         Err(error) => (GroveConfig::default(), default_config_path(), Some(error)),
     };

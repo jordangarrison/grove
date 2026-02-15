@@ -1,6 +1,6 @@
 use crate::application::agent_runtime::kill_workspace_session_command;
-use crate::config::MultiplexerKind;
 use crate::domain::AgentType;
+use crate::infrastructure::config::MultiplexerKind;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;

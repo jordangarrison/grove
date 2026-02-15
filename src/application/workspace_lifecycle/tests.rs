@@ -5,8 +5,8 @@ use super::{
     read_workspace_agent_marker, read_workspace_markers, workspace_directory_path,
     workspace_lifecycle_error_message, write_workspace_agent_marker,
 };
-use crate::config::MultiplexerKind;
 use crate::domain::AgentType;
+use crate::infrastructure::config::MultiplexerKind;
 use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime};
 
-use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
+use crate::infrastructure::config::MultiplexerKind;
 
 pub const TMUX_SESSION_PREFIX: &str = "grove-ws-";
 pub(crate) const ZELLIJ_CAPTURE_COLS: u16 = 120;

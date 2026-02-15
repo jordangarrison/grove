@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 use crate::application::agent_runtime::zellij_config_path;
-use crate::config::MultiplexerKind;
+use crate::infrastructure::config::MultiplexerKind;
 
 const DOUBLE_ESCAPE_WINDOW_MS: u64 = 150;
 const SPLIT_MOUSE_FRAGMENT_START_WINDOW_MS: u64 = 10;

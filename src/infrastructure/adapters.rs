@@ -7,8 +7,8 @@ use crate::application::agent_runtime::{TMUX_SESSION_PREFIX, reconcile_with_sess
 use crate::application::workspace_lifecycle::{
     WorkspaceMarkerError, read_workspace_agent_marker, read_workspace_markers,
 };
-use crate::config::MultiplexerKind;
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
+use crate::infrastructure::config::MultiplexerKind;
 
 pub trait GitAdapter {
     fn list_workspaces(&self) -> Result<Vec<Workspace>, GitAdapterError>;
