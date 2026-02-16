@@ -134,7 +134,9 @@ mod view_overlays_help;
 mod view_overlays_projects;
 mod view_overlays_workspace;
 mod view_preview;
-mod view_selection;
+mod view_selection_interaction;
+mod view_selection_logging;
+mod view_selection_mapping;
 mod view_status;
 
 struct GroveApp {
