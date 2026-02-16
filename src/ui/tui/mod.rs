@@ -105,6 +105,7 @@ use text::{
 mod update;
 mod update_lifecycle;
 mod update_navigation;
+mod update_polling;
 mod view;
 
 struct GroveApp {
