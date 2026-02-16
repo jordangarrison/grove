@@ -120,12 +120,15 @@ mod update_navigation;
 mod update_polling_capture;
 mod update_polling_state;
 mod view;
+mod view_chrome;
 mod view_layout;
 mod view_overlays_create_edit;
 mod view_overlays_help;
 mod view_overlays_projects;
 mod view_overlays_workspace;
+mod view_preview;
 mod view_selection;
+mod view_status;
 
 struct GroveApp {
     repo_name: String,
