@@ -18,12 +18,34 @@ impl MultiplexerKind {
             Self::Zellij => "zellij",
         }
     }
+
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Tmux => Self::Zellij,
+            Self::Zellij => Self::Tmux,
+        }
+    }
+
+    pub const fn previous(self) -> Self {
+        match self {
+            Self::Tmux => Self::Zellij,
+            Self::Zellij => Self::Tmux,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct GroveConfig {
     #[serde(default)]
     pub multiplexer: MultiplexerKind,
+    #[serde(default)]
+    pub projects: Vec<ProjectConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectConfig {
+    pub name: String,
+    pub path: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,44 +97,4 @@ pub fn save_to_path(path: &Path, config: &GroveConfig) -> Result<(), String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{GroveConfig, MultiplexerKind, load_from_path, save_to_path};
-    use std::fs;
-    use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn unique_temp_path(label: &str) -> PathBuf {
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock should be monotonic")
-            .as_nanos();
-        let pid = std::process::id();
-        std::env::temp_dir().join(format!("grove-config-{label}-{pid}-{timestamp}.toml"))
-    }
-
-    #[test]
-    fn missing_config_defaults_to_tmux() {
-        let path = unique_temp_path("missing");
-        let config = load_from_path(&path).expect("missing path should default");
-        assert_eq!(
-            config,
-            GroveConfig {
-                multiplexer: MultiplexerKind::Tmux,
-            }
-        );
-    }
-
-    #[test]
-    fn save_and_load_round_trip() {
-        let path = unique_temp_path("roundtrip");
-        let config = GroveConfig {
-            multiplexer: MultiplexerKind::Zellij,
-        };
-        save_to_path(&path, &config).expect("config should save");
-
-        let loaded = load_from_path(&path).expect("config should load");
-        assert_eq!(loaded, config);
-
-        let _ = fs::remove_file(path);
-    }
-}
+mod tests;

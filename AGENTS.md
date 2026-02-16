@@ -61,3 +61,17 @@ docs/
 # Review product requirements
 cat docs/PRD.md
 ```
+
+## Multiplexer Parity
+
+- Any change that touches session lifecycle, capture, polling, key forwarding,
+  status detection, or workspace runtime behavior must be evaluated for both
+  multiplexers (`tmux` and `zellij`).
+- Do not ship multiplexer-specific changes without explicitly checking the
+  other multiplexer path and adding/updating tests where behavior differs.
+
+## Keybind + Command Discoverability
+
+- Whenever adding or changing a keybind or command, update both the Keybind
+  Help modal content and the Command Palette actions so UI discoverability
+  stays in sync.

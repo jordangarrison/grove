@@ -8,6 +8,9 @@ Minimal workspace manager for AI coding agents (Rust + FrankenTUI).
 # Enter pinned toolchain shell
 nix develop
 
+# Install git hooks (once per clone)
+lefthook install
+
 # Validate clean clone setup
 make ci
 ```
@@ -32,4 +35,7 @@ tail -f .grove/debug-record-*.jsonl
 
 # filter input-lag telemetry (seq-linked input -> tmux send -> preview update)
 rg '"event":"input"|"event":"preview_update"|"event":"preview_poll"' .grove/debug-record-*.jsonl
+
+# filter git-preview launch latency (first-open lazygit startup vs UI update stall)
+rg '"event":"lazygit_launch"|"event":"update_timing"' .grove/debug-record-*.jsonl
 ```
