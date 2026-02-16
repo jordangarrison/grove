@@ -156,6 +156,8 @@ struct GroveApp {
     next_tick_due_at: Option<Instant>,
     next_tick_interval_ms: Option<u64>,
     next_poll_due_at: Option<Instant>,
+    preview_poll_in_flight: bool,
+    preview_poll_requested: bool,
     next_visual_due_at: Option<Instant>,
     interactive_poll_due_at: Option<Instant>,
     fast_animation_frame: usize,

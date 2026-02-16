@@ -9,14 +9,14 @@ use self::render_support::{
     assert_row_bg, assert_row_fg, find_cell_with_char, find_row_containing, row_text,
 };
 use super::{
-    AppDependencies, AppPaths, ClipboardAccess, CommandZellijInput, CreateDialogField,
-    CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, GroveApp, HIT_ID_HEADER,
-    HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
-    LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, Msg,
-    PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
-    StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput, UiCommand,
-    UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color,
-    ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
+    AppDependencies, AppPaths, ClipboardAccess, CommandTmuxInput, CommandZellijInput,
+    CreateDialogField, CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, GroveApp,
+    HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW,
+    LaunchDialogField, LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture,
+    MergeDialogField, Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion,
+    PreviewTab, StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput,
+    UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture,
+    ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
 };
 use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
 use crate::application::interactive::InteractiveState;
@@ -1625,6 +1625,18 @@ fn settings_dialog_blocks_switch_when_workspace_running() {
 }
 
 #[test]
+fn command_tmux_input_uses_background_send_mode() {
+    let input = CommandTmuxInput;
+    assert!(input.supports_background_send());
+}
+
+#[test]
+fn command_zellij_input_keeps_sync_send_mode() {
+    let input = CommandZellijInput::default();
+    assert!(!input.supports_background_send());
+}
+
+#[test]
 fn zellij_capture_session_output_emulates_ansi_from_session_log() {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -2036,6 +2048,41 @@ fn tick_queues_async_poll_for_background_workspace_statuses_only() {
 
     let cmd = ftui::Model::update(&mut app, Msg::Tick);
     assert!(!cmd_contains_task(&cmd));
+}
+
+#[test]
+fn poll_preview_marks_request_when_background_poll_is_in_flight() {
+    let mut app = fixture_background_app(WorkspaceStatus::Active);
+    app.state.selected_index = 1;
+    app.preview_poll_in_flight = true;
+
+    app.poll_preview();
+
+    assert!(app.preview_poll_requested);
+    assert!(app.deferred_cmds.is_empty());
+}
+
+#[test]
+fn preview_poll_completion_runs_deferred_background_poll_request() {
+    let mut app = fixture_background_app(WorkspaceStatus::Active);
+    app.state.selected_index = 1;
+    app.poll_generation = 1;
+    app.preview_poll_in_flight = true;
+    app.preview_poll_requested = true;
+
+    let cmd = ftui::Model::update(
+        &mut app,
+        Msg::PreviewPollCompleted(PreviewPollCompletion {
+            generation: 1,
+            live_capture: None,
+            cursor_capture: None,
+            workspace_status_captures: Vec::new(),
+        }),
+    );
+
+    assert!(app.preview_poll_in_flight);
+    assert!(!app.preview_poll_requested);
+    assert!(cmd_contains_task(&cmd));
 }
 
 #[test]
@@ -4044,21 +4091,17 @@ fn resize_verify_retries_once_then_stops() {
 fn interactive_keys_forward_to_tmux_session() {
     let (mut app, commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    app.state.selected_index = 1;
+    assert!(app.enter_interactive(Instant::now()));
+    assert!(app.interactive.is_some());
 
-    ftui::Model::update(
-        &mut app,
-        Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-    );
-    ftui::Model::update(
-        &mut app,
-        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-    );
     let cmd = ftui::Model::update(
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('q')).with_kind(KeyEventKind::Press)),
     );
 
-    assert!(matches!(cmd, Cmd::Tick(_)));
+    assert!(!matches!(cmd, Cmd::Quit));
+    assert!(app.next_tick_due_at.is_some());
     assert_eq!(
         commands.borrow().as_slice(),
         &[vec![

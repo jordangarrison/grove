@@ -1352,6 +1352,10 @@ impl GroveApp {
             self.poll_preview_sync();
             return;
         }
+        if self.preview_poll_in_flight {
+            self.preview_poll_requested = true;
+            return;
+        }
 
         let live_preview = self.prepare_live_preview_session();
         let cursor_session = self.interactive_target_session();
@@ -1362,12 +1366,15 @@ impl GroveApp {
         );
 
         if live_preview.is_none() && cursor_session.is_none() && status_poll_targets.is_empty() {
+            self.preview_poll_requested = false;
             self.clear_agent_activity_tracking();
             self.refresh_preview_summary();
             return;
         }
 
         self.poll_generation = self.poll_generation.saturating_add(1);
+        self.preview_poll_in_flight = true;
+        self.preview_poll_requested = false;
         self.queue_cmd(self.schedule_async_preview_poll(
             self.poll_generation,
             live_preview,
@@ -1386,6 +1393,7 @@ impl GroveApp {
             return;
         }
 
+        self.preview_poll_in_flight = false;
         if completion.generation > self.poll_generation {
             self.poll_generation = completion.generation;
         }
@@ -1413,6 +1421,11 @@ impl GroveApp {
 
         if let Some(cursor_capture) = completion.cursor_capture {
             self.apply_cursor_capture_result(cursor_capture);
+        }
+
+        if self.preview_poll_requested {
+            self.preview_poll_requested = false;
+            self.poll_preview();
         }
     }
 

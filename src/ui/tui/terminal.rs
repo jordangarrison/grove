@@ -237,7 +237,7 @@ impl TmuxInput for CommandTmuxInput {
     }
 
     fn supports_background_send(&self) -> bool {
-        false
+        true
     }
 
     fn supports_background_launch(&self) -> bool {
