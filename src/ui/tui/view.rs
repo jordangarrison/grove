@@ -774,6 +774,11 @@ impl GroveApp {
         let dialog_height = area.height.saturating_sub(6).clamp(18, 26);
         let theme = ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
+        let global_hints = self.keybind_help_line(HelpHintContext::Global);
+        let workspace_hints = self.keybind_help_line(HelpHintContext::Workspace);
+        let list_hints = self.keybind_help_line(HelpHintContext::List);
+        let preview_agent_hints = self.keybind_help_line(HelpHintContext::PreviewAgent);
+        let preview_git_hints = self.keybind_help_line(HelpHintContext::PreviewGit);
 
         let lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
@@ -782,20 +787,16 @@ impl GroveApp {
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "  ? help, q quit, Tab/h/l switch pane, Enter open/attach, Esc list pane",
+                    format!("  {global_hints}").as_str(),
                     content_width,
                 ),
                 Style::new().fg(theme.text),
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "  n new, e edit, m merge, u update, p projects, D delete, S settings, ! unsafe toggle",
+                    format!("  {workspace_hints}").as_str(),
                     content_width,
                 ),
-                Style::new().fg(theme.text),
-            )]),
-            FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width("  Ctrl+K command palette", content_width),
                 Style::new().fg(theme.text),
             )]),
             FtLine::raw(""),
@@ -804,7 +805,7 @@ impl GroveApp {
                 Style::new().fg(theme.blue).bold(),
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width("  j/k or Up/Down move selection", content_width),
+                pad_or_truncate_to_display_width(format!("  {list_hints}").as_str(), content_width),
                 Style::new().fg(theme.text),
             )]),
             FtLine::raw(""),
@@ -814,14 +815,14 @@ impl GroveApp {
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "  Agent tab: [/] tab, j/k or Up/Down scroll, PgUp/PgDn page, G bottom, s start, x stop",
+                    format!("  Agent tab: {preview_agent_hints}").as_str(),
                     content_width,
                 ),
                 Style::new().fg(theme.text),
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "  Git tab: [/] tab, Enter attach lazygit",
+                    format!("  Git tab: {preview_git_hints}").as_str(),
                     content_width,
                 ),
                 Style::new().fg(theme.text),
@@ -1269,48 +1270,71 @@ impl GroveApp {
         }
     }
 
-    fn keybind_hints_line(&self) -> &'static str {
+    fn keybind_help_line(&self, context: HelpHintContext) -> String {
+        UiCommand::help_hints_for(context)
+            .iter()
+            .filter_map(|command| command.help_hint_label(context))
+            .collect::<Vec<&str>>()
+            .join(", ")
+    }
+
+    fn status_hints_line(&self, context: StatusHintContext) -> String {
+        UiCommand::status_hints_for(context)
+            .iter()
+            .filter_map(|command| command.status_hint_label(context))
+            .collect::<Vec<&str>>()
+            .join(", ")
+    }
+
+    fn keybind_hints_line(&self) -> String {
         if self.command_palette.is_visible() {
-            return "Type to search, Up/Down choose, Enter run, Esc close";
+            return "Type to search, Up/Down choose, Enter run, Esc close".to_string();
         }
         if self.keybind_help_open {
-            return "Esc/? close help";
+            return "Esc/? close help".to_string();
         }
         if self.create_dialog.is_some() {
-            return "Tab/S-Tab field, j/k or C-n/C-p move, h/l buttons, Enter select/create, Esc cancel";
+            return "Tab/S-Tab field, j/k or C-n/C-p move, h/l buttons, Enter select/create, Esc cancel"
+                .to_string();
         }
         if self.edit_dialog.is_some() {
-            return "Tab/S-Tab field, h/l buttons, Space toggle agent, Enter save/select, Esc cancel";
+            return "Tab/S-Tab field, h/l buttons, Space toggle agent, Enter save/select, Esc cancel"
+                .to_string();
         }
         if self.launch_dialog.is_some() {
-            return "Tab/S-Tab field, h/l buttons, Space toggle unsafe, Enter select/start, Esc cancel";
+            return "Tab/S-Tab field, h/l buttons, Space toggle unsafe, Enter select/start, Esc cancel"
+                .to_string();
         }
         if self.delete_dialog.is_some() {
-            return "Tab/S-Tab field, j/k move, Space toggle branch delete, Enter select/delete, D confirm, Esc cancel";
+            return "Tab/S-Tab field, j/k move, Space toggle branch delete, Enter select/delete, D confirm, Esc cancel"
+                .to_string();
         }
         if self.merge_dialog.is_some() {
-            return "Tab/S-Tab field, j/k move, Space toggle cleanup, Enter select/merge, m confirm, Esc cancel";
+            return "Tab/S-Tab field, j/k move, Space toggle cleanup, Enter select/merge, m confirm, Esc cancel"
+                .to_string();
         }
         if self.update_from_base_dialog.is_some() {
-            return "Tab/S-Tab field, h/l buttons, Enter select/update, u confirm, Esc cancel";
+            return "Tab/S-Tab field, h/l buttons, Enter select/update, u confirm, Esc cancel"
+                .to_string();
         }
         if self.settings_dialog.is_some() {
-            return "Tab/S-Tab field, j/k or h/l change, Enter save/select, Esc cancel";
+            return "Tab/S-Tab field, j/k or h/l change, Enter save/select, Esc cancel".to_string();
         }
         if self.project_dialog.is_some() {
-            return "Type filter, Up/Down or Tab/S-Tab navigate, Enter focus project, Ctrl+A add, Esc close";
+            return "Type filter, Up/Down or Tab/S-Tab navigate, Enter focus project, Ctrl+A add, Esc close"
+                .to_string();
         }
         if self.interactive.is_some() {
-            return "Esc Esc / Ctrl+\\ exit, Alt+C copy, Alt+V paste";
+            return "Esc Esc / Ctrl+\\ exit, Alt+C copy, Alt+V paste".to_string();
         }
         if self.preview_agent_tab_is_focused() {
-            return "[ prev tab, ] next tab, j/k scroll, PgUp/PgDn, G bottom, h/l pane, Enter open, n new, e edit, m merge, u update, p projects, s start, x stop, D delete, S settings, Ctrl+K palette, ? help, q quit";
+            return self.status_hints_line(StatusHintContext::PreviewAgent);
         }
         if self.preview_git_tab_is_focused() {
-            return "[ prev tab, ] next tab, h/l pane, Enter attach lazygit, n new, e edit, m merge, u update, p projects, D delete, S settings, Ctrl+K palette, ? help, q quit";
+            return self.status_hints_line(StatusHintContext::PreviewGit);
         }
 
-        "j/k move, h/l pane, Enter open, n new, e edit, m merge, u update, p projects, D delete, S settings, Ctrl+K palette, ? help, q quit"
+        self.status_hints_line(StatusHintContext::List)
     }
 
     fn pane_border_style(&self, focused: bool) -> Style {
@@ -1971,7 +1995,12 @@ impl GroveApp {
             FtSpan::styled(" Keys ".to_string(), chip_style),
             FtSpan::styled(" ".to_string(), base_style),
         ];
-        left.extend(keybind_hint_spans(hints, text_style, key_style, sep_style));
+        left.extend(keybind_hint_spans(
+            hints.as_str(),
+            text_style,
+            key_style,
+            sep_style,
+        ));
 
         let line = chrome_bar_line(
             usize::from(area.width),

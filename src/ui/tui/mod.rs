@@ -86,6 +86,8 @@ use terminal::{
 };
 mod dialogs;
 use dialogs::*;
+mod commands;
+use commands::*;
 mod msg;
 use msg::*;
 mod logging;

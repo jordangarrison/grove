@@ -342,209 +342,22 @@ impl GroveApp {
     }
 
     pub(super) fn build_command_palette_actions(&self) -> Vec<PaletteActionItem> {
-        let mut actions: Vec<PaletteActionItem> = vec![
-            Self::palette_action(
-                PALETTE_CMD_TOGGLE_FOCUS,
-                "Toggle Pane Focus",
-                "Switch focus between workspace list and preview (Tab)",
-                &["tab", "focus", "pane"],
-                "Navigation",
-            ),
-            Self::palette_action(
-                PALETTE_CMD_NEW_WORKSPACE,
-                "New Workspace",
-                "Open workspace creation dialog (n)",
-                &["new", "workspace", "create", "n"],
-                "Workspace",
-            ),
-            Self::palette_action(
-                PALETTE_CMD_EDIT_WORKSPACE,
-                "Edit Workspace",
-                "Open workspace edit dialog (e)",
-                &["edit", "workspace", "agent", "e"],
-                "Workspace",
-            ),
-            Self::palette_action(
-                PALETTE_CMD_OPEN_SETTINGS,
-                "Settings",
-                "Open settings dialog (S)",
-                &["settings", "multiplexer", "S"],
-                "Workspace",
-            ),
-            Self::palette_action(
-                PALETTE_CMD_TOGGLE_UNSAFE,
-                "Toggle Unsafe Launch",
-                "Toggle launch skip-permissions default (!)",
-                &["unsafe", "permissions", "!"],
-                "Workspace",
-            ),
-            Self::palette_action(
-                PALETTE_CMD_OPEN_HELP,
-                "Keybind Help",
-                "Open keyboard shortcut help (?)",
-                &["help", "shortcuts", "?"],
-                "System",
-            ),
-            Self::palette_action(
-                PALETTE_CMD_QUIT,
-                "Quit Grove",
-                "Exit application (q)",
-                &["quit", "exit", "q"],
-                "System",
-            ),
-        ];
-
-        if self.preview_agent_tab_is_focused()
-            && !self.start_in_flight
-            && workspace_can_start_agent(self.state.selected_workspace())
-        {
-            actions.push(Self::palette_action(
-                PALETTE_CMD_START_AGENT,
-                "Start Agent",
-                "Open start-agent dialog for selected workspace (s)",
-                &["start", "agent", "workspace", "s"],
-                "Workspace",
-            ));
-        }
-
-        if self.preview_agent_tab_is_focused()
-            && !self.stop_in_flight
-            && workspace_can_stop_agent(self.state.selected_workspace())
-        {
-            actions.push(Self::palette_action(
-                PALETTE_CMD_STOP_AGENT,
-                "Stop Agent",
-                "Stop selected workspace agent (x)",
-                &["stop", "agent", "workspace", "x"],
-                "Workspace",
-            ));
-        }
-
-        if !self.delete_in_flight
-            && self
-                .state
-                .selected_workspace()
-                .is_some_and(|workspace| !workspace.is_main)
-        {
-            actions.push(Self::palette_action(
-                PALETTE_CMD_DELETE_WORKSPACE,
-                "Delete Workspace",
-                "Open delete dialog for selected workspace (D)",
-                &["delete", "workspace", "worktree", "D"],
-                "Workspace",
-            ));
-        }
-        if !self.merge_in_flight
-            && self
-                .state
-                .selected_workspace()
-                .is_some_and(|workspace| !workspace.is_main)
-        {
-            actions.push(Self::palette_action(
-                PALETTE_CMD_MERGE_WORKSPACE,
-                "Merge Workspace",
-                "Merge selected workspace branch into base (m)",
-                &["merge", "workspace", "branch", "m"],
-                "Workspace",
-            ));
-        }
-        if !self.update_from_base_in_flight
-            && self
-                .state
-                .selected_workspace()
-                .is_some_and(|workspace| !workspace.is_main)
-        {
-            actions.push(Self::palette_action(
-                PALETTE_CMD_UPDATE_FROM_BASE,
-                "Update From Base",
-                "Merge base branch into selected workspace (u)",
-                &["update", "sync", "base", "workspace", "u"],
-                "Workspace",
-            ));
-        }
-
-        if self.state.focus == PaneFocus::WorkspaceList {
-            actions.push(Self::palette_action(
-                PALETTE_CMD_MOVE_SELECTION_UP,
-                "Select Previous Workspace",
-                "Move workspace selection up (k / Up)",
-                &["up", "previous", "workspace", "k"],
-                "List",
-            ));
-            actions.push(Self::palette_action(
-                PALETTE_CMD_MOVE_SELECTION_DOWN,
-                "Select Next Workspace",
-                "Move workspace selection down (j / Down)",
-                &["down", "next", "workspace", "j"],
-                "List",
-            ));
-            actions.push(Self::palette_action(
-                PALETTE_CMD_OPEN_PREVIEW,
-                "Open Preview",
-                "Focus preview pane for selected workspace (Enter/l)",
-                &["open", "preview", "enter", "l"],
-                "List",
-            ));
-        } else {
-            actions.push(Self::palette_action(
-                PALETTE_CMD_FOCUS_LIST,
-                "Focus Workspace List",
-                "Return focus to workspace list (h/Esc)",
-                &["list", "focus", "h", "esc"],
-                "Navigation",
-            ));
-            if workspace_can_enter_interactive(
-                self.state.selected_workspace(),
-                self.preview_tab == PreviewTab::Git,
-            ) {
-                actions.push(Self::palette_action(
-                    PALETTE_CMD_ENTER_INTERACTIVE,
-                    "Enter Interactive Mode",
-                    "Attach to selected workspace session (Enter)",
-                    &["interactive", "attach", "enter"],
-                    "Preview",
-                ));
+        let mut actions = Vec::new();
+        for command in UiCommand::all() {
+            if !self.palette_command_enabled(*command) {
+                continue;
             }
-        }
-
-        if self.preview_agent_tab_is_focused() {
+            let Some(spec) = command.palette_spec() else {
+                continue;
+            };
             actions.push(Self::palette_action(
-                PALETTE_CMD_SCROLL_UP,
-                "Scroll Up",
-                "Scroll preview output up (k / Up)",
-                &["scroll", "up", "k"],
-                "Preview",
-            ));
-            actions.push(Self::palette_action(
-                PALETTE_CMD_SCROLL_DOWN,
-                "Scroll Down",
-                "Scroll preview output down (j / Down)",
-                &["scroll", "down", "j"],
-                "Preview",
-            ));
-            actions.push(Self::palette_action(
-                PALETTE_CMD_PAGE_UP,
-                "Page Up",
-                "Scroll preview up by one page (PgUp)",
-                &["pageup", "pgup", "scroll"],
-                "Preview",
-            ));
-            actions.push(Self::palette_action(
-                PALETTE_CMD_PAGE_DOWN,
-                "Page Down",
-                "Scroll preview down by one page (PgDn)",
-                &["pagedown", "pgdn", "scroll"],
-                "Preview",
-            ));
-            actions.push(Self::palette_action(
-                PALETTE_CMD_SCROLL_BOTTOM,
-                "Jump To Bottom",
-                "Jump preview output to bottom (G)",
-                &["bottom", "latest", "G"],
-                "Preview",
+                spec.id,
+                spec.title,
+                spec.description,
+                spec.tags,
+                spec.category,
             ));
         }
-
         actions
     }
 
@@ -562,109 +375,212 @@ impl GroveApp {
         self.command_palette.open();
     }
 
-    fn execute_command_palette_action(&mut self, id: &str) -> bool {
-        match id {
-            PALETTE_CMD_TOGGLE_FOCUS => {
+    fn palette_command_enabled(&self, command: UiCommand) -> bool {
+        if command.palette_spec().is_none() {
+            return false;
+        }
+        match command {
+            UiCommand::ToggleFocus
+            | UiCommand::NewWorkspace
+            | UiCommand::EditWorkspace
+            | UiCommand::OpenProjects
+            | UiCommand::OpenSettings
+            | UiCommand::ToggleUnsafe
+            | UiCommand::OpenHelp
+            | UiCommand::Quit => true,
+            UiCommand::OpenPreview => self.state.focus == PaneFocus::WorkspaceList,
+            UiCommand::EnterInteractive => {
+                self.state.focus == PaneFocus::Preview
+                    && workspace_can_enter_interactive(
+                        self.state.selected_workspace(),
+                        self.preview_tab == PreviewTab::Git,
+                    )
+            }
+            UiCommand::FocusList => self.state.focus == PaneFocus::Preview,
+            UiCommand::MoveSelectionUp | UiCommand::MoveSelectionDown => {
+                self.state.focus == PaneFocus::WorkspaceList
+            }
+            UiCommand::ScrollUp
+            | UiCommand::ScrollDown
+            | UiCommand::PageUp
+            | UiCommand::PageDown
+            | UiCommand::ScrollBottom => self.preview_agent_tab_is_focused(),
+            UiCommand::PreviousTab | UiCommand::NextTab => {
+                self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview
+            }
+            UiCommand::StartAgent => {
+                self.preview_agent_tab_is_focused()
+                    && !self.start_in_flight
+                    && workspace_can_start_agent(self.state.selected_workspace())
+            }
+            UiCommand::StopAgent => {
+                self.preview_agent_tab_is_focused()
+                    && !self.stop_in_flight
+                    && workspace_can_stop_agent(self.state.selected_workspace())
+            }
+            UiCommand::DeleteWorkspace => {
+                !self.delete_in_flight
+                    && self
+                        .state
+                        .selected_workspace()
+                        .is_some_and(|workspace| !workspace.is_main)
+            }
+            UiCommand::MergeWorkspace => {
+                !self.merge_in_flight
+                    && self
+                        .state
+                        .selected_workspace()
+                        .is_some_and(|workspace| !workspace.is_main)
+            }
+            UiCommand::UpdateFromBase => {
+                !self.update_from_base_in_flight
+                    && self
+                        .state
+                        .selected_workspace()
+                        .is_some_and(|workspace| !workspace.is_main)
+            }
+            UiCommand::FocusPreview | UiCommand::OpenCommandPalette => false,
+        }
+    }
+
+    fn execute_ui_command(&mut self, command: UiCommand) -> bool {
+        match command {
+            UiCommand::ToggleFocus => {
                 reduce(&mut self.state, Action::ToggleFocus);
                 false
             }
-            PALETTE_CMD_OPEN_PREVIEW => {
+            UiCommand::OpenPreview => {
                 self.enter_preview_or_interactive();
                 false
             }
-            PALETTE_CMD_ENTER_INTERACTIVE => {
+            UiCommand::EnterInteractive => {
                 self.enter_interactive(Instant::now());
                 false
             }
-            PALETTE_CMD_FOCUS_LIST => {
+            UiCommand::FocusPreview => {
+                let mode_before = self.state.mode;
+                let focus_before = self.state.focus;
+                reduce(&mut self.state, Action::EnterPreviewMode);
+                if self.state.mode != mode_before || self.state.focus != focus_before {
+                    self.poll_preview();
+                }
+                false
+            }
+            UiCommand::FocusList => {
                 reduce(&mut self.state, Action::EnterListMode);
                 false
             }
-            PALETTE_CMD_MOVE_SELECTION_UP => {
+            UiCommand::MoveSelectionUp => {
                 self.move_selection(Action::MoveSelectionUp);
                 false
             }
-            PALETTE_CMD_MOVE_SELECTION_DOWN => {
+            UiCommand::MoveSelectionDown => {
                 self.move_selection(Action::MoveSelectionDown);
                 false
             }
-            PALETTE_CMD_SCROLL_UP => {
+            UiCommand::ScrollUp => {
                 if self.preview_agent_tab_is_focused() {
                     self.scroll_preview(-1);
                 }
                 false
             }
-            PALETTE_CMD_SCROLL_DOWN => {
+            UiCommand::ScrollDown => {
                 if self.preview_agent_tab_is_focused() {
                     self.scroll_preview(1);
                 }
                 false
             }
-            PALETTE_CMD_PAGE_UP => {
+            UiCommand::PageUp => {
                 if self.preview_agent_tab_is_focused() {
                     self.scroll_preview(-5);
                 }
                 false
             }
-            PALETTE_CMD_PAGE_DOWN => {
+            UiCommand::PageDown => {
                 if self.preview_agent_tab_is_focused() {
                     self.scroll_preview(5);
                 }
                 false
             }
-            PALETTE_CMD_SCROLL_BOTTOM => {
+            UiCommand::ScrollBottom => {
                 if self.preview_agent_tab_is_focused() {
                     self.jump_preview_to_bottom();
                 }
                 false
             }
-            PALETTE_CMD_NEW_WORKSPACE => {
+            UiCommand::PreviousTab => {
+                if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
+                    self.cycle_preview_tab(-1);
+                }
+                false
+            }
+            UiCommand::NextTab => {
+                if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
+                    self.cycle_preview_tab(1);
+                }
+                false
+            }
+            UiCommand::NewWorkspace => {
                 self.open_create_dialog();
                 false
             }
-            PALETTE_CMD_EDIT_WORKSPACE => {
+            UiCommand::EditWorkspace => {
                 self.open_edit_dialog();
                 false
             }
-            PALETTE_CMD_START_AGENT => {
+            UiCommand::StartAgent => {
                 if self.preview_agent_tab_is_focused() {
                     self.open_start_dialog();
                 }
                 false
             }
-            PALETTE_CMD_STOP_AGENT => {
+            UiCommand::StopAgent => {
                 if self.preview_agent_tab_is_focused() {
                     self.stop_selected_workspace_agent();
                 }
                 false
             }
-            PALETTE_CMD_DELETE_WORKSPACE => {
+            UiCommand::DeleteWorkspace => {
                 self.open_delete_dialog();
                 false
             }
-            PALETTE_CMD_MERGE_WORKSPACE => {
+            UiCommand::MergeWorkspace => {
                 self.open_merge_dialog();
                 false
             }
-            PALETTE_CMD_UPDATE_FROM_BASE => {
+            UiCommand::UpdateFromBase => {
                 self.open_update_from_base_dialog();
                 false
             }
-            PALETTE_CMD_OPEN_SETTINGS => {
+            UiCommand::OpenProjects => {
+                self.open_project_dialog();
+                false
+            }
+            UiCommand::OpenSettings => {
                 self.open_settings_dialog();
                 false
             }
-            PALETTE_CMD_TOGGLE_UNSAFE => {
+            UiCommand::ToggleUnsafe => {
                 self.launch_skip_permissions = !self.launch_skip_permissions;
                 false
             }
-            PALETTE_CMD_OPEN_HELP => {
+            UiCommand::OpenHelp => {
                 self.open_keybind_help();
                 false
             }
-            PALETTE_CMD_QUIT => true,
-            _ => false,
+            UiCommand::OpenCommandPalette => {
+                self.open_command_palette();
+                false
+            }
+            UiCommand::Quit => true,
         }
+    }
+
+    fn execute_command_palette_action(&mut self, id: &str) -> bool {
+        let Some(command) = UiCommand::from_palette_id(id) else {
+            return false;
+        };
+        self.execute_ui_command(command)
     }
 
     pub(super) fn modal_open(&self) -> bool {
@@ -2401,95 +2317,92 @@ impl GroveApp {
         }
     }
 
-    fn handle_non_interactive_key(&mut self, key_event: KeyEvent) {
-        match key_event.code {
-            KeyCode::Tab => reduce(&mut self.state, Action::ToggleFocus),
-            KeyCode::Enter => self.enter_preview_or_interactive(),
-            KeyCode::Escape => reduce(&mut self.state, Action::EnterListMode),
-            KeyCode::Char('!') => {
-                self.launch_skip_permissions = !self.launch_skip_permissions;
-            }
-            KeyCode::Char('n') | KeyCode::Char('N') => self.open_create_dialog(),
-            KeyCode::Char('e') | KeyCode::Char('E') => self.open_edit_dialog(),
-            KeyCode::Char('m') => self.open_merge_dialog(),
-            KeyCode::Char('u') => self.open_update_from_base_dialog(),
-            KeyCode::Char('p') | KeyCode::Char('P') => self.open_project_dialog(),
-            KeyCode::Char('?') => self.open_keybind_help(),
-            KeyCode::Char('D') => self.open_delete_dialog(),
-            KeyCode::Char('S') => self.open_settings_dialog(),
-            KeyCode::Char('s') => {
-                if self.preview_agent_tab_is_focused() {
-                    self.open_start_dialog();
+    fn non_interactive_command_for_key(&self, key_event: &KeyEvent) -> Option<UiCommand> {
+        let in_preview_focus =
+            self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview;
+        let in_preview_agent = in_preview_focus && self.preview_tab == PreviewTab::Agent;
+        let can_enter_interactive = workspace_can_enter_interactive(
+            self.state.selected_workspace(),
+            self.preview_tab == PreviewTab::Git,
+        );
+
+        for command in UiCommand::all() {
+            let matches = match command {
+                UiCommand::ToggleFocus => matches!(key_event.code, KeyCode::Tab),
+                UiCommand::OpenPreview => match key_event.code {
+                    KeyCode::Enter => !in_preview_focus || !can_enter_interactive,
+                    _ => false,
+                },
+                UiCommand::EnterInteractive => {
+                    matches!(key_event.code, KeyCode::Enter)
+                        && in_preview_focus
+                        && can_enter_interactive
                 }
-            }
-            KeyCode::Char('x') => {
-                if self.preview_agent_tab_is_focused() {
-                    self.stop_selected_workspace_agent();
+                UiCommand::FocusPreview => matches!(key_event.code, KeyCode::Char('l')),
+                UiCommand::FocusList => {
+                    matches!(key_event.code, KeyCode::Char('h') | KeyCode::Escape)
                 }
-            }
-            KeyCode::Char('h') => reduce(&mut self.state, Action::EnterListMode),
-            KeyCode::Char('l') => {
-                let mode_before = self.state.mode;
-                let focus_before = self.state.focus;
-                reduce(&mut self.state, Action::EnterPreviewMode);
-                if self.state.mode != mode_before || self.state.focus != focus_before {
-                    self.poll_preview();
+                UiCommand::MoveSelectionUp => {
+                    matches!(key_event.code, KeyCode::Char('k') | KeyCode::Up) && !in_preview_focus
                 }
-            }
-            KeyCode::Char('[') => {
-                if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
-                    self.cycle_preview_tab(-1);
+                UiCommand::MoveSelectionDown => {
+                    matches!(key_event.code, KeyCode::Char('j') | KeyCode::Down)
+                        && !in_preview_focus
                 }
-            }
-            KeyCode::Char(']') => {
-                if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
-                    self.cycle_preview_tab(1);
+                UiCommand::ScrollUp => {
+                    matches!(key_event.code, KeyCode::Char('k') | KeyCode::Up) && in_preview_agent
                 }
-            }
-            KeyCode::PageUp => {
-                if self.state.mode == UiMode::Preview
-                    && self.state.focus == PaneFocus::Preview
-                    && self.preview_tab == PreviewTab::Agent
-                {
-                    self.scroll_preview(-5);
+                UiCommand::ScrollDown => {
+                    matches!(key_event.code, KeyCode::Char('j') | KeyCode::Down) && in_preview_agent
                 }
-            }
-            KeyCode::PageDown => {
-                if self.state.mode == UiMode::Preview
-                    && self.state.focus == PaneFocus::Preview
-                    && self.preview_tab == PreviewTab::Agent
-                {
-                    self.scroll_preview(5);
+                UiCommand::PageUp => matches!(key_event.code, KeyCode::PageUp) && in_preview_agent,
+                UiCommand::PageDown => {
+                    matches!(key_event.code, KeyCode::PageDown) && in_preview_agent
                 }
-            }
-            KeyCode::Char('G') => {
-                if self.state.mode == UiMode::Preview
-                    && self.state.focus == PaneFocus::Preview
-                    && self.preview_tab == PreviewTab::Agent
-                {
-                    self.jump_preview_to_bottom();
+                UiCommand::ScrollBottom => {
+                    matches!(key_event.code, KeyCode::Char('G')) && in_preview_agent
                 }
-            }
-            KeyCode::Char('j') | KeyCode::Down => {
-                if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
-                    if self.preview_tab == PreviewTab::Agent {
-                        self.scroll_preview(1);
-                    }
-                } else {
-                    self.move_selection(Action::MoveSelectionDown);
+                UiCommand::PreviousTab => {
+                    matches!(key_event.code, KeyCode::Char('[')) && in_preview_focus
                 }
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
-                    if self.preview_tab == PreviewTab::Agent {
-                        self.scroll_preview(-1);
-                    }
-                } else {
-                    self.move_selection(Action::MoveSelectionUp);
+                UiCommand::NextTab => {
+                    matches!(key_event.code, KeyCode::Char(']')) && in_preview_focus
                 }
+                UiCommand::NewWorkspace => {
+                    matches!(key_event.code, KeyCode::Char('n') | KeyCode::Char('N'))
+                }
+                UiCommand::EditWorkspace => {
+                    matches!(key_event.code, KeyCode::Char('e') | KeyCode::Char('E'))
+                }
+                UiCommand::StartAgent => matches!(key_event.code, KeyCode::Char('s')),
+                UiCommand::StopAgent => matches!(key_event.code, KeyCode::Char('x')),
+                UiCommand::DeleteWorkspace => matches!(key_event.code, KeyCode::Char('D')),
+                UiCommand::MergeWorkspace => matches!(key_event.code, KeyCode::Char('m')),
+                UiCommand::UpdateFromBase => matches!(key_event.code, KeyCode::Char('u')),
+                UiCommand::OpenProjects => {
+                    matches!(key_event.code, KeyCode::Char('p') | KeyCode::Char('P'))
+                }
+                UiCommand::OpenSettings => matches!(key_event.code, KeyCode::Char('S')),
+                UiCommand::ToggleUnsafe => matches!(key_event.code, KeyCode::Char('!')),
+                UiCommand::OpenHelp => matches!(key_event.code, KeyCode::Char('?')),
+                UiCommand::OpenCommandPalette => Self::is_ctrl_char_key(key_event, 'k'),
+                UiCommand::Quit => {
+                    matches!(key_event.code, KeyCode::Char('q')) && key_event.modifiers.is_empty()
+                }
+            };
+            if matches {
+                return Some(*command);
             }
-            _ => {}
         }
+
+        None
+    }
+
+    fn handle_non_interactive_key(&mut self, key_event: KeyEvent) -> bool {
+        let Some(command) = self.non_interactive_command_for_key(&key_event) else {
+            return false;
+        };
+        self.execute_ui_command(command)
     }
 
     fn sidebar_workspace_index_at_y(&self, y: u16) -> Option<usize> {
@@ -2701,8 +2614,10 @@ impl GroveApp {
         }
 
         if Self::is_ctrl_char_key(&key_event, 'k') {
-            self.open_command_palette();
-            return (false, Cmd::None);
+            return (
+                self.execute_ui_command(UiCommand::OpenCommandPalette),
+                Cmd::None,
+            );
         }
 
         if self.command_palette.is_visible() {
@@ -2782,12 +2697,7 @@ impl GroveApp {
             return (false, Cmd::None);
         }
 
-        if Self::is_quit_key(&key_event) {
-            return (true, Cmd::None);
-        }
-
-        self.handle_non_interactive_key(key_event);
-        (false, Cmd::None)
+        (self.handle_non_interactive_key(key_event), Cmd::None)
     }
 
     fn map_interactive_key(key_event: KeyEvent) -> Option<InteractiveKey> {
@@ -3214,14 +3124,6 @@ impl GroveApp {
                 send_cmd
             }
         }
-    }
-
-    fn is_quit_key(key_event: &KeyEvent) -> bool {
-        matches!(
-            key_event.code,
-            KeyCode::Char('q')
-                if key_event.kind == KeyEventKind::Press && key_event.modifiers.is_empty()
-        )
     }
 
     fn is_ctrl_char_key(key_event: &KeyEvent, character: char) -> bool {

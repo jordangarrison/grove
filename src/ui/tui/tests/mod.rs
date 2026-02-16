@@ -13,13 +13,10 @@ use super::{
     CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, GroveApp, HIT_ID_HEADER,
     HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
     LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, Msg,
-    PALETTE_CMD_FOCUS_LIST, PALETTE_CMD_MERGE_WORKSPACE, PALETTE_CMD_MOVE_SELECTION_DOWN,
-    PALETTE_CMD_OPEN_PREVIEW, PALETTE_CMD_SCROLL_DOWN, PALETTE_CMD_START_AGENT,
-    PALETTE_CMD_UPDATE_FROM_BASE, PREVIEW_METADATA_ROWS, PendingResizeVerification,
-    PreviewPollCompletion, PreviewTab, StartAgentCompletion, StopAgentCompletion,
-    TextSelectionPoint, TmuxInput, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT,
-    WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
-    ui_theme,
+    PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
+    StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput, UiCommand,
+    UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color,
+    ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
 };
 use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
 use crate::application::interactive::InteractiveState;
@@ -1366,6 +1363,13 @@ fn command_palette_enter_executes_selected_action() {
 
 #[test]
 fn command_palette_action_set_scopes_to_focus_and_mode() {
+    let palette_id = |command: UiCommand| -> String {
+        command
+            .palette_spec()
+            .map(|spec| spec.id.to_string())
+            .expect("command should be palette discoverable")
+    };
+
     let mut app = fixture_app();
     app.state.selected_index = 1;
     let list_ids: Vec<String> = app
@@ -1376,13 +1380,48 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
     assert!(
         list_ids
             .iter()
-            .any(|id| id == PALETTE_CMD_MOVE_SELECTION_DOWN)
+            .any(|id| id == &palette_id(UiCommand::MoveSelectionDown))
     );
-    assert!(list_ids.iter().any(|id| id == PALETTE_CMD_OPEN_PREVIEW));
-    assert!(list_ids.iter().any(|id| id == PALETTE_CMD_MERGE_WORKSPACE));
-    assert!(list_ids.iter().any(|id| id == PALETTE_CMD_UPDATE_FROM_BASE));
-    assert!(!list_ids.iter().any(|id| id == PALETTE_CMD_SCROLL_DOWN));
-    assert!(!list_ids.iter().any(|id| id == PALETTE_CMD_START_AGENT));
+    assert!(
+        list_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::OpenPreview))
+    );
+    assert!(
+        list_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::MergeWorkspace))
+    );
+    assert!(
+        list_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::UpdateFromBase))
+    );
+    assert!(
+        list_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::OpenProjects))
+    );
+    assert!(
+        !list_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::ScrollDown))
+    );
+    assert!(
+        !list_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::StartAgent))
+    );
+    assert!(
+        !list_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::PreviousTab))
+    );
+    assert!(
+        !list_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::NextTab))
+    );
 
     app.state.mode = UiMode::Preview;
     app.state.focus = PaneFocus::Preview;
@@ -1392,13 +1431,35 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
         .into_iter()
         .map(|action| action.id)
         .collect();
-    assert!(preview_ids.iter().any(|id| id == PALETTE_CMD_SCROLL_DOWN));
-    assert!(preview_ids.iter().any(|id| id == PALETTE_CMD_FOCUS_LIST));
-    assert!(preview_ids.iter().any(|id| id == PALETTE_CMD_START_AGENT));
+    assert!(
+        preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::ScrollDown))
+    );
+    assert!(
+        preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::FocusList))
+    );
+    assert!(
+        preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::StartAgent))
+    );
+    assert!(
+        preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::PreviousTab))
+    );
+    assert!(
+        preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::NextTab))
+    );
     assert!(
         !preview_ids
             .iter()
-            .any(|id| id == PALETTE_CMD_MOVE_SELECTION_DOWN)
+            .any(|id| id == &palette_id(UiCommand::MoveSelectionDown))
     );
 
     app.preview_tab = PreviewTab::Git;
@@ -1410,13 +1471,39 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
     assert!(
         !git_preview_ids
             .iter()
-            .any(|id| id == PALETTE_CMD_SCROLL_DOWN)
+            .any(|id| id == &palette_id(UiCommand::ScrollDown))
     );
     assert!(
         !git_preview_ids
             .iter()
-            .any(|id| id == PALETTE_CMD_START_AGENT)
+            .any(|id| id == &palette_id(UiCommand::StartAgent))
     );
+    assert!(
+        git_preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::PreviousTab))
+    );
+    assert!(
+        git_preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::NextTab))
+    );
+}
+
+#[test]
+fn ui_command_palette_ids_are_unique_and_roundtrip() {
+    let mut ids = std::collections::HashSet::new();
+    for command in UiCommand::all() {
+        let Some(spec) = command.palette_spec() else {
+            continue;
+        };
+        assert!(
+            ids.insert(spec.id),
+            "duplicate command palette id: {}",
+            spec.id
+        );
+        assert_eq!(UiCommand::from_palette_id(spec.id), Some(*command));
+    }
 }
 
 #[test]
