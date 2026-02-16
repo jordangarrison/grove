@@ -85,6 +85,7 @@ use terminal::{
 };
 mod dialogs;
 mod dialogs_create_launch;
+mod dialogs_launch;
 mod dialogs_projects;
 mod dialogs_workspace;
 use dialogs::*;
