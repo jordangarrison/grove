@@ -108,6 +108,7 @@ mod update_lifecycle;
 mod update_navigation;
 mod update_polling;
 mod view;
+mod view_layout;
 mod view_overlays;
 mod view_selection;
 
