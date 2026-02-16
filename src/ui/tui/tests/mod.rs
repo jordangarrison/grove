@@ -2790,7 +2790,7 @@ fn start_key_launches_selected_workspace_agent() {
 }
 
 #[test]
-fn h_and_l_switch_focus_between_workspace_and_preview_when_not_interactive() {
+fn h_and_l_toggle_focus_between_panes_when_not_interactive() {
     let mut app = fixture_app();
     app.state.mode = UiMode::List;
     app.state.focus = PaneFocus::WorkspaceList;
@@ -2799,15 +2799,29 @@ fn h_and_l_switch_focus_between_workspace_and_preview_when_not_interactive() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press)),
     );
-    assert_eq!(app.state.mode, UiMode::Preview);
     assert_eq!(app.state.focus, PaneFocus::Preview);
+    assert_eq!(app.state.mode, UiMode::List);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press)),
+    );
+    assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+    assert_eq!(app.state.mode, UiMode::List);
 
     ftui::Model::update(
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('h')).with_kind(KeyEventKind::Press)),
     );
+    assert_eq!(app.state.focus, PaneFocus::Preview);
     assert_eq!(app.state.mode, UiMode::List);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('h')).with_kind(KeyEventKind::Press)),
+    );
     assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+    assert_eq!(app.state.mode, UiMode::List);
 }
 
 #[test]

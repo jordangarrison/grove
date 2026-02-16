@@ -2349,7 +2349,12 @@ impl GroveApp {
 
         for command in UiCommand::all() {
             let matches = match command {
-                UiCommand::ToggleFocus => matches!(key_event.code, KeyCode::Tab),
+                UiCommand::ToggleFocus => {
+                    matches!(
+                        key_event.code,
+                        KeyCode::Tab | KeyCode::Char('h') | KeyCode::Char('l')
+                    )
+                }
                 UiCommand::ToggleSidebar => matches!(key_event.code, KeyCode::Char('\\')),
                 UiCommand::OpenPreview => match key_event.code {
                     KeyCode::Enter => !in_preview_focus || !can_enter_interactive,
@@ -2360,10 +2365,8 @@ impl GroveApp {
                         && in_preview_focus
                         && can_enter_interactive
                 }
-                UiCommand::FocusPreview => matches!(key_event.code, KeyCode::Char('l')),
-                UiCommand::FocusList => {
-                    matches!(key_event.code, KeyCode::Char('h') | KeyCode::Escape)
-                }
+                UiCommand::FocusPreview => false,
+                UiCommand::FocusList => matches!(key_event.code, KeyCode::Escape),
                 UiCommand::MoveSelectionUp => {
                     matches!(key_event.code, KeyCode::Char('k') | KeyCode::Up) && !in_preview_focus
                 }

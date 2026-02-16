@@ -96,8 +96,8 @@ impl UiCommand {
             Self::ToggleFocus => Some(PaletteCommandSpec {
                 id: "palette:toggle_focus",
                 title: "Toggle Pane Focus",
-                description: "Switch focus between workspace list and preview (Tab)",
-                tags: &["tab", "focus", "pane"],
+                description: "Switch focus between workspace list and preview (Tab/h/l)",
+                tags: &["tab", "h", "l", "focus", "pane"],
                 category: "Navigation",
             }),
             Self::ToggleSidebar => Some(PaletteCommandSpec {
@@ -125,8 +125,8 @@ impl UiCommand {
             Self::FocusList => Some(PaletteCommandSpec {
                 id: "palette:focus_list",
                 title: "Focus Workspace List",
-                description: "Return focus to workspace list (h/Esc)",
-                tags: &["list", "focus", "h", "esc"],
+                description: "Return focus to workspace list (Esc)",
+                tags: &["list", "focus", "esc"],
                 category: "Navigation",
             }),
             Self::MoveSelectionUp => Some(PaletteCommandSpec {
@@ -393,7 +393,6 @@ impl UiCommand {
                 UiCommand::ToggleFocus,
                 UiCommand::ToggleSidebar,
                 UiCommand::FocusList,
-                UiCommand::FocusPreview,
                 UiCommand::OpenPreview,
                 UiCommand::OpenCommandPalette,
             ],
@@ -429,9 +428,9 @@ impl UiCommand {
         match (self, context) {
             (UiCommand::OpenHelp, HelpHintContext::Global) => Some("? help"),
             (UiCommand::Quit, HelpHintContext::Global) => Some("q quit"),
-            (UiCommand::ToggleFocus, HelpHintContext::Global) => Some("Tab switch pane"),
+            (UiCommand::ToggleFocus, HelpHintContext::Global) => Some("Tab/h/l switch pane"),
             (UiCommand::ToggleSidebar, HelpHintContext::Global) => Some("\\ toggle sidebar"),
-            (UiCommand::FocusList, HelpHintContext::Global) => Some("h or Esc list pane"),
+            (UiCommand::FocusList, HelpHintContext::Global) => Some("Esc list pane"),
             (UiCommand::FocusPreview, HelpHintContext::Global) => Some("l preview pane"),
             (UiCommand::OpenPreview, HelpHintContext::Global) => Some("Enter open/attach"),
             (UiCommand::OpenCommandPalette, HelpHintContext::Global) => {
