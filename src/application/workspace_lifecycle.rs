@@ -30,6 +30,7 @@ pub enum WorkspaceLifecycleError {
     EmptyBaseBranch,
     EmptyExistingBranch,
     RepoNameUnavailable,
+    HomeDirectoryUnavailable,
     GitCommandFailed(String),
     Io(String),
 }
@@ -43,6 +44,9 @@ pub fn workspace_lifecycle_error_message(error: &WorkspaceLifecycleError) -> Str
         WorkspaceLifecycleError::EmptyBaseBranch => "base branch is required".to_string(),
         WorkspaceLifecycleError::EmptyExistingBranch => "existing branch is required".to_string(),
         WorkspaceLifecycleError::RepoNameUnavailable => "repo name unavailable".to_string(),
+        WorkspaceLifecycleError::HomeDirectoryUnavailable => {
+            "home directory unavailable".to_string()
+        }
         WorkspaceLifecycleError::GitCommandFailed(message) => {
             format!("git command failed: {message}")
         }
@@ -238,6 +242,11 @@ pub fn create_workspace(
     request.validate()?;
 
     let workspace_path = workspace_directory_path(repo_root, &request.workspace_name)?;
+    let workspace_parent = workspace_path
+        .parent()
+        .ok_or(WorkspaceLifecycleError::RepoNameUnavailable)?;
+    fs::create_dir_all(workspace_parent)
+        .map_err(|error| WorkspaceLifecycleError::Io(error.to_string()))?;
     let branch = request.branch_name();
 
     run_create_worktree_command(repo_root, &workspace_path, request, git_runner)?;
@@ -509,9 +518,29 @@ pub(crate) fn workspace_directory_path(
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or(WorkspaceLifecycleError::RepoNameUnavailable)?;
+    let home_directory =
+        dirs::home_dir().ok_or(WorkspaceLifecycleError::HomeDirectoryUnavailable)?;
+    let workspaces_root = home_directory.join(".grove").join("workspaces");
+    let repo_bucket = format!("{repo_name}-{}", stable_repo_path_hash(repo_root));
+    Ok(workspaces_root
+        .join(repo_bucket)
+        .join(format!("{repo_name}-{workspace_name}")))
+}
 
-    let parent = repo_root.parent().unwrap_or(repo_root);
-    Ok(parent.join(format!("{repo_name}-{workspace_name}")))
+fn stable_repo_path_hash(repo_root: &Path) -> String {
+    const FNV_OFFSET_BASIS: u64 = 14_695_981_039_346_656_037;
+    const FNV_PRIME: u64 = 1_099_511_628_211;
+
+    let normalized = repo_root
+        .canonicalize()
+        .unwrap_or_else(|_| repo_root.to_path_buf());
+    let mut hash = FNV_OFFSET_BASIS;
+    for byte in normalized.to_string_lossy().as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+
+    format!("{hash:016x}")
 }
 
 fn run_command(args: &[String]) -> Result<(), String> {

@@ -138,7 +138,8 @@ fn create_workspace_new_branch_sequences_git_markers_gitignore_and_env_copy() {
 
     let result =
         create_workspace(&repo_root, &request, &git, &setup).expect("create should succeed");
-    let expected_workspace_path = temp.path.join("grove-feature_a");
+    let expected_workspace_path =
+        workspace_directory_path(&repo_root, "feature_a").expect("path derivation should succeed");
 
     assert_eq!(result.workspace_path, expected_workspace_path);
     assert!(result.warnings.is_empty());
@@ -202,7 +203,8 @@ fn create_workspace_existing_branch_uses_attach_command_and_marker_branch() {
 
     let result =
         create_workspace(&repo_root, &request, &git, &setup).expect("create should succeed");
-    let expected_workspace_path = temp.path.join("grove-resume_auth");
+    let expected_workspace_path = workspace_directory_path(&repo_root, "resume_auth")
+        .expect("path derivation should succeed");
 
     assert_eq!(
         git.calls(),
@@ -256,10 +258,10 @@ fn create_workspace_setup_script_failure_is_warning_not_failure() {
     let setup_calls = setup.calls();
     assert_eq!(setup_calls.len(), 1);
     assert_eq!(setup_calls[0].main_worktree_path, repo_root);
-    assert_eq!(
-        setup_calls[0].workspace_path,
-        temp.path.join("grove-feature_b")
-    );
+    let expected_workspace_path =
+        workspace_directory_path(&setup_calls[0].main_worktree_path, "feature_b")
+            .expect("path derivation should succeed");
+    assert_eq!(setup_calls[0].workspace_path, expected_workspace_path);
     assert_eq!(setup_calls[0].worktree_branch, "feature_b");
 }
 
@@ -363,12 +365,32 @@ fn write_workspace_agent_marker_writes_expected_value() {
 }
 
 #[test]
-fn workspace_directory_path_uses_repo_prefix() {
+fn workspace_directory_path_uses_global_grove_root_with_repo_bucket() {
     let repo_root = Path::new("/repos/grove");
+    let first =
+        workspace_directory_path(repo_root, "feature_a").expect("path derivation should succeed");
+    let second =
+        workspace_directory_path(repo_root, "feature_a").expect("path derivation should succeed");
+
+    assert_eq!(first, second);
     assert_eq!(
-        workspace_directory_path(repo_root, "feature_a").expect("path derivation should succeed"),
-        PathBuf::from("/repos/grove-feature_a")
+        first.file_name().and_then(|name| name.to_str()),
+        Some("grove-feature_a")
     );
+
+    let expected_root = dirs::home_dir()
+        .expect("home directory should be available")
+        .join(".grove")
+        .join("workspaces");
+    assert!(first.starts_with(expected_root));
+
+    let bucket = first
+        .parent()
+        .and_then(|path| path.file_name())
+        .and_then(|name| name.to_str())
+        .expect("bucket name should exist");
+    assert!(bucket.starts_with("grove-"));
+    assert_ne!(bucket, "grove-");
 }
 
 #[test]
@@ -382,6 +404,10 @@ fn workspace_lifecycle_error_messages_are_user_friendly() {
             "boom".to_string()
         )),
         "git command failed: boom"
+    );
+    assert_eq!(
+        workspace_lifecycle_error_message(&WorkspaceLifecycleError::HomeDirectoryUnavailable),
+        "home directory unavailable"
     );
 }
 

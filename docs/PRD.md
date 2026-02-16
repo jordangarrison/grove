@@ -59,10 +59,9 @@ Decisions made during spec review, with rationale.
 - **Existing branch attach naming**: attaching to an existing branch uses
   that branch verbatim (may include `/`, `.`). In this mode, workspace
   name and branch may differ.
-- **Directory naming**: repo-prefixed. Workspace `auth-flow` in repo
-  `myapp` creates `../myapp-auth-flow/`. Disambiguates when multiple repos
-  use worktrees in the same parent directory (matches sidecar with
-  DirPrefix enabled).
+- **Directory naming**: global, repo-prefixed. Workspace `auth-flow` in repo
+  `myapp` creates `~/.grove/workspaces/myapp-<repo_hash>/myapp-auth-flow/`.
+  The hashed repo bucket disambiguates repos with the same basename.
 - **Main worktree visible**: the main worktree (repo itself) is shown in
   the workspace list but is not deletable. Useful to run an agent against
   the main branch.
@@ -270,14 +269,14 @@ files + tmux sessions), not a JSON manifest.
 
 #### Worktree Directory Naming
 
-Worktree directories are created as siblings of the repo, prefixed with
-the repo name:
+Worktree directories are created under the global Grove workspaces root,
+prefixed with the repo name, and grouped by a repo hash bucket:
 
 ```
-parent/
-  myapp/                  # main repo
-  myapp-auth-flow/        # workspace "auth-flow"
-  myapp-fix-tests/        # workspace "fix-tests"
+~/.grove/workspaces/
+  myapp-a1b2c3d4e5f6a7b8/ # repo bucket (name + stable hash of repo path)
+    myapp-auth-flow/      # workspace "auth-flow"
+    myapp-fix-tests/      # workspace "fix-tests"
 ```
 
 #### Reconciliation on Startup
@@ -2510,11 +2509,14 @@ pub fn ensure_gitignore(repo_root: &Path) -> Result<(), io::Error> {
     Ok(())
 }
 
-/// Compute worktree directory path: ../repo-name-workspace-name/
+/// Compute worktree directory path:
+/// ~/.grove/workspaces/<repo>-<repo-hash>/<repo>-<workspace-name>/
 pub fn worktree_path(repo_root: &Path, repo_name: &str, workspace_name: &str) -> PathBuf {
-    repo_root
-        .parent()
-        .unwrap_or(repo_root)
+    let home = dirs::home_dir().expect("home directory should be available");
+    let bucket = format!("{repo_name}-<repo-hash>");
+    home.join(".grove")
+        .join("workspaces")
+        .join(bucket)
         .join(format!("{repo_name}-{workspace_name}"))
 }
 ```
