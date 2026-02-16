@@ -1252,6 +1252,23 @@ fn question_key_opens_keybind_help_modal() {
 }
 
 #[test]
+fn backslash_toggles_sidebar_visibility() {
+    let mut app = fixture_app();
+    assert!(!app.sidebar_hidden);
+
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('\\')).with_kind(KeyEventKind::Press));
+
+    assert!(app.sidebar_hidden);
+    let hidden_layout = GroveApp::view_layout_for_size_with_sidebar(120, 40, 33, true);
+    assert_eq!(hidden_layout.sidebar.width, 0);
+    assert_eq!(hidden_layout.divider.width, 0);
+    assert_eq!(hidden_layout.preview.width, 120);
+
+    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('\\')).with_kind(KeyEventKind::Press));
+    assert!(!app.sidebar_hidden);
+}
+
+#[test]
 fn keybind_help_modal_closes_on_escape() {
     let mut app = fixture_app();
     app.keybind_help_open = true;
@@ -1403,6 +1420,11 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
             .any(|id| id == &palette_id(UiCommand::OpenProjects))
     );
     assert!(
+        list_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::ToggleSidebar))
+    );
+    assert!(
         !list_ids
             .iter()
             .any(|id| id == &palette_id(UiCommand::ScrollDown))
@@ -1457,6 +1479,11 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
             .any(|id| id == &palette_id(UiCommand::NextTab))
     );
     assert!(
+        preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::ToggleSidebar))
+    );
+    assert!(
         !preview_ids
             .iter()
             .any(|id| id == &palette_id(UiCommand::MoveSelectionDown))
@@ -1487,6 +1514,11 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
         git_preview_ids
             .iter()
             .any(|id| id == &palette_id(UiCommand::NextTab))
+    );
+    assert!(
+        git_preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::ToggleSidebar))
     );
 }
 

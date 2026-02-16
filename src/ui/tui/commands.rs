@@ -1,6 +1,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum UiCommand {
     ToggleFocus,
+    ToggleSidebar,
     OpenPreview,
     EnterInteractive,
     FocusPreview,
@@ -55,8 +56,9 @@ pub(super) enum HelpHintContext {
 }
 
 impl UiCommand {
-    pub(super) const ALL: [UiCommand; 27] = [
+    pub(super) const ALL: [UiCommand; 28] = [
         UiCommand::ToggleFocus,
+        UiCommand::ToggleSidebar,
         UiCommand::OpenPreview,
         UiCommand::EnterInteractive,
         UiCommand::FocusPreview,
@@ -96,6 +98,13 @@ impl UiCommand {
                 title: "Toggle Pane Focus",
                 description: "Switch focus between workspace list and preview (Tab)",
                 tags: &["tab", "focus", "pane"],
+                category: "Navigation",
+            }),
+            Self::ToggleSidebar => Some(PaletteCommandSpec {
+                id: "palette:toggle_sidebar",
+                title: "Toggle Sidebar",
+                description: "Show or hide workspace sidebar (\\)",
+                tags: &["sidebar", "layout", "\\", "toggle"],
                 category: "Navigation",
             }),
             Self::OpenPreview => Some(PaletteCommandSpec {
@@ -294,6 +303,7 @@ impl UiCommand {
                 UiCommand::OpenProjects,
                 UiCommand::DeleteWorkspace,
                 UiCommand::OpenSettings,
+                UiCommand::ToggleSidebar,
                 UiCommand::OpenCommandPalette,
                 UiCommand::OpenHelp,
                 UiCommand::Quit,
@@ -315,6 +325,7 @@ impl UiCommand {
                 UiCommand::StopAgent,
                 UiCommand::DeleteWorkspace,
                 UiCommand::OpenSettings,
+                UiCommand::ToggleSidebar,
                 UiCommand::OpenCommandPalette,
                 UiCommand::OpenHelp,
                 UiCommand::Quit,
@@ -331,6 +342,7 @@ impl UiCommand {
                 UiCommand::OpenProjects,
                 UiCommand::DeleteWorkspace,
                 UiCommand::OpenSettings,
+                UiCommand::ToggleSidebar,
                 UiCommand::OpenCommandPalette,
                 UiCommand::OpenHelp,
                 UiCommand::Quit,
@@ -365,6 +377,7 @@ impl UiCommand {
             (UiCommand::StopAgent, StatusHintContext::PreviewAgent) => Some("x stop"),
             (UiCommand::DeleteWorkspace, _context) => Some("D delete"),
             (UiCommand::OpenSettings, _context) => Some("S settings"),
+            (UiCommand::ToggleSidebar, _context) => Some("\\ sidebar"),
             (UiCommand::OpenCommandPalette, _context) => Some("Ctrl+K palette"),
             (UiCommand::OpenHelp, _context) => Some("? help"),
             (UiCommand::Quit, _context) => Some("q quit"),
@@ -378,6 +391,7 @@ impl UiCommand {
                 UiCommand::OpenHelp,
                 UiCommand::Quit,
                 UiCommand::ToggleFocus,
+                UiCommand::ToggleSidebar,
                 UiCommand::FocusList,
                 UiCommand::FocusPreview,
                 UiCommand::OpenPreview,
@@ -416,6 +430,7 @@ impl UiCommand {
             (UiCommand::OpenHelp, HelpHintContext::Global) => Some("? help"),
             (UiCommand::Quit, HelpHintContext::Global) => Some("q quit"),
             (UiCommand::ToggleFocus, HelpHintContext::Global) => Some("Tab switch pane"),
+            (UiCommand::ToggleSidebar, HelpHintContext::Global) => Some("\\ toggle sidebar"),
             (UiCommand::FocusList, HelpHintContext::Global) => Some("h or Esc list pane"),
             (UiCommand::FocusPreview, HelpHintContext::Global) => Some("l preview pane"),
             (UiCommand::OpenPreview, HelpHintContext::Global) => Some("Enter open/attach"),

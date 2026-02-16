@@ -381,6 +381,7 @@ impl GroveApp {
         }
         match command {
             UiCommand::ToggleFocus
+            | UiCommand::ToggleSidebar
             | UiCommand::NewWorkspace
             | UiCommand::EditWorkspace
             | UiCommand::OpenProjects
@@ -447,6 +448,13 @@ impl GroveApp {
         match command {
             UiCommand::ToggleFocus => {
                 reduce(&mut self.state, Action::ToggleFocus);
+                false
+            }
+            UiCommand::ToggleSidebar => {
+                self.sidebar_hidden = !self.sidebar_hidden;
+                if self.sidebar_hidden {
+                    self.divider_drag_active = false;
+                }
                 false
             }
             UiCommand::OpenPreview => {
@@ -2329,6 +2337,7 @@ impl GroveApp {
         for command in UiCommand::all() {
             let matches = match command {
                 UiCommand::ToggleFocus => matches!(key_event.code, KeyCode::Tab),
+                UiCommand::ToggleSidebar => matches!(key_event.code, KeyCode::Char('\\')),
                 UiCommand::OpenPreview => match key_event.code {
                     KeyCode::Enter => !in_preview_focus || !can_enter_interactive,
                     _ => false,

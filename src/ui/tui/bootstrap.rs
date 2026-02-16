@@ -416,6 +416,7 @@ impl GroveApp {
             viewport_width: 120,
             viewport_height: 40,
             sidebar_width_pct,
+            sidebar_hidden: false,
             launch_skip_permissions: false,
             sidebar_ratio_path,
             divider_drag_active: false,

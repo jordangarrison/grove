@@ -145,6 +145,7 @@ struct GroveApp {
     viewport_width: u16,
     viewport_height: u16,
     sidebar_width_pct: u16,
+    sidebar_hidden: bool,
     launch_skip_permissions: bool,
     sidebar_ratio_path: PathBuf,
     divider_drag_active: bool,

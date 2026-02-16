@@ -7,10 +7,11 @@ impl GroveApp {
         frame.set_cursor_visible(false);
         frame.enable_hit_testing();
         let area = Rect::from_size(frame.buffer.width(), frame.buffer.height());
-        let layout = Self::view_layout_for_size(
+        let layout = Self::view_layout_for_size_with_sidebar(
             frame.buffer.width(),
             frame.buffer.height(),
             self.sidebar_width_pct,
+            self.sidebar_hidden,
         );
 
         self.render_header(frame, layout.header);
@@ -2161,6 +2162,15 @@ impl GroveApp {
         height: u16,
         sidebar_width_pct: u16,
     ) -> ViewLayout {
+        Self::view_layout_for_size_with_sidebar(width, height, sidebar_width_pct, false)
+    }
+
+    pub(super) fn view_layout_for_size_with_sidebar(
+        width: u16,
+        height: u16,
+        sidebar_width_pct: u16,
+        sidebar_hidden: bool,
+    ) -> ViewLayout {
         let area = Rect::from_size(width, height);
         let rows = Flex::vertical()
             .constraints([
@@ -2170,13 +2180,18 @@ impl GroveApp {
             ])
             .split(area);
 
-        let sidebar_width = ((u32::from(rows[1].width) * u32::from(sidebar_width_pct)) / 100)
-            .try_into()
-            .unwrap_or(rows[1].width);
+        let sidebar_width = if sidebar_hidden {
+            0
+        } else {
+            ((u32::from(rows[1].width) * u32::from(sidebar_width_pct)) / 100)
+                .try_into()
+                .unwrap_or(rows[1].width)
+        };
+        let divider_width = if sidebar_hidden { 0 } else { DIVIDER_WIDTH };
         let cols = Flex::horizontal()
             .constraints([
                 Constraint::Fixed(sidebar_width),
-                Constraint::Fixed(DIVIDER_WIDTH),
+                Constraint::Fixed(divider_width),
                 Constraint::Fill,
             ])
             .split(rows[1]);
@@ -2202,7 +2217,12 @@ impl GroveApp {
 
     pub(super) fn view_layout(&self) -> ViewLayout {
         let (width, height) = self.effective_viewport_size();
-        Self::view_layout_for_size(width, height, self.sidebar_width_pct)
+        Self::view_layout_for_size_with_sidebar(
+            width,
+            height,
+            self.sidebar_width_pct,
+            self.sidebar_hidden,
+        )
     }
 
     fn divider_hit_area(divider: Rect, viewport_width: u16) -> Rect {
