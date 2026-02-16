@@ -118,7 +118,10 @@ mod update_navigation;
 mod update_polling;
 mod view;
 mod view_layout;
-mod view_overlays;
+mod view_overlays_create_edit;
+mod view_overlays_help;
+mod view_overlays_projects;
+mod view_overlays_workspace;
 mod view_selection;
 
 struct GroveApp {
