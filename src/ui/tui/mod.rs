@@ -103,6 +103,7 @@ use text::{
     visual_grapheme_at, visual_substring,
 };
 mod update;
+mod update_input;
 mod update_lifecycle;
 mod update_navigation;
 mod update_polling;
