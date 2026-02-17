@@ -202,7 +202,6 @@ impl GroveApp {
                         self.interactive = None;
                     }
                 }
-                self.last_tmux_error = Some(message.clone());
                 self.event_log.log(
                     LogEvent::new("preview_poll", "capture_failed")
                         .with_data("session", Value::from(session_name.to_string()))
@@ -213,8 +212,13 @@ impl GroveApp {
                         )
                         .with_data("error", Value::from(message.clone())),
                 );
-                self.log_tmux_error(message.clone());
-                self.show_toast("preview capture failed", true);
+                if capture_error_indicates_missing_session {
+                    self.last_tmux_error = None;
+                } else {
+                    self.last_tmux_error = Some(message.clone());
+                    self.log_tmux_error(message.clone());
+                    self.show_toast("preview capture failed", true);
+                }
                 self.refresh_preview_summary();
             }
         }

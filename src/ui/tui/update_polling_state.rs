@@ -189,6 +189,15 @@ impl GroveApp {
             due_at = visual_due_at;
             trigger = "visual";
         }
+        if self.preview_poll_in_flight {
+            let in_flight_due_at =
+                scheduled_at + Duration::from_millis(PREVIEW_POLL_IN_FLIGHT_TICK_MS);
+            if in_flight_due_at < due_at {
+                due_at = in_flight_due_at;
+                source = "poll_in_flight";
+                trigger = "task_result";
+            }
+        }
 
         if let Some(existing_due_at) = self.next_tick_due_at
             && existing_due_at <= due_at

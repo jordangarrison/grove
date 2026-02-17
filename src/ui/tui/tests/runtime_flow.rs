@@ -95,6 +95,31 @@ fn poll_preview_marks_request_when_background_poll_is_in_flight() {
 }
 
 #[test]
+fn async_preview_skips_workspace_status_targets_when_live_preview_exists() {
+    let mut app = fixture_background_app(WorkspaceStatus::Active);
+    app.state.selected_index = 1;
+
+    let live_preview = app.prepare_live_preview_session();
+    assert!(live_preview.is_some());
+
+    let status_targets = app.status_poll_targets_for_async_preview(live_preview.as_ref());
+    assert!(status_targets.is_empty());
+}
+
+#[test]
+fn async_preview_polls_workspace_status_targets_when_live_preview_missing() {
+    let mut app = fixture_background_app(WorkspaceStatus::Active);
+    app.state.selected_index = 0;
+
+    let live_preview = app.prepare_live_preview_session();
+    assert!(live_preview.is_none());
+
+    let status_targets = app.status_poll_targets_for_async_preview(live_preview.as_ref());
+    assert_eq!(status_targets.len(), 1);
+    assert_eq!(status_targets[0].workspace_name, "feature-a");
+}
+
+#[test]
 fn preview_poll_completion_runs_deferred_background_poll_request() {
     let mut app = fixture_background_app(WorkspaceStatus::Active);
     app.state.selected_index = 1;
@@ -118,9 +143,95 @@ fn preview_poll_completion_runs_deferred_background_poll_request() {
 }
 
 #[test]
+fn switching_workspace_drops_in_flight_capture_for_previous_session() {
+    let mut app = fixture_background_app(WorkspaceStatus::Active);
+    app.state.selected_index = 1;
+    app.preview.apply_capture("stale-feature-output\n");
+    app.poll_generation = 1;
+    app.preview_poll_in_flight = true;
+
+    let switch_cmd = ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('k'))));
+
+    assert_eq!(app.state.selected_index, 0);
+    assert!(cmd_contains_task(&switch_cmd));
+    assert!(!app.preview_poll_requested);
+    assert_eq!(app.poll_generation, 2);
+    assert_ne!(app.preview.lines, vec!["stale-feature-output".to_string()]);
+
+    let stale_cmd = ftui::Model::update(
+        &mut app,
+        Msg::PreviewPollCompleted(PreviewPollCompletion {
+            generation: 1,
+            live_capture: Some(LivePreviewCapture {
+                session: "grove-ws-feature-a".to_string(),
+                include_escape_sequences: false,
+                capture_ms: 1,
+                total_ms: 1,
+                result: Ok("stale-output\n".to_string()),
+            }),
+            cursor_capture: None,
+            workspace_status_captures: Vec::new(),
+        }),
+    );
+
+    assert!(app.preview_poll_in_flight);
+    assert!(!app.preview_poll_requested);
+    assert!(!cmd_contains_task(&stale_cmd));
+    assert!(
+        app.preview
+            .lines
+            .iter()
+            .all(|line| !line.contains("stale-output"))
+    );
+    assert_ne!(app.preview.lines, vec!["stale-feature-output".to_string()]);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::PreviewPollCompleted(PreviewPollCompletion {
+            generation: 2,
+            live_capture: Some(LivePreviewCapture {
+                session: "grove-ws-grove".to_string(),
+                include_escape_sequences: false,
+                capture_ms: 1,
+                total_ms: 1,
+                result: Ok("fresh-main-output\n".to_string()),
+            }),
+            cursor_capture: None,
+            workspace_status_captures: Vec::new(),
+        }),
+    );
+
+    assert!(!app.preview_poll_in_flight);
+    assert_eq!(app.preview.lines, vec!["fresh-main-output".to_string()]);
+}
+
+#[test]
+fn switching_to_active_workspace_keeps_existing_preview_until_fresh_capture() {
+    let mut app = fixture_background_app(WorkspaceStatus::Active);
+    if let Some(main_workspace) = app.state.workspaces.get_mut(0) {
+        main_workspace.status = WorkspaceStatus::Active;
+    }
+    app.state.selected_index = 1;
+    app.preview.apply_capture("feature-live-output\n");
+    app.poll_generation = 1;
+    app.preview_poll_in_flight = true;
+
+    let switch_cmd = ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('k'))));
+
+    assert_eq!(app.state.selected_index, 0);
+    assert!(cmd_contains_task(&switch_cmd));
+    assert!(!app.preview_poll_requested);
+    assert_eq!(app.poll_generation, 2);
+    assert_eq!(app.preview.lines, vec!["feature-live-output".to_string()]);
+}
+
+#[test]
 fn async_preview_capture_failure_sets_toast_message() {
     let mut app = fixture_app();
     app.state.selected_index = 1;
+    if let Some(workspace) = app.state.workspaces.get_mut(1) {
+        workspace.status = WorkspaceStatus::Active;
+    }
 
     ftui::Model::update(
         &mut app,
@@ -3071,6 +3182,21 @@ fn stale_tick_before_due_is_ignored() {
 
     assert!(matches!(cmd, Cmd::None));
     assert!(calls.borrow().is_empty());
+}
+
+#[test]
+fn in_flight_preview_poll_schedules_short_tick_for_task_results() {
+    let mut app = fixture_background_app(WorkspaceStatus::Active);
+    app.state.selected_index = 1;
+    app.preview_poll_in_flight = true;
+    app.next_tick_due_at = Some(Instant::now() + Duration::from_secs(5));
+
+    let cmd = app.schedule_next_tick();
+    let Cmd::Tick(interval) = cmd else {
+        panic!("expected Cmd::Tick while preview poll is in flight");
+    };
+    assert!(interval <= Duration::from_millis(20));
+    assert!(interval >= Duration::from_millis(15));
 }
 
 #[test]

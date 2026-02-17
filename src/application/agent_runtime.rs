@@ -1,11 +1,13 @@
 use std::collections::HashSet;
+use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::fs::{self, File};
 use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{Duration, SystemTime};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::config::MultiplexerKind;
@@ -26,6 +28,7 @@ const WAITING_TAIL_LINES: usize = 8;
 const STATUS_TAIL_LINES: usize = 60;
 const SESSION_STATUS_TAIL_BYTES: usize = 2 * 1024 * 1024;
 const SESSION_ACTIVITY_THRESHOLD: Duration = Duration::from_secs(30);
+const CODEX_SESSION_LOOKUP_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
 const DONE_PATTERNS: [&str; 5] = [
     "task completed",
     "all done",
@@ -945,6 +948,95 @@ struct StatusOverrideContext<'a> {
     activity_threshold: Duration,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct CodexSessionLookupKey {
+    sessions_dir: PathBuf,
+    workspace_path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+struct CodexSessionLookupCacheEntry {
+    checked_at: Instant,
+    session_file: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+struct CodexMessageStatusCacheEntry {
+    modified_at: SystemTime,
+    status: Option<WorkspaceStatus>,
+}
+
+fn codex_session_lookup_cache() -> &'static Mutex<HashMap<CodexSessionLookupKey, CodexSessionLookupCacheEntry>> {
+    static CACHE: OnceLock<Mutex<HashMap<CodexSessionLookupKey, CodexSessionLookupCacheEntry>>> =
+        OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn codex_message_status_cache() -> &'static Mutex<HashMap<PathBuf, CodexMessageStatusCacheEntry>> {
+    static CACHE: OnceLock<Mutex<HashMap<PathBuf, CodexMessageStatusCacheEntry>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn find_codex_session_for_path_cached(
+    sessions_dir: &Path,
+    workspace_path: &Path,
+) -> Option<PathBuf> {
+    let workspace_path = absolute_path(workspace_path)?;
+    let key = CodexSessionLookupKey {
+        sessions_dir: sessions_dir.to_path_buf(),
+        workspace_path: workspace_path.clone(),
+    };
+    let now = Instant::now();
+
+    if let Ok(cache) = codex_session_lookup_cache().lock()
+        && let Some(entry) = cache.get(&key)
+        && now.saturating_duration_since(entry.checked_at) < CODEX_SESSION_LOOKUP_REFRESH_INTERVAL
+        && entry.session_file.exists()
+    {
+        return Some(entry.session_file.clone());
+    }
+
+    let session_file = find_codex_session_for_path(sessions_dir, &workspace_path);
+    if let Ok(mut cache) = codex_session_lookup_cache().lock() {
+        if let Some(session_file) = session_file.as_ref() {
+            cache.insert(
+                key,
+                CodexSessionLookupCacheEntry {
+                    checked_at: now,
+                    session_file: session_file.clone(),
+                },
+            );
+        } else {
+            cache.remove(&key);
+        }
+    }
+
+    session_file
+}
+
+fn get_codex_last_message_status_cached(path: &Path) -> Option<WorkspaceStatus> {
+    let modified_at = fs::metadata(path).and_then(|metadata| metadata.modified()).ok()?;
+    if let Ok(cache) = codex_message_status_cache().lock()
+        && let Some(entry) = cache.get(path)
+        && entry.modified_at == modified_at
+    {
+        return entry.status;
+    }
+
+    let status = get_codex_last_message_status(path);
+    if let Ok(mut cache) = codex_message_status_cache().lock() {
+        cache.insert(
+            path.to_path_buf(),
+            CodexMessageStatusCacheEntry {
+                modified_at,
+                status,
+            },
+        );
+    }
+
+    status
+}
+
 fn detect_status_with_session_override_in_home(
     context: StatusOverrideContext<'_>,
 ) -> WorkspaceStatus {
@@ -1029,15 +1121,14 @@ fn detect_codex_session_status_in_home(
     home_dir: &Path,
     activity_threshold: Duration,
 ) -> Option<WorkspaceStatus> {
-    let workspace_path = absolute_path(workspace_path)?;
     let sessions_dir = home_dir.join(".codex").join("sessions");
-    let session_file = find_codex_session_for_path(&sessions_dir, &workspace_path)?;
+    let session_file = find_codex_session_for_path_cached(&sessions_dir, workspace_path)?;
 
     if is_file_recently_modified(&session_file, activity_threshold) {
         return Some(WorkspaceStatus::Active);
     }
 
-    get_codex_last_message_status(&session_file)
+    get_codex_last_message_status_cached(&session_file)
 }
 
 fn absolute_path(path: &Path) -> Option<PathBuf> {

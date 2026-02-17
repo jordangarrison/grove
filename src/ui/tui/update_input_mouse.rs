@@ -72,10 +72,7 @@ impl GroveApp {
 
         if row != self.state.selected_index {
             self.state.selected_index = row;
-            self.preview.jump_to_bottom();
-            self.clear_agent_activity_tracking();
-            self.clear_preview_selection();
-            self.poll_preview();
+            self.handle_workspace_selection_changed();
         }
     }
 
@@ -88,10 +85,7 @@ impl GroveApp {
         }
 
         self.state.selected_index = index;
-        self.preview.jump_to_bottom();
-        self.clear_agent_activity_tracking();
-        self.clear_preview_selection();
-        self.poll_preview();
+        self.handle_workspace_selection_changed();
     }
 
     pub(super) fn handle_mouse_event(&mut self, mouse_event: MouseEvent) {

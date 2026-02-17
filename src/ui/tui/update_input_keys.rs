@@ -23,10 +23,17 @@ impl GroveApp {
         let before = self.state.selected_index;
         reduce(&mut self.state, action);
         if self.state.selected_index != before {
-            self.preview.jump_to_bottom();
-            self.clear_agent_activity_tracking();
-            self.clear_preview_selection();
-            self.poll_preview();
+            self.handle_workspace_selection_changed();
         }
+    }
+
+    pub(super) fn handle_workspace_selection_changed(&mut self) {
+        self.preview.jump_to_bottom();
+        self.clear_agent_activity_tracking();
+        self.clear_preview_selection();
+        if self.selected_live_preview_session_if_ready().is_none() {
+            self.refresh_preview_summary();
+        }
+        self.poll_preview_prioritized();
     }
 }
