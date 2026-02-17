@@ -10,6 +10,7 @@ pub(super) enum Msg {
     Resize { width: u16, height: u16 },
     PreviewPollCompleted(PreviewPollCompletion),
     LazygitLaunchCompleted(LazygitLaunchCompletion),
+    WorkspaceShellLaunchCompleted(WorkspaceShellLaunchCompletion),
     RefreshWorkspacesCompleted(RefreshWorkspacesCompletion),
     DeleteProjectCompleted(DeleteProjectCompletion),
     DeleteWorkspaceCompleted(DeleteWorkspaceCompletion),
@@ -41,6 +42,13 @@ pub(super) struct LivePreviewCapture {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct LazygitLaunchCompletion {
+    pub(super) session_name: String,
+    pub(super) duration_ms: u64,
+    pub(super) result: Result<(), String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct WorkspaceShellLaunchCompletion {
     pub(super) session_name: String,
     pub(super) duration_ms: u64,
     pub(super) result: Result<(), String>,

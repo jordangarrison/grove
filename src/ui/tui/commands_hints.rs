@@ -22,6 +22,7 @@ impl UiCommand {
             StatusHintContext::PreviewAgent => &[
                 UiCommand::PreviousTab,
                 UiCommand::NextTab,
+                UiCommand::EnterInteractive,
                 UiCommand::ScrollDown,
                 UiCommand::PageDown,
                 UiCommand::ScrollBottom,
@@ -76,6 +77,9 @@ impl UiCommand {
             | (UiCommand::PreviousTab, StatusHintContext::PreviewGit) => Some("[ prev tab"),
             (UiCommand::NextTab, StatusHintContext::PreviewAgent)
             | (UiCommand::NextTab, StatusHintContext::PreviewGit) => Some("] next tab"),
+            (UiCommand::EnterInteractive, StatusHintContext::PreviewAgent) => {
+                Some("Enter attach shell")
+            }
             (UiCommand::ScrollDown, StatusHintContext::PreviewAgent) => Some("j/k scroll"),
             (UiCommand::PageDown, StatusHintContext::PreviewAgent) => Some("PgUp/PgDn"),
             (UiCommand::ScrollBottom, StatusHintContext::PreviewAgent) => Some("G bottom"),
@@ -121,6 +125,7 @@ impl UiCommand {
             HelpHintContext::PreviewAgent => &[
                 UiCommand::PreviousTab,
                 UiCommand::NextTab,
+                UiCommand::EnterInteractive,
                 UiCommand::ScrollDown,
                 UiCommand::PageDown,
                 UiCommand::ScrollBottom,
@@ -162,6 +167,9 @@ impl UiCommand {
             | (UiCommand::PreviousTab, HelpHintContext::PreviewGit) => Some("[ prev tab"),
             (UiCommand::NextTab, HelpHintContext::PreviewAgent)
             | (UiCommand::NextTab, HelpHintContext::PreviewGit) => Some("] next tab"),
+            (UiCommand::EnterInteractive, HelpHintContext::PreviewAgent) => {
+                Some("Enter attach shell/agent")
+            }
             (UiCommand::ScrollDown, HelpHintContext::PreviewAgent) => Some("j/k or Up/Down scroll"),
             (UiCommand::PageDown, HelpHintContext::PreviewAgent) => Some("PgUp/PgDn page"),
             (UiCommand::ScrollBottom, HelpHintContext::PreviewAgent) => Some("G bottom"),

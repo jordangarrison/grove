@@ -721,6 +721,31 @@ fn create_workspace_completed_success_queues_refresh_task_in_background_mode() {
 
     assert!(cmd_contains_task(&cmd));
     assert!(app.refresh_in_flight);
+    assert_eq!(
+        app.pending_auto_shell_workspace_path,
+        Some(PathBuf::from("/repos/grove-feature-x"))
+    );
+}
+
+#[test]
+fn refresh_workspace_completion_autostarts_shell_for_new_workspace() {
+    let mut app = fixture_background_app(WorkspaceStatus::Idle);
+    app.pending_auto_shell_workspace_path = Some(PathBuf::from("/repos/grove-feature-a"));
+
+    let cmd = ftui::Model::update(
+        &mut app,
+        Msg::RefreshWorkspacesCompleted(RefreshWorkspacesCompletion {
+            preferred_workspace_path: Some(PathBuf::from("/repos/grove-feature-a")),
+            bootstrap: fixture_bootstrap(WorkspaceStatus::Idle),
+        }),
+    );
+
+    assert!(cmd_contains_task(&cmd));
+    assert!(
+        app.shell_launch_in_flight
+            .contains("grove-ws-feature-a-shell")
+    );
+    assert!(app.pending_auto_shell_workspace_path.is_none());
 }
 
 #[test]
@@ -1947,6 +1972,23 @@ fn stop_key_stops_selected_workspace_agent() {
                 "-t".to_string(),
                 "grove-ws-feature-a".to_string(),
             ],
+            vec![
+                "tmux".to_string(),
+                "new-session".to_string(),
+                "-d".to_string(),
+                "-s".to_string(),
+                "grove-ws-feature-a-shell".to_string(),
+                "-c".to_string(),
+                "/repos/grove-feature-a".to_string(),
+            ],
+            vec![
+                "tmux".to_string(),
+                "set-option".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a-shell".to_string(),
+                "history-limit".to_string(),
+                "10000".to_string(),
+            ],
         ]
     );
     assert_eq!(
@@ -2159,6 +2201,51 @@ fn enter_on_active_main_workspace_starts_interactive_mode() {
             .as_ref()
             .map(|state| state.target_session.as_str()),
         Some("grove-ws-grove")
+    );
+    assert_eq!(app.mode_label(), "Interactive");
+}
+
+#[test]
+fn enter_on_idle_workspace_launches_shell_session_and_enters_interactive_mode() {
+    let (mut app, commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
+    assert_eq!(
+        commands.borrow().as_slice(),
+        &[
+            vec![
+                "tmux".to_string(),
+                "new-session".to_string(),
+                "-d".to_string(),
+                "-s".to_string(),
+                "grove-ws-feature-a-shell".to_string(),
+                "-c".to_string(),
+                "/repos/grove-feature-a".to_string(),
+            ],
+            vec![
+                "tmux".to_string(),
+                "set-option".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a-shell".to_string(),
+                "history-limit".to_string(),
+                "10000".to_string(),
+            ],
+        ]
+    );
+    assert_eq!(
+        app.interactive
+            .as_ref()
+            .map(|state| state.target_session.as_str()),
+        Some("grove-ws-feature-a-shell")
     );
     assert_eq!(app.mode_label(), "Interactive");
 }
@@ -4121,6 +4208,35 @@ fn lazygit_launch_completion_failure_marks_session_failed() {
     assert!(app.lazygit_failed_sessions.contains("grove-ws-grove-git"));
     assert!(!app.lazygit_launch_in_flight.contains("grove-ws-grove-git"));
     assert!(app.status_bar_line().contains("lazygit launch failed"));
+}
+
+#[test]
+fn workspace_shell_launch_completion_success_marks_session_ready() {
+    let mut app = fixture_app();
+    app.shell_launch_in_flight
+        .insert("grove-ws-feature-a-shell".to_string());
+
+    ftui::Model::update(
+        &mut app,
+        Msg::WorkspaceShellLaunchCompleted(WorkspaceShellLaunchCompletion {
+            session_name: "grove-ws-feature-a-shell".to_string(),
+            duration_ms: 14,
+            result: Ok(()),
+        }),
+    );
+
+    assert!(
+        app.shell_ready_sessions
+            .contains("grove-ws-feature-a-shell")
+    );
+    assert!(
+        !app.shell_launch_in_flight
+            .contains("grove-ws-feature-a-shell")
+    );
+    assert!(
+        !app.shell_failed_sessions
+            .contains("grove-ws-feature-a-shell")
+    );
 }
 
 #[test]

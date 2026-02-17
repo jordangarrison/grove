@@ -172,6 +172,10 @@ pub fn git_session_name_for_workspace(workspace: &Workspace) -> String {
     format!("{}-git", session_name_for_workspace_ref(workspace))
 }
 
+pub fn shell_session_name_for_workspace(workspace: &Workspace) -> String {
+    format!("{}-shell", session_name_for_workspace_ref(workspace))
+}
+
 pub fn workspace_should_poll_status(workspace: &Workspace, multiplexer: MultiplexerKind) -> bool {
     let _ = multiplexer;
     if !workspace.supported_agent {
@@ -423,11 +427,15 @@ pub fn build_shell_launch_plan(
         capture_cols: request.capture_cols,
         capture_rows: request.capture_rows,
     };
-    tmux_launch_plan(
+    let mut plan = tmux_launch_plan(
         &shared,
         request.session_name.clone(),
         request.command.clone(),
-    )
+    );
+    if request.command.trim().is_empty() {
+        plan.launch_cmd = Vec::new();
+    }
+    plan
 }
 
 fn tmux_launch_plan(

@@ -40,6 +40,12 @@ impl GroveApp {
     }
 
     pub(super) fn enter_preview_or_interactive(&mut self) {
+        if self.preview_tab == PreviewTab::Agent
+            && let Some(workspace) = self.state.selected_workspace()
+        {
+            let session_name = shell_session_name_for_workspace(workspace);
+            self.shell_failed_sessions.remove(&session_name);
+        }
         if !self.enter_interactive(Instant::now()) {
             reduce(&mut self.state, Action::EnterPreviewMode);
             self.poll_preview();
@@ -50,10 +56,7 @@ impl GroveApp {
         let in_preview_focus =
             self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview;
         let in_preview_agent = in_preview_focus && self.preview_tab == PreviewTab::Agent;
-        let can_enter_interactive = workspace_can_enter_interactive(
-            self.state.selected_workspace(),
-            self.preview_tab == PreviewTab::Git,
-        );
+        let can_enter_interactive = self.can_enter_interactive_session();
 
         for command in UiCommand::all() {
             let matches = match command {

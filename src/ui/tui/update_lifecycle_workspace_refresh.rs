@@ -1,6 +1,23 @@
 use super::*;
 
 impl GroveApp {
+    fn auto_launch_pending_workspace_shell(&mut self) {
+        let Some(pending_path) = self.pending_auto_shell_workspace_path.clone() else {
+            return;
+        };
+        self.pending_auto_shell_workspace_path = None;
+
+        let selected_matches = self
+            .state
+            .selected_workspace()
+            .is_some_and(|workspace| workspace.path == pending_path);
+        if !selected_matches {
+            return;
+        }
+
+        let _ = self.ensure_workspace_shell_session_for_selected_workspace(true);
+    }
+
     pub(super) fn refresh_workspaces(&mut self, preferred_workspace_path: Option<PathBuf>) {
         if !self.tmux_input.supports_background_launch() {
             self.refresh_workspaces_sync(preferred_workspace_path);
@@ -46,6 +63,7 @@ impl GroveApp {
         self.state.focus = previous_focus;
         self.clear_agent_activity_tracking();
         self.clear_status_tracking();
+        self.auto_launch_pending_workspace_shell();
         self.poll_preview();
     }
 
@@ -73,6 +91,7 @@ impl GroveApp {
         self.refresh_in_flight = false;
         self.clear_agent_activity_tracking();
         self.clear_status_tracking();
+        self.auto_launch_pending_workspace_shell();
         self.poll_preview();
     }
 }

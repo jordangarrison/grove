@@ -19,6 +19,12 @@ impl GroveApp {
             let session_name = git_session_name_for_workspace(workspace);
             self.lazygit_failed_sessions.remove(&session_name);
         }
+        if self.preview_tab == PreviewTab::Agent
+            && let Some(workspace) = self.state.selected_workspace()
+        {
+            let session_name = shell_session_name_for_workspace(workspace);
+            self.shell_failed_sessions.remove(&session_name);
+        }
         self.poll_preview();
     }
     pub(super) fn execute_ui_command(&mut self, command: UiCommand) -> bool {

@@ -80,11 +80,7 @@ impl GroveApp {
             | UiCommand::Quit => true,
             UiCommand::OpenPreview => self.state.focus == PaneFocus::WorkspaceList,
             UiCommand::EnterInteractive => {
-                self.state.focus == PaneFocus::Preview
-                    && workspace_can_enter_interactive(
-                        self.state.selected_workspace(),
-                        self.preview_tab == PreviewTab::Git,
-                    )
+                self.state.focus == PaneFocus::Preview && self.can_enter_interactive_session()
             }
             UiCommand::FocusList => self.state.focus == PaneFocus::Preview,
             UiCommand::MoveSelectionUp | UiCommand::MoveSelectionDown => {

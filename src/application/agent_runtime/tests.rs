@@ -6,8 +6,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::{
     CaptureChange, CommandExecutionMode, CommandExecutor, LaunchPlan, LaunchRequest,
-    LauncherScript, LivePreviewTarget, SessionActivity, build_launch_plan, default_agent_command,
-    detect_agent_session_status_in_home, detect_status,
+    LauncherScript, LivePreviewTarget, SessionActivity, build_launch_plan, build_shell_launch_plan,
+    default_agent_command, detect_agent_session_status_in_home, detect_status,
     detect_status_with_session_override_in_home, detect_waiting_prompt, evaluate_capture_change,
     execute_command_with, execute_commands, execute_commands_for_mode, execute_commands_with,
     execute_commands_with_executor, execute_launch_plan, execute_launch_plan_for_mode,
@@ -17,12 +17,12 @@ use super::{
     launch_request_for_workspace, live_preview_agent_session, live_preview_capture_target_for_tab,
     live_preview_session_for_tab, normalized_agent_command_override, poll_interval,
     reconcile_with_sessions, sanitize_workspace_name, session_name_for_workspace,
-    session_name_for_workspace_ref, shell_launch_request_for_workspace, stop_plan,
-    strip_mouse_fragments, tmux_capture_error_indicates_missing_session,
-    workspace_can_enter_interactive, workspace_can_start_agent, workspace_can_stop_agent,
-    workspace_session_for_preview_tab, workspace_should_poll_status,
-    workspace_status_session_target, workspace_status_targets_for_polling,
-    workspace_status_targets_for_polling_with_live_preview,
+    session_name_for_workspace_ref, shell_launch_request_for_workspace,
+    shell_session_name_for_workspace, stop_plan, strip_mouse_fragments,
+    tmux_capture_error_indicates_missing_session, workspace_can_enter_interactive,
+    workspace_can_start_agent, workspace_can_stop_agent, workspace_session_for_preview_tab,
+    workspace_should_poll_status, workspace_status_session_target,
+    workspace_status_targets_for_polling, workspace_status_targets_for_polling_with_live_preview,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::config::MultiplexerKind;
@@ -115,6 +115,18 @@ fn git_session_name_uses_project_context_when_present() {
 }
 
 #[test]
+fn shell_session_name_uses_project_context_when_present() {
+    let workspace = fixture_workspace("feature/auth.v2", false).with_project_context(
+        "project.one".to_string(),
+        PathBuf::from("/repos/project.one"),
+    );
+    assert_eq!(
+        shell_session_name_for_workspace(&workspace),
+        "grove-ws-project-one-feature-auth-v2-shell"
+    );
+}
+
+#[test]
 fn launch_request_for_workspace_copies_workspace_context_and_options() {
     let workspace = fixture_workspace("feature/auth.v2", false).with_project_context(
         "project.one".to_string(),
@@ -162,6 +174,20 @@ fn shell_launch_request_for_workspace_uses_workspace_path_and_options() {
     assert_eq!(request.command, "lazygit");
     assert_eq!(request.capture_cols, Some(120));
     assert_eq!(request.capture_rows, Some(40));
+}
+
+#[test]
+fn build_shell_launch_plan_skips_send_keys_when_command_is_empty() {
+    let request = shell_launch_request_for_workspace(
+        &fixture_workspace("feature", false),
+        "grove-ws-feature-shell".to_string(),
+        String::new(),
+        Some(120),
+        Some(40),
+    );
+    let plan = build_shell_launch_plan(&request, MultiplexerKind::Tmux);
+
+    assert!(plan.launch_cmd.is_empty());
 }
 
 #[test]

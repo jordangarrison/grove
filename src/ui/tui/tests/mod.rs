@@ -15,8 +15,9 @@ use super::{
     HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
     LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, Msg,
     PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
-    StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput, UiCommand,
-    UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color,
+    RefreshWorkspacesCompletion, StartAgentCompletion, StopAgentCompletion, TextSelectionPoint,
+    TmuxInput, UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT,
+    WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, ansi_16_color,
     ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
 };
 use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
@@ -1260,6 +1261,7 @@ fn status_row_shows_start_hint_in_preview_mode() {
     with_rendered_frame(&app, 180, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
+        assert!(status_text.contains("Enter attach shell"));
         assert!(status_text.contains("s start"));
         assert!(status_text.contains("x stop"));
         assert!(status_text.contains("D delete"));
@@ -1533,6 +1535,24 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
         !preview_ids
             .iter()
             .any(|id| id == &palette_id(UiCommand::MoveSelectionDown))
+    );
+    assert!(
+        !preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::EnterInteractive))
+    );
+
+    app.shell_ready_sessions
+        .insert("grove-ws-feature-a-shell".to_string());
+    let preview_ids_with_shell: Vec<String> = app
+        .build_command_palette_actions()
+        .into_iter()
+        .map(|action| action.id)
+        .collect();
+    assert!(
+        preview_ids_with_shell
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::EnterInteractive))
     );
 
     app.preview_tab = PreviewTab::Git;

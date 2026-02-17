@@ -60,6 +60,10 @@ impl GroveApp {
                 self.handle_lazygit_launch_completed(completion);
                 Cmd::None
             }
+            Msg::WorkspaceShellLaunchCompleted(completion) => {
+                self.handle_workspace_shell_launch_completed(completion);
+                Cmd::None
+            }
             Msg::RefreshWorkspacesCompleted(completion) => {
                 self.apply_refresh_workspaces_completion(completion);
                 Cmd::None
