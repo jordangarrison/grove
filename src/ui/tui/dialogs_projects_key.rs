@@ -1,6 +1,106 @@
 use super::*;
 
 impl GroveApp {
+    fn handle_project_defaults_dialog_key(&mut self, key_event: KeyEvent) {
+        let Some(project_dialog) = self.project_dialog.as_mut() else {
+            return;
+        };
+        let Some(defaults_dialog) = project_dialog.defaults_dialog.as_mut() else {
+            return;
+        };
+
+        enum PostAction {
+            None,
+            Save,
+            Close,
+        }
+
+        let mut post_action = PostAction::None;
+        match key_event.code {
+            KeyCode::Escape => {
+                post_action = PostAction::Close;
+            }
+            KeyCode::Tab => {
+                defaults_dialog.focused_field = defaults_dialog.focused_field.next();
+            }
+            KeyCode::BackTab => {
+                defaults_dialog.focused_field = defaults_dialog.focused_field.previous();
+            }
+            KeyCode::Enter => match defaults_dialog.focused_field {
+                ProjectDefaultsDialogField::SaveButton => post_action = PostAction::Save,
+                ProjectDefaultsDialogField::CancelButton => post_action = PostAction::Close,
+                ProjectDefaultsDialogField::AutoRunSetupCommands => {
+                    defaults_dialog.auto_run_setup_commands =
+                        !defaults_dialog.auto_run_setup_commands;
+                    defaults_dialog.focused_field = defaults_dialog.focused_field.next();
+                }
+                ProjectDefaultsDialogField::BaseBranch
+                | ProjectDefaultsDialogField::SetupCommands => {
+                    defaults_dialog.focused_field = defaults_dialog.focused_field.next();
+                }
+            },
+            KeyCode::Backspace => match defaults_dialog.focused_field {
+                ProjectDefaultsDialogField::BaseBranch => {
+                    defaults_dialog.base_branch.pop();
+                }
+                ProjectDefaultsDialogField::SetupCommands => {
+                    defaults_dialog.setup_commands.pop();
+                }
+                ProjectDefaultsDialogField::AutoRunSetupCommands
+                | ProjectDefaultsDialogField::SaveButton
+                | ProjectDefaultsDialogField::CancelButton => {}
+            },
+            KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
+                if defaults_dialog.focused_field == ProjectDefaultsDialogField::AutoRunSetupCommands
+                    && (character == 'j' || character == 'k' || character == ' ')
+                {
+                    defaults_dialog.auto_run_setup_commands =
+                        !defaults_dialog.auto_run_setup_commands;
+                    return;
+                }
+                if (defaults_dialog.focused_field == ProjectDefaultsDialogField::SaveButton
+                    || defaults_dialog.focused_field == ProjectDefaultsDialogField::CancelButton)
+                    && (character == 'h' || character == 'l')
+                {
+                    defaults_dialog.focused_field = if defaults_dialog.focused_field
+                        == ProjectDefaultsDialogField::SaveButton
+                    {
+                        ProjectDefaultsDialogField::CancelButton
+                    } else {
+                        ProjectDefaultsDialogField::SaveButton
+                    };
+                    return;
+                }
+                match defaults_dialog.focused_field {
+                    ProjectDefaultsDialogField::BaseBranch => {
+                        if !character.is_control() {
+                            defaults_dialog.base_branch.push(character);
+                        }
+                    }
+                    ProjectDefaultsDialogField::SetupCommands => {
+                        if !character.is_control() {
+                            defaults_dialog.setup_commands.push(character);
+                        }
+                    }
+                    ProjectDefaultsDialogField::AutoRunSetupCommands
+                    | ProjectDefaultsDialogField::SaveButton
+                    | ProjectDefaultsDialogField::CancelButton => {}
+                }
+            }
+            _ => {}
+        }
+
+        match post_action {
+            PostAction::None => {}
+            PostAction::Save => self.save_project_defaults_from_dialog(),
+            PostAction::Close => {
+                if let Some(project_dialog) = self.project_dialog.as_mut() {
+                    project_dialog.defaults_dialog = None;
+                }
+            }
+        }
+    }
+
     pub(super) fn handle_project_add_dialog_key(&mut self, key_event: KeyEvent) {
         let Some(project_dialog) = self.project_dialog.as_mut() else {
             return;
@@ -54,6 +154,15 @@ impl GroveApp {
             .is_some()
         {
             self.handle_project_add_dialog_key(key_event);
+            return;
+        }
+        if self
+            .project_dialog
+            .as_ref()
+            .and_then(|dialog| dialog.defaults_dialog.as_ref())
+            .is_some()
+        {
+            self.handle_project_defaults_dialog_key(key_event);
             return;
         }
         if self.project_delete_in_flight {
@@ -135,6 +244,12 @@ impl GroveApp {
                     && (character == 'a' || character == 'A') =>
             {
                 self.open_project_add_dialog();
+            }
+            KeyCode::Char(character)
+                if key_event.modifiers == Modifiers::CTRL
+                    && (character == 'e' || character == 'E') =>
+            {
+                self.open_selected_project_defaults_dialog();
             }
             KeyCode::Char(character)
                 if key_event.modifiers == Modifiers::CTRL

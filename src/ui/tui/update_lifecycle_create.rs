@@ -27,6 +27,14 @@ impl GroveApp {
                     "project_index".to_string(),
                     Value::from(u64::try_from(dialog.project_index).unwrap_or(u64::MAX)),
                 ),
+                (
+                    "setup_auto_run".to_string(),
+                    Value::from(dialog.auto_run_setup_commands),
+                ),
+                (
+                    "setup_commands".to_string(),
+                    Value::from(dialog.setup_commands.clone()),
+                ),
             ],
         );
         let Some(project) = self.projects.get(dialog.project_index).cloned() else {
@@ -37,6 +45,10 @@ impl GroveApp {
         let workspace_name = dialog.workspace_name.trim().to_string();
         let branch_mode = BranchMode::NewBranch {
             base_branch: dialog.base_branch.trim().to_string(),
+        };
+        let setup_template = WorkspaceSetupTemplate {
+            auto_run_setup_commands: dialog.auto_run_setup_commands,
+            commands: parse_setup_commands(&dialog.setup_commands),
         };
         let request = CreateWorkspaceRequest {
             workspace_name: workspace_name.clone(),
@@ -53,7 +65,15 @@ impl GroveApp {
         if !self.tmux_input.supports_background_launch() {
             let git = CommandGitRunner;
             let setup = CommandSetupScriptRunner;
-            let result = create_workspace(&repo_root, &request, &git, &setup);
+            let setup_command = CommandSetupCommandRunner;
+            let result = create_workspace_with_template(
+                &repo_root,
+                &request,
+                Some(&setup_template),
+                &git,
+                &setup,
+                &setup_command,
+            );
             self.apply_create_workspace_completion(CreateWorkspaceCompletion { request, result });
             return;
         }
@@ -62,7 +82,15 @@ impl GroveApp {
         self.queue_cmd(Cmd::task(move || {
             let git = CommandGitRunner;
             let setup = CommandSetupScriptRunner;
-            let result = create_workspace(&repo_root, &request, &git, &setup);
+            let setup_command = CommandSetupCommandRunner;
+            let result = create_workspace_with_template(
+                &repo_root,
+                &request,
+                Some(&setup_template),
+                &git,
+                &setup,
+                &setup_command,
+            );
             Msg::CreateWorkspaceCompleted(CreateWorkspaceCompletion { request, result })
         }));
     }

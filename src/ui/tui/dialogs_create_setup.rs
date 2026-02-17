@@ -38,6 +38,50 @@ impl GroveApp {
         self.projects.get(dialog.project_index)
     }
 
+    fn project_default_base_branch(&self, project_index: usize) -> Option<String> {
+        let project = self.projects.get(project_index)?;
+        let base_branch = project.defaults.base_branch.trim();
+        if base_branch.is_empty() {
+            return None;
+        }
+        Some(base_branch.to_string())
+    }
+
+    fn project_default_setup_commands(&self, project_index: usize) -> String {
+        let Some(project) = self.projects.get(project_index) else {
+            return String::new();
+        };
+        format_setup_commands(&project.defaults.setup_commands)
+    }
+
+    fn project_default_auto_run_setup_commands(&self, project_index: usize) -> bool {
+        self.projects
+            .get(project_index)
+            .map_or(true, |project| project.defaults.auto_run_setup_commands)
+    }
+
+    pub(super) fn apply_create_dialog_project_defaults(&mut self, project_index: usize) {
+        let base_branch = self
+            .project_default_base_branch(project_index)
+            .or_else(|| {
+                self.create_dialog
+                    .as_ref()
+                    .map(|dialog| dialog.base_branch.clone())
+            })
+            .unwrap_or_else(|| "main".to_string());
+        let setup_commands = self.project_default_setup_commands(project_index);
+        let auto_run_setup_commands = self.project_default_auto_run_setup_commands(project_index);
+
+        if let Some(dialog) = self.create_dialog.as_mut() {
+            dialog.project_index = project_index;
+            dialog.base_branch = base_branch.clone();
+            dialog.setup_commands = setup_commands;
+            dialog.auto_run_setup_commands = auto_run_setup_commands;
+        }
+
+        self.refresh_create_dialog_branch_candidates(base_branch);
+    }
+
     pub(super) fn refresh_create_dialog_branch_candidates(&mut self, selected_base_branch: String) {
         let branches = self
             .create_dialog_selected_project()
@@ -63,17 +107,23 @@ impl GroveApp {
             return;
         }
 
-        let selected_base_branch = self.selected_base_branch();
+        let project_index = self.selected_project_index();
+        let selected_base_branch = self
+            .project_default_base_branch(project_index)
+            .unwrap_or_else(|| self.selected_base_branch());
         let default_agent = self
             .state
             .selected_workspace()
             .map_or(AgentType::Claude, |workspace| workspace.agent);
-        let project_index = self.selected_project_index();
+        let setup_commands = self.project_default_setup_commands(project_index);
+        let auto_run_setup_commands = self.project_default_auto_run_setup_commands(project_index);
         self.create_dialog = Some(CreateDialogState {
             workspace_name: String::new(),
             project_index,
             agent: default_agent,
             base_branch: selected_base_branch.clone(),
+            setup_commands,
+            auto_run_setup_commands,
             focused_field: CreateDialogField::WorkspaceName,
         });
         self.refresh_create_dialog_branch_candidates(selected_base_branch);

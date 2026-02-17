@@ -161,8 +161,8 @@ impl UiCommand {
             Self::OpenProjects => Some(PaletteCommandSpec {
                 id: "palette:open_projects",
                 title: "Projects",
-                description: "Open project switcher dialog (p)",
-                tags: &["projects", "project", "switcher", "p"],
+                description: "Open projects dialog (switch, add/remove, edit defaults) (p)",
+                tags: &["projects", "project", "switcher", "defaults", "setup", "p"],
                 category: "Workspace",
             }),
             Self::DeleteProject => Some(PaletteCommandSpec {

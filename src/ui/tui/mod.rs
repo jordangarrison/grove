@@ -55,15 +55,15 @@ use crate::application::interactive::{
 };
 use crate::application::preview::PreviewState;
 use crate::application::workspace_lifecycle::{
-    BranchMode, CommandGitRunner, CommandSetupScriptRunner, CreateWorkspaceRequest,
-    CreateWorkspaceResult, DeleteWorkspaceRequest, MergeWorkspaceRequest,
-    UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError, create_workspace, delete_workspace,
-    merge_workspace, update_workspace_from_base, workspace_lifecycle_error_message,
-    write_workspace_agent_marker, write_workspace_base_marker,
+    BranchMode, CommandGitRunner, CommandSetupCommandRunner, CommandSetupScriptRunner,
+    CreateWorkspaceRequest, CreateWorkspaceResult, DeleteWorkspaceRequest, MergeWorkspaceRequest,
+    UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError, WorkspaceSetupTemplate,
+    create_workspace_with_template, delete_workspace, merge_workspace, update_workspace_from_base,
+    workspace_lifecycle_error_message, write_workspace_agent_marker, write_workspace_base_marker,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
-use crate::infrastructure::config::{GroveConfig, MultiplexerKind, ProjectConfig};
+use crate::infrastructure::config::{GroveConfig, MultiplexerKind, ProjectConfig, ProjectDefaults};
 use crate::infrastructure::event_log::{Event as LogEvent, EventLogger};
 use crate::ui::mouse::{clamp_sidebar_ratio, ratio_from_drag, serialize_sidebar_ratio};
 use crate::ui::state::{Action, AppState, PaneFocus, UiMode, reduce};

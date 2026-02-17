@@ -70,6 +70,103 @@ impl GroveApp {
                 .render(area, frame);
             return;
         }
+        if let Some(defaults_dialog) = dialog.defaults_dialog.as_ref() {
+            let dialog_height = 16u16;
+            let focused = |field| defaults_dialog.focused_field == field;
+            let project_label = self
+                .projects
+                .get(defaults_dialog.project_index)
+                .map(|project| project.name.clone())
+                .unwrap_or_else(|| "(missing project)".to_string());
+            let project_path = self
+                .projects
+                .get(defaults_dialog.project_index)
+                .map(|project| project.path.display().to_string())
+                .unwrap_or_else(|| "(missing path)".to_string());
+            let body = FtText::from_lines(vec![
+                modal_static_badged_row(
+                    content_width,
+                    theme,
+                    "Project",
+                    project_label.as_str(),
+                    theme.teal,
+                    theme.text,
+                ),
+                modal_static_badged_row(
+                    content_width,
+                    theme,
+                    "Path",
+                    project_path.as_str(),
+                    theme.overlay0,
+                    theme.subtext0,
+                ),
+                FtLine::raw(""),
+                modal_labeled_input_row(
+                    content_width,
+                    theme,
+                    "BaseBranch",
+                    defaults_dialog.base_branch.as_str(),
+                    "Optional override (empty uses selected branch)",
+                    focused(ProjectDefaultsDialogField::BaseBranch),
+                ),
+                modal_labeled_input_row(
+                    content_width,
+                    theme,
+                    "SetupCmds",
+                    defaults_dialog.setup_commands.as_str(),
+                    "direnv allow; cmd2; cmd3",
+                    focused(ProjectDefaultsDialogField::SetupCommands),
+                ),
+                modal_focus_badged_row(
+                    content_width,
+                    theme,
+                    "AutoRun",
+                    if defaults_dialog.auto_run_setup_commands {
+                        "on"
+                    } else {
+                        "off"
+                    },
+                    focused(ProjectDefaultsDialogField::AutoRunSetupCommands),
+                    theme.peach,
+                    theme.text,
+                ),
+                FtLine::raw(""),
+                modal_actions_row(
+                    content_width,
+                    theme,
+                    "Save",
+                    "Cancel",
+                    focused(ProjectDefaultsDialogField::SaveButton),
+                    focused(ProjectDefaultsDialogField::CancelButton),
+                ),
+                FtLine::from_spans(vec![FtSpan::styled(
+                    pad_or_truncate_to_display_width(
+                        "Tab move, Space toggles auto-run, Enter confirm, Esc back",
+                        content_width,
+                    ),
+                    Style::new().fg(theme.overlay0),
+                )]),
+            ]);
+            let content = OverlayModalContent {
+                title: "Project Defaults",
+                body,
+                theme,
+                border_color: theme.peach,
+            };
+
+            Modal::new(content)
+                .size(
+                    ModalSizeConstraints::new()
+                        .min_width(dialog_width)
+                        .max_width(dialog_width)
+                        .min_height(dialog_height)
+                        .max_height(dialog_height),
+                )
+                .backdrop(BackdropConfig::new(theme.crust, 0.55))
+                .hit_id(HitId::new(HIT_ID_PROJECT_DEFAULTS_DIALOG))
+                .render(area, frame);
+            return;
+        }
 
         let mut lines = Vec::new();
         lines.push(modal_labeled_input_row(
@@ -125,7 +222,7 @@ impl GroveApp {
         lines.push(FtLine::raw(""));
         lines.push(FtLine::from_spans(vec![FtSpan::styled(
             pad_or_truncate_to_display_width(
-                "Enter focus, Up/Down or Tab/S-Tab navigate, Ctrl+A add, Ctrl+X/Del remove, Esc close",
+                "Enter focus, Up/Down or Tab/S-Tab navigate, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Esc close",
                 content_width,
             ),
             Style::new().fg(theme.overlay0),

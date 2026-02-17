@@ -36,6 +36,32 @@ pub struct GroveConfig {
 pub struct ProjectConfig {
     pub name: String,
     pub path: PathBuf,
+    #[serde(default)]
+    pub defaults: ProjectDefaults,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectDefaults {
+    #[serde(default)]
+    pub base_branch: String,
+    #[serde(default)]
+    pub setup_commands: Vec<String>,
+    #[serde(default = "default_auto_run_setup_commands")]
+    pub auto_run_setup_commands: bool,
+}
+
+const fn default_auto_run_setup_commands() -> bool {
+    true
+}
+
+impl Default for ProjectDefaults {
+    fn default() -> Self {
+        Self {
+            base_branch: String::new(),
+            setup_commands: Vec::new(),
+            auto_run_setup_commands: default_auto_run_setup_commands(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

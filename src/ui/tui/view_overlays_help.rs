@@ -106,7 +106,7 @@ impl GroveApp {
             FtLine::raw(""),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "[Modals] Create: Tab/S-Tab fields, j/k or C-n/C-p move, h/l buttons, Enter/Esc",
+                    "[Modals] Create: Tab/S-Tab fields, j/k or C-n/C-p move, ';' separates setup commands, Space toggles auto-run, h/l buttons, Enter/Esc",
                     content_width,
                 ),
                 Style::new().fg(theme.subtext0),
@@ -148,7 +148,7 @@ impl GroveApp {
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "[Modals] Projects: Type filter, Up/Down or Tab/S-Tab move, Ctrl+A add, Ctrl+X/Del remove, Enter/Esc",
+                    "[Modals] Projects: Type filter, Up/Down or Tab/S-Tab move, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Enter/Esc",
                     content_width,
                 ),
                 Style::new().fg(theme.subtext0),

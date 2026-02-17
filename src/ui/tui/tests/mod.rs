@@ -312,6 +312,7 @@ fn fixture_projects() -> Vec<ProjectConfig> {
     vec![ProjectConfig {
         name: "grove".to_string(),
         path: PathBuf::from("/repos/grove"),
+        defaults: Default::default(),
     }]
 }
 
@@ -1120,7 +1121,7 @@ fn create_dialog_uses_opaque_background_fill() {
 
     with_rendered_frame(&app, 80, 24, |frame| {
         let dialog_width = frame.width().saturating_sub(8).min(90);
-        let dialog_height = 14u16;
+        let dialog_height = 20u16;
         let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
         let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
         let probe_x = dialog_x.saturating_add(dialog_width.saturating_sub(3));
@@ -1148,10 +1149,18 @@ fn create_dialog_selected_agent_row_uses_highlight_background() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
     );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    );
 
     with_rendered_frame(&app, 80, 24, |frame| {
         let dialog_width = frame.width().saturating_sub(8).min(90);
-        let dialog_height = 14u16;
+        let dialog_height = 20u16;
         let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
         let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
         let x_start = dialog_x.saturating_add(1);
@@ -1189,7 +1198,7 @@ fn create_dialog_unfocused_agent_row_uses_base_background() {
 
     with_rendered_frame(&app, 80, 24, |frame| {
         let dialog_width = frame.width().saturating_sub(8).min(90);
-        let dialog_height = 14u16;
+        let dialog_height = 20u16;
         let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
         let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
         let x_start = dialog_x.saturating_add(1);
@@ -1219,7 +1228,7 @@ fn create_dialog_renders_action_buttons() {
 
     with_rendered_frame(&app, 80, 24, |frame| {
         let dialog_width = frame.width().saturating_sub(8).min(90);
-        let dialog_height = 14u16;
+        let dialog_height = 20u16;
         let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
         let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
         let x_start = dialog_x.saturating_add(1);
@@ -1782,7 +1791,7 @@ fn status_row_shows_create_dialog_keybind_hints_when_modal_open() {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
         assert!(status_text.contains("Tab/S-Tab field"));
-        assert!(status_text.contains("Enter select/create"));
+        assert!(status_text.contains("j/k or C-n/C-p move"));
     });
 }
 

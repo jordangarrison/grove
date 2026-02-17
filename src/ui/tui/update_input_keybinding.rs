@@ -17,7 +17,9 @@ impl GroveApp {
             return !dialog.prompt.is_empty() || !dialog.pre_launch_command.is_empty();
         }
         if let Some(dialog) = self.create_dialog.as_ref() {
-            return !dialog.workspace_name.is_empty() || !dialog.base_branch.is_empty();
+            return !dialog.workspace_name.is_empty()
+                || !dialog.base_branch.is_empty()
+                || !dialog.setup_commands.is_empty();
         }
         if let Some(project_dialog) = self.project_dialog.as_ref() {
             if !project_dialog.filter.is_empty() {
@@ -25,6 +27,10 @@ impl GroveApp {
             }
             if let Some(add_dialog) = project_dialog.add_dialog.as_ref() {
                 return !add_dialog.name.is_empty() || !add_dialog.path.is_empty();
+            }
+            if let Some(defaults_dialog) = project_dialog.defaults_dialog.as_ref() {
+                return !defaults_dialog.base_branch.is_empty()
+                    || !defaults_dialog.setup_commands.is_empty();
             }
         }
 
@@ -88,7 +94,11 @@ impl GroveApp {
                             dialog.base_branch.clear();
                             refresh_base_branch = true;
                         }
+                        CreateDialogField::SetupCommands => {
+                            dialog.setup_commands.clear();
+                        }
                         CreateDialogField::Project
+                        | CreateDialogField::AutoRunSetupCommands
                         | CreateDialogField::Agent
                         | CreateDialogField::CreateButton
                         | CreateDialogField::CancelButton => {}

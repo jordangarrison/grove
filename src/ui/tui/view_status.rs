@@ -25,10 +25,16 @@ impl GroveApp {
             DiscoveryState::Ready => {
                 if let Some(dialog) = &self.create_dialog {
                     return format!(
-                        "Status: new workspace, field={}, agent={}, base_branch=\"{}\", name=\"{}\"",
+                        "Status: new workspace, field={}, agent={}, base_branch=\"{}\", setup_auto_run={}, setup_commands=\"{}\", name=\"{}\"",
                         dialog.focused_field.label(),
                         dialog.agent.label(),
                         dialog.base_branch.replace('\n', "\\n"),
+                        if dialog.auto_run_setup_commands {
+                            "on"
+                        } else {
+                            "off"
+                        },
+                        dialog.setup_commands.replace('\n', "\\n"),
                         dialog.workspace_name
                     );
                 }
@@ -93,7 +99,7 @@ impl GroveApp {
             return "Esc/? close help".to_string();
         }
         if self.create_dialog.is_some() {
-            return "Tab/S-Tab field, j/k or C-n/C-p move, h/l buttons, Enter select/create, Esc cancel"
+            return "Tab/S-Tab field, j/k or C-n/C-p move, ';' separates setup commands, Space toggles auto-run, h/l buttons, Enter select/create, Esc cancel"
                 .to_string();
         }
         if self.edit_dialog.is_some() {
@@ -120,7 +126,16 @@ impl GroveApp {
             return "Tab/S-Tab field, j/k or h/l change, Enter save/select, Esc cancel".to_string();
         }
         if self.project_dialog.is_some() {
-            return "Type filter, Up/Down or Tab/S-Tab navigate, Enter focus project, Ctrl+A add, Ctrl+X/Del remove, Esc close"
+            if self
+                .project_dialog
+                .as_ref()
+                .and_then(|dialog| dialog.defaults_dialog.as_ref())
+                .is_some()
+            {
+                return "Tab/S-Tab field, type/backspace edit defaults, Space toggle auto-run, Enter save/select, Esc close"
+                    .to_string();
+            }
+            return "Type filter, Up/Down or Tab/S-Tab navigate, Enter focus project, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Esc close"
                 .to_string();
         }
         if self.interactive.is_some() {

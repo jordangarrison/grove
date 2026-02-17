@@ -6,6 +6,8 @@ pub(super) struct CreateDialogState {
     pub(super) project_index: usize,
     pub(super) agent: AgentType,
     pub(super) base_branch: String,
+    pub(super) setup_commands: String,
+    pub(super) auto_run_setup_commands: bool,
     pub(super) focused_field: CreateDialogField,
 }
 
@@ -25,6 +27,8 @@ pub(super) enum CreateDialogField {
     WorkspaceName,
     Project,
     BaseBranch,
+    SetupCommands,
+    AutoRunSetupCommands,
     Agent,
     CreateButton,
     CancelButton,
@@ -63,7 +67,9 @@ impl CreateDialogField {
         match self {
             Self::WorkspaceName => Self::Project,
             Self::Project => Self::BaseBranch,
-            Self::BaseBranch => Self::Agent,
+            Self::BaseBranch => Self::SetupCommands,
+            Self::SetupCommands => Self::AutoRunSetupCommands,
+            Self::AutoRunSetupCommands => Self::Agent,
             Self::Agent => Self::CreateButton,
             Self::CreateButton => Self::CancelButton,
             Self::CancelButton => Self::WorkspaceName,
@@ -75,7 +81,9 @@ impl CreateDialogField {
             Self::WorkspaceName => Self::CancelButton,
             Self::Project => Self::WorkspaceName,
             Self::BaseBranch => Self::Project,
-            Self::Agent => Self::BaseBranch,
+            Self::SetupCommands => Self::BaseBranch,
+            Self::AutoRunSetupCommands => Self::SetupCommands,
+            Self::Agent => Self::AutoRunSetupCommands,
             Self::CreateButton => Self::Agent,
             Self::CancelButton => Self::CreateButton,
         }
@@ -87,6 +95,8 @@ impl CreateDialogField {
             Self::WorkspaceName => "name",
             Self::Project => "project",
             Self::BaseBranch => "base_branch",
+            Self::SetupCommands => "setup_commands",
+            Self::AutoRunSetupCommands => "auto_run_setup_commands",
             Self::Agent => "agent",
             Self::CreateButton => "create",
             Self::CancelButton => "cancel",

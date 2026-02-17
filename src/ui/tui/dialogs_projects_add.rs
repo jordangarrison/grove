@@ -177,6 +177,7 @@ impl GroveApp {
         self.projects.push(ProjectConfig {
             name: project_name.clone(),
             path: repo_root.clone(),
+            defaults: Default::default(),
         });
         if let Err(error) = self.save_projects_config() {
             self.show_toast(format!("project save failed: {error}"), true);
@@ -189,5 +190,59 @@ impl GroveApp {
         self.refresh_project_dialog_filtered();
         self.refresh_workspaces(None);
         self.show_toast(format!("project '{}' added", project_name), false);
+    }
+
+    pub(super) fn open_selected_project_defaults_dialog(&mut self) {
+        let Some(project_index) = self.selected_project_dialog_project_index() else {
+            self.show_toast("no project selected", true);
+            return;
+        };
+        let Some(project) = self.projects.get(project_index) else {
+            self.show_toast("project not found", true);
+            return;
+        };
+
+        if let Some(project_dialog) = self.project_dialog.as_mut() {
+            project_dialog.defaults_dialog = Some(ProjectDefaultsDialogState {
+                project_index,
+                base_branch: project.defaults.base_branch.clone(),
+                setup_commands: format_setup_commands(&project.defaults.setup_commands),
+                auto_run_setup_commands: project.defaults.auto_run_setup_commands,
+                focused_field: ProjectDefaultsDialogField::BaseBranch,
+            });
+        }
+    }
+
+    pub(super) fn save_project_defaults_from_dialog(&mut self) {
+        let Some(dialog_state) = self
+            .project_dialog
+            .as_ref()
+            .and_then(|dialog| dialog.defaults_dialog.clone())
+        else {
+            return;
+        };
+        let project_name = {
+            let Some(project) = self.projects.get_mut(dialog_state.project_index) else {
+                self.show_toast("project not found", true);
+                return;
+            };
+
+            project.defaults = ProjectDefaults {
+                base_branch: dialog_state.base_branch.trim().to_string(),
+                setup_commands: parse_setup_commands(&dialog_state.setup_commands),
+                auto_run_setup_commands: dialog_state.auto_run_setup_commands,
+            };
+            project.name.clone()
+        };
+
+        if let Err(error) = self.save_projects_config() {
+            self.show_toast(format!("project defaults save failed: {error}"), true);
+            return;
+        }
+
+        if let Some(project_dialog) = self.project_dialog.as_mut() {
+            project_dialog.defaults_dialog = None;
+        }
+        self.show_toast(format!("project '{}' defaults saved", project_name), false);
     }
 }

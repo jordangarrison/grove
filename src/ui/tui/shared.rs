@@ -28,6 +28,7 @@ pub(super) const HIT_ID_PROJECT_ADD_DIALOG: u32 = 13;
 pub(super) const HIT_ID_EDIT_DIALOG: u32 = 14;
 pub(super) const HIT_ID_MERGE_DIALOG: u32 = 15;
 pub(super) const HIT_ID_UPDATE_FROM_BASE_DIALOG: u32 = 16;
+pub(super) const HIT_ID_PROJECT_DEFAULTS_DIALOG: u32 = 17;
 pub(super) const MAX_PENDING_INPUT_TRACES: usize = 256;
 pub(super) const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 pub(super) const FAST_ANIMATION_INTERVAL_MS: u64 = 100;
@@ -36,6 +37,24 @@ pub(super) const PREVIEW_POLL_IN_FLIGHT_TICK_MS: u64 = 20;
 pub(super) const LAZYGIT_COMMAND: &str = "lazygit";
 pub(super) const AGENT_ACTIVITY_WINDOW_FRAMES: usize = 6;
 pub(super) const LOCAL_TYPING_SUPPRESS_MS: u64 = 400;
+pub(super) const SETUP_COMMAND_SEPARATOR: char = ';';
+
+pub(super) fn parse_setup_commands(raw: &str) -> Vec<String> {
+    raw.split(SETUP_COMMAND_SEPARATOR)
+        .map(str::trim)
+        .filter(|command| !command.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+pub(super) fn format_setup_commands(commands: &[String]) -> String {
+    commands
+        .iter()
+        .map(|command| command.trim())
+        .filter(|command| !command.is_empty())
+        .collect::<Vec<&str>>()
+        .join("; ")
+}
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct UiTheme {

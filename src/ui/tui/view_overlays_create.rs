@@ -10,7 +10,7 @@ impl GroveApp {
         }
 
         let dialog_width = area.width.saturating_sub(8).min(90);
-        let dialog_height = 16u16;
+        let dialog_height = 20u16;
         let theme = ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
         let selected_project_label = self
@@ -75,6 +75,27 @@ impl GroveApp {
                 dialog.base_branch.as_str(),
                 "current branch (fallback: main/master)",
                 focused(CreateDialogField::BaseBranch),
+            ),
+            modal_labeled_input_row(
+                content_width,
+                theme,
+                "SetupCmds",
+                dialog.setup_commands.as_str(),
+                "direnv allow; cmd2; cmd3",
+                focused(CreateDialogField::SetupCommands),
+            ),
+            modal_focus_badged_row(
+                content_width,
+                theme,
+                "AutoRun",
+                if dialog.auto_run_setup_commands {
+                    "on"
+                } else {
+                    "off"
+                },
+                focused(CreateDialogField::AutoRunSetupCommands),
+                theme.peach,
+                theme.text,
             ),
         ];
         if focused(CreateDialogField::Project)
@@ -144,6 +165,15 @@ impl GroveApp {
                 }
             }
         }
+        if focused(CreateDialogField::SetupCommands) {
+            lines.push(FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    "  [SetupCmds] Separate commands with ';'",
+                    content_width,
+                ),
+                Style::new().fg(theme.overlay0),
+            )]));
+        }
 
         lines.push(FtLine::raw(""));
         lines.push(agent_row(AgentType::Claude));
@@ -161,7 +191,7 @@ impl GroveApp {
         ));
         lines.push(FtLine::from_spans(vec![FtSpan::styled(
             pad_or_truncate_to_display_width(
-                "Tab move, j/k or C-n/C-p adjust project/branch, Enter create, Esc cancel",
+                "Tab move, j/k or C-n/C-p adjust project/branch, Space toggles auto-run, Enter create, Esc cancel",
                 content_width,
             ),
             Style::new().fg(theme.overlay0),

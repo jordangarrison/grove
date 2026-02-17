@@ -170,12 +170,38 @@ pub trait SetupScriptRunner {
     fn run(&self, context: &SetupScriptContext) -> Result<(), String>;
 }
 
+pub trait SetupCommandRunner {
+    fn run(&self, context: &SetupCommandContext, command: &str) -> Result<(), String>;
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetupScriptContext {
     pub script_path: PathBuf,
     pub main_worktree_path: PathBuf,
     pub workspace_path: PathBuf,
     pub worktree_branch: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetupCommandContext {
+    pub main_worktree_path: PathBuf,
+    pub workspace_path: PathBuf,
+    pub worktree_branch: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceSetupTemplate {
+    pub auto_run_setup_commands: bool,
+    pub commands: Vec<String>,
+}
+
+impl Default for WorkspaceSetupTemplate {
+    fn default() -> Self {
+        Self {
+            auto_run_setup_commands: true,
+            commands: Vec::new(),
+        }
+    }
 }
 
 pub struct CommandGitRunner;
@@ -203,6 +229,7 @@ impl GitCommandRunner for CommandGitRunner {
 }
 
 pub struct CommandSetupScriptRunner;
+pub struct CommandSetupCommandRunner;
 
 impl SetupScriptRunner for CommandSetupScriptRunner {
     fn run(&self, context: &SetupScriptContext) -> Result<(), String> {
@@ -233,11 +260,56 @@ impl SetupScriptRunner for CommandSetupScriptRunner {
     }
 }
 
+impl SetupCommandRunner for CommandSetupCommandRunner {
+    fn run(&self, context: &SetupCommandContext, command: &str) -> Result<(), String> {
+        let output = Command::new("bash")
+            .arg("-lc")
+            .arg(command)
+            .current_dir(&context.workspace_path)
+            .env("MAIN_WORKTREE", &context.main_worktree_path)
+            .env("WORKTREE_BRANCH", &context.worktree_branch)
+            .env("WORKTREE_PATH", &context.workspace_path)
+            .output()
+            .map_err(|error| error.to_string())?;
+
+        if output.status.success() {
+            return Ok(());
+        }
+
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let message = if stderr.is_empty() {
+            format!("setup command exited with status {}", output.status)
+        } else {
+            stderr
+        };
+        Err(message)
+    }
+}
+
 pub fn create_workspace(
     repo_root: &Path,
     request: &CreateWorkspaceRequest,
     git_runner: &impl GitCommandRunner,
     setup_script_runner: &impl SetupScriptRunner,
+) -> Result<CreateWorkspaceResult, WorkspaceLifecycleError> {
+    let setup_command_runner = CommandSetupCommandRunner;
+    create_workspace_with_template(
+        repo_root,
+        request,
+        None,
+        git_runner,
+        setup_script_runner,
+        &setup_command_runner,
+    )
+}
+
+pub fn create_workspace_with_template(
+    repo_root: &Path,
+    request: &CreateWorkspaceRequest,
+    setup_template: Option<&WorkspaceSetupTemplate>,
+    git_runner: &impl GitCommandRunner,
+    setup_script_runner: &impl SetupScriptRunner,
+    setup_command_runner: &impl SetupCommandRunner,
 ) -> Result<CreateWorkspaceResult, WorkspaceLifecycleError> {
     request.validate()?;
 
@@ -272,6 +344,24 @@ pub fn create_workspace(
         };
         if let Err(error) = setup_script_runner.run(&context) {
             warnings.push(format!("setup script failed: {error}"));
+        }
+    }
+
+    if let Some(template) = setup_template
+        && template.auto_run_setup_commands
+    {
+        let context = SetupCommandContext {
+            main_worktree_path: repo_root.to_path_buf(),
+            workspace_path: workspace_path.clone(),
+            worktree_branch: branch.clone(),
+        };
+        for command in template.commands.iter().map(|value| value.trim()) {
+            if command.is_empty() {
+                continue;
+            }
+            if let Err(error) = setup_command_runner.run(&context, command) {
+                warnings.push(format!("setup command '{command}' failed: {error}"));
+            }
         }
     }
 

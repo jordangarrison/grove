@@ -66,6 +66,7 @@ impl GroveApp {
             projects.push(ProjectConfig {
                 name: project_name,
                 path: project_path.clone(),
+                defaults: Default::default(),
             });
         }
         projects

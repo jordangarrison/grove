@@ -108,6 +108,7 @@ impl GroveApp {
             filtered_project_indices,
             selected_filtered_index,
             add_dialog: None,
+            defaults_dialog: None,
         });
     }
 

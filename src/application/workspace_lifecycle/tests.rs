@@ -1,10 +1,12 @@
 use super::{
     BranchMode, CreateWorkspaceRequest, DeleteWorkspaceRequest, GitCommandRunner,
-    MergeWorkspaceRequest, SetupScriptContext, SetupScriptRunner, UpdateWorkspaceFromBaseRequest,
-    WorkspaceLifecycleError, WorkspaceMarkerError, copy_env_files, create_workspace,
-    delete_workspace, ensure_grove_gitignore_entries, merge_workspace, read_workspace_agent_marker,
-    read_workspace_markers, update_workspace_from_base, workspace_directory_path,
-    workspace_lifecycle_error_message, write_workspace_agent_marker, write_workspace_base_marker,
+    MergeWorkspaceRequest, SetupCommandContext, SetupCommandRunner, SetupScriptContext,
+    SetupScriptRunner, UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError,
+    WorkspaceMarkerError, WorkspaceSetupTemplate, copy_env_files, create_workspace,
+    create_workspace_with_template, delete_workspace, ensure_grove_gitignore_entries,
+    merge_workspace, read_workspace_agent_marker, read_workspace_markers,
+    update_workspace_from_base, workspace_directory_path, workspace_lifecycle_error_message,
+    write_workspace_agent_marker, write_workspace_base_marker,
 };
 use crate::domain::AgentType;
 use crate::infrastructure::config::MultiplexerKind;
@@ -84,6 +86,37 @@ impl StubSetupRunner {
 impl SetupScriptRunner for StubSetupRunner {
     fn run(&self, context: &SetupScriptContext) -> Result<(), String> {
         self.calls.borrow_mut().push(context.clone());
+        if self.outcomes.borrow().is_empty() {
+            return Ok(());
+        }
+        self.outcomes.borrow_mut().remove(0)
+    }
+}
+
+#[derive(Default)]
+struct StubSetupCommandRunner {
+    calls: RefCell<Vec<(SetupCommandContext, String)>>,
+    outcomes: RefCell<Vec<Result<(), String>>>,
+}
+
+impl StubSetupCommandRunner {
+    fn with_outcomes(outcomes: Vec<Result<(), String>>) -> Self {
+        Self {
+            calls: RefCell::new(Vec::new()),
+            outcomes: RefCell::new(outcomes),
+        }
+    }
+
+    fn calls(&self) -> Vec<(SetupCommandContext, String)> {
+        self.calls.borrow().clone()
+    }
+}
+
+impl SetupCommandRunner for StubSetupCommandRunner {
+    fn run(&self, context: &SetupCommandContext, command: &str) -> Result<(), String> {
+        self.calls
+            .borrow_mut()
+            .push((context.clone(), command.to_string()));
         if self.outcomes.borrow().is_empty() {
             return Ok(());
         }
@@ -263,6 +296,91 @@ fn create_workspace_setup_script_failure_is_warning_not_failure() {
             .expect("path derivation should succeed");
     assert_eq!(setup_calls[0].workspace_path, expected_workspace_path);
     assert_eq!(setup_calls[0].worktree_branch, "feature_b");
+}
+
+#[test]
+fn create_workspace_template_commands_run_after_setup_script() {
+    let temp = TestDir::new("template-order");
+    let repo_root = temp.path.join("grove");
+    fs::create_dir_all(&repo_root).expect("repo dir should exist");
+    fs::write(
+        repo_root.join(".grove-setup.sh"),
+        "#!/usr/bin/env bash\nexit 0\n",
+    )
+    .expect("setup script should exist");
+
+    let git = StubGitRunner::default();
+    let setup = StubSetupRunner::default();
+    let setup_commands = StubSetupCommandRunner::default();
+    let request = CreateWorkspaceRequest {
+        workspace_name: "feature_c".to_string(),
+        branch_mode: BranchMode::NewBranch {
+            base_branch: "main".to_string(),
+        },
+        agent: AgentType::Claude,
+    };
+    let template = WorkspaceSetupTemplate {
+        auto_run_setup_commands: true,
+        commands: vec![
+            "direnv allow".to_string(),
+            "nix develop -c just bootstrap".to_string(),
+        ],
+    };
+
+    let result = create_workspace_with_template(
+        &repo_root,
+        &request,
+        Some(&template),
+        &git,
+        &setup,
+        &setup_commands,
+    )
+    .expect("create should succeed");
+
+    assert!(result.warnings.is_empty());
+    assert_eq!(setup.calls().len(), 1);
+    let command_calls = setup_commands.calls();
+    assert_eq!(command_calls.len(), 2);
+    assert_eq!(command_calls[0].1, "direnv allow");
+    assert_eq!(command_calls[1].1, "nix develop -c just bootstrap");
+}
+
+#[test]
+fn create_workspace_template_command_failure_is_warning_not_failure() {
+    let temp = TestDir::new("template-warning");
+    let repo_root = temp.path.join("grove");
+    fs::create_dir_all(&repo_root).expect("repo dir should exist");
+
+    let git = StubGitRunner::default();
+    let setup = StubSetupRunner::default();
+    let setup_commands =
+        StubSetupCommandRunner::with_outcomes(vec![Err("direnv failed".to_string()), Ok(())]);
+    let request = CreateWorkspaceRequest {
+        workspace_name: "feature_d".to_string(),
+        branch_mode: BranchMode::NewBranch {
+            base_branch: "main".to_string(),
+        },
+        agent: AgentType::Claude,
+    };
+    let template = WorkspaceSetupTemplate {
+        auto_run_setup_commands: true,
+        commands: vec!["direnv allow".to_string(), "echo ready".to_string()],
+    };
+
+    let result = create_workspace_with_template(
+        &repo_root,
+        &request,
+        Some(&template),
+        &git,
+        &setup,
+        &setup_commands,
+    )
+    .expect("create should succeed");
+
+    assert_eq!(result.warnings.len(), 1);
+    assert!(result.warnings[0].contains("direnv allow"));
+    assert!(result.warnings[0].contains("direnv failed"));
+    assert_eq!(setup_commands.calls().len(), 2);
 }
 
 #[test]

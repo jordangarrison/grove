@@ -543,16 +543,12 @@ fn create_dialog_confirmed_event_includes_branch_payload() {
             Msg::Key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press)),
         );
     }
-    for _ in 0..3 {
+    for _ in 0..6 {
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
         );
     }
-    ftui::Model::update(
-        &mut app,
-        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-    );
     ftui::Model::update(
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
@@ -684,6 +680,7 @@ fn project_dialog_tab_and_shift_tab_navigate_selection() {
     app.projects.push(ProjectConfig {
         name: "site".to_string(),
         path: PathBuf::from("/repos/site"),
+        defaults: Default::default(),
     });
 
     ftui::Model::update(
@@ -727,6 +724,7 @@ fn project_dialog_ctrl_x_removes_selected_project() {
     app.projects.push(ProjectConfig {
         name: "site".to_string(),
         path: PathBuf::from("/repos/site"),
+        defaults: Default::default(),
     });
 
     ftui::Model::update(
@@ -760,6 +758,7 @@ fn project_dialog_ctrl_x_queues_background_project_delete() {
     app.projects.push(ProjectConfig {
         name: "site".to_string(),
         path: PathBuf::from("/repos/site"),
+        defaults: Default::default(),
     });
 
     ftui::Model::update(
@@ -790,6 +789,7 @@ fn project_delete_completion_clears_in_flight_and_applies_projects() {
     let kept = ProjectConfig {
         name: "grove".to_string(),
         path: PathBuf::from("/repos/grove"),
+        defaults: Default::default(),
     };
 
     ftui::Model::update(
@@ -804,6 +804,132 @@ fn project_delete_completion_clears_in_flight_and_applies_projects() {
 
     assert!(!app.project_delete_in_flight);
     assert_eq!(app.projects, vec![kept]);
+}
+
+#[test]
+fn project_dialog_ctrl_e_opens_project_defaults_dialog() {
+    let mut app = fixture_app();
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('e'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+
+    assert!(
+        app.project_dialog
+            .as_ref()
+            .and_then(|dialog| dialog.defaults_dialog.as_ref())
+            .is_some()
+    );
+    assert_eq!(
+        app.project_dialog
+            .as_ref()
+            .and_then(|dialog| dialog.defaults_dialog.as_ref())
+            .map(|dialog| dialog.auto_run_setup_commands),
+        Some(true)
+    );
+}
+
+#[test]
+fn project_defaults_dialog_save_persists_defaults() {
+    let mut app = fixture_app();
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('e'))
+                .with_modifiers(Modifiers::CTRL)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    for character in ['d', 'e', 'v'] {
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press)),
+        );
+    }
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    );
+    for character in [
+        'd', 'i', 'r', 'e', 'n', 'v', ' ', 'a', 'l', 'l', 'o', 'w', ';', 'e', 'c', 'h', 'o', ' ',
+        'o', 'k',
+    ] {
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press)),
+        );
+    }
+    for _ in 0..2 {
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+    }
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
+    assert_eq!(app.projects[0].defaults.base_branch, "dev");
+    assert_eq!(
+        app.projects[0].defaults.setup_commands,
+        vec!["direnv allow".to_string(), "echo ok".to_string()]
+    );
+    assert!(app.projects[0].defaults.auto_run_setup_commands);
+
+    let loaded =
+        crate::infrastructure::config::load_from_path(&app.config_path).expect("config loads");
+    assert_eq!(loaded.projects[0].defaults.base_branch, "dev");
+    assert_eq!(
+        loaded.projects[0].defaults.setup_commands,
+        vec!["direnv allow".to_string(), "echo ok".to_string()]
+    );
+}
+
+#[test]
+fn new_workspace_dialog_prefills_from_project_defaults() {
+    let mut app = fixture_app();
+    app.projects[0].defaults.base_branch = "develop".to_string();
+    app.projects[0].defaults.setup_commands = vec!["direnv allow".to_string()];
+    app.projects[0].defaults.auto_run_setup_commands = true;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert_eq!(
+        app.create_dialog
+            .as_ref()
+            .map(|dialog| dialog.base_branch.clone()),
+        Some("develop".to_string())
+    );
+    assert_eq!(
+        app.create_dialog
+            .as_ref()
+            .map(|dialog| dialog.setup_commands.clone()),
+        Some("direnv allow".to_string())
+    );
+    assert_eq!(
+        app.create_dialog
+            .as_ref()
+            .map(|dialog| dialog.auto_run_setup_commands),
+        Some(true)
+    );
 }
 
 #[test]
@@ -1360,6 +1486,14 @@ fn start_dialog_field_navigation_can_toggle_unsafe_for_launch() {
     );
     ftui::Model::update(
         &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char(' ')).with_kind(KeyEventKind::Press)),
     );
     ftui::Model::update(
@@ -1823,6 +1957,14 @@ fn create_dialog_j_and_k_on_agent_field_toggle_agent() {
     );
     ftui::Model::update(
         &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
     );
 
@@ -1884,7 +2026,7 @@ fn create_dialog_ctrl_n_and_ctrl_p_toggle_agent() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
     );
-    for _ in 0..3 {
+    for _ in 0..5 {
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -2009,7 +2151,7 @@ fn create_dialog_base_branch_dropdown_selects_with_enter() {
         app.create_dialog
             .as_ref()
             .map(|dialog| dialog.focused_field),
-        Some(CreateDialogField::Agent)
+        Some(CreateDialogField::SetupCommands)
     );
 }
 
@@ -2049,7 +2191,7 @@ fn create_dialog_enter_without_name_shows_validation_toast() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
     );
-    for _ in 0..4 {
+    for _ in 0..6 {
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -2072,7 +2214,7 @@ fn create_dialog_enter_on_cancel_closes_modal() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
     );
-    for _ in 0..5 {
+    for _ in 0..7 {
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
