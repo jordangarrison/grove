@@ -192,6 +192,32 @@ fn build_shell_launch_plan_skips_send_keys_when_command_is_empty() {
 }
 
 #[test]
+fn build_shell_launch_plan_with_capture_dimensions_resizes_before_send_keys() {
+    let request = shell_launch_request_for_workspace(
+        &fixture_workspace("feature", false),
+        "grove-ws-feature-shell".to_string(),
+        "bash".to_string(),
+        Some(120),
+        Some(40),
+    );
+    let plan = build_shell_launch_plan(&request, MultiplexerKind::Tmux);
+
+    assert_eq!(
+        plan.pre_launch_cmds.last(),
+        Some(&vec![
+            "tmux".to_string(),
+            "resize-window".to_string(),
+            "-t".to_string(),
+            "grove-ws-feature-shell".to_string(),
+            "-x".to_string(),
+            "120".to_string(),
+            "-y".to_string(),
+            "40".to_string(),
+        ])
+    );
+}
+
+#[test]
 fn workspace_status_poll_policy_requires_supported_agent_for_all_multiplexers() {
     let workspace = fixture_workspace("feature", false).with_supported_agent(false);
     assert!(!workspace_should_poll_status(

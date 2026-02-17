@@ -26,7 +26,7 @@ impl GroveApp {
             let session_name = git_session_name_for_workspace(workspace);
             self.lazygit_failed_sessions.remove(&session_name);
         }
-        if self.preview_tab == PreviewTab::Agent
+        if matches!(self.preview_tab, PreviewTab::Agent | PreviewTab::Shell)
             && let Some(workspace) = self.state.selected_workspace()
         {
             let session_name = shell_session_name_for_workspace(workspace);
@@ -77,31 +77,31 @@ impl GroveApp {
                 false
             }
             UiCommand::ScrollUp => {
-                if self.preview_agent_tab_is_focused() {
+                if self.preview_scroll_tab_is_focused() {
                     self.scroll_preview(-1);
                 }
                 false
             }
             UiCommand::ScrollDown => {
-                if self.preview_agent_tab_is_focused() {
+                if self.preview_scroll_tab_is_focused() {
                     self.scroll_preview(1);
                 }
                 false
             }
             UiCommand::PageUp => {
-                if self.preview_agent_tab_is_focused() {
+                if self.preview_scroll_tab_is_focused() {
                     self.scroll_preview(-self.preview_page_scroll_delta());
                 }
                 false
             }
             UiCommand::PageDown => {
-                if self.preview_agent_tab_is_focused() {
+                if self.preview_scroll_tab_is_focused() {
                     self.scroll_preview(self.preview_page_scroll_delta());
                 }
                 false
             }
             UiCommand::ScrollBottom => {
-                if self.preview_agent_tab_is_focused() {
+                if self.preview_scroll_tab_is_focused() {
                     self.jump_preview_to_bottom();
                 }
                 false

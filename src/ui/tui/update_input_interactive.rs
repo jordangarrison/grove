@@ -164,16 +164,25 @@ impl GroveApp {
     }
 
     pub(super) fn enter_interactive(&mut self, now: Instant) -> bool {
-        let session_name = if self.preview_tab == PreviewTab::Git {
-            let Some(target) = self.prepare_live_preview_session() else {
-                return false;
-            };
-            target.session_name
-        } else {
-            let Some(session_name) = self.ensure_agent_preview_session_for_interactive() else {
-                return false;
-            };
-            session_name
+        let session_name = match self.preview_tab {
+            PreviewTab::Git => {
+                let Some(target) = self.prepare_live_preview_session() else {
+                    return false;
+                };
+                target.session_name
+            }
+            PreviewTab::Shell => {
+                let Some(session_name) = self.ensure_shell_preview_session_for_interactive() else {
+                    return false;
+                };
+                session_name
+            }
+            PreviewTab::Agent => {
+                let Some(session_name) = self.ensure_agent_preview_session_for_interactive() else {
+                    return false;
+                };
+                session_name
+            }
         };
 
         self.interactive = Some(InteractiveState::new(

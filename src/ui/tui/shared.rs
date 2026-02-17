@@ -109,6 +109,7 @@ pub(super) enum HitRegion {
 pub(super) enum PreviewTab {
     #[default]
     Agent,
+    Shell,
     Git,
 }
 
@@ -116,13 +117,15 @@ impl PreviewTab {
     pub(super) const fn label(self) -> &'static str {
         match self {
             Self::Agent => "Agent",
+            Self::Shell => "Shell",
             Self::Git => "Git",
         }
     }
 
     pub(super) const fn next(self) -> Self {
         match self {
-            Self::Agent => Self::Git,
+            Self::Agent => Self::Shell,
+            Self::Shell => Self::Git,
             Self::Git => Self::Agent,
         }
     }
@@ -130,7 +133,8 @@ impl PreviewTab {
     pub(super) const fn previous(self) -> Self {
         match self {
             Self::Agent => Self::Git,
-            Self::Git => Self::Agent,
+            Self::Shell => Self::Agent,
+            Self::Git => Self::Shell,
         }
     }
 }

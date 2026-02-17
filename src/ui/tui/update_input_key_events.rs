@@ -61,7 +61,7 @@ impl GroveApp {
     }
 
     pub(super) fn enter_preview_or_interactive(&mut self) {
-        if self.preview_tab == PreviewTab::Agent
+        if matches!(self.preview_tab, PreviewTab::Agent | PreviewTab::Shell)
             && let Some(workspace) = self.state.selected_workspace()
         {
             let session_name = shell_session_name_for_workspace(workspace);
@@ -76,7 +76,8 @@ impl GroveApp {
     fn non_interactive_command_for_key(&self, key_event: &KeyEvent) -> Option<UiCommand> {
         let in_preview_focus =
             self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview;
-        let in_preview_agent = in_preview_focus && self.preview_tab == PreviewTab::Agent;
+        let in_preview_scroll =
+            in_preview_focus && matches!(self.preview_tab, PreviewTab::Agent | PreviewTab::Shell);
         let can_enter_interactive = self.can_enter_interactive_session();
 
         for command in UiCommand::all() {
@@ -107,17 +108,18 @@ impl GroveApp {
                         && !in_preview_focus
                 }
                 UiCommand::ScrollUp => {
-                    matches!(key_event.code, KeyCode::Char('k') | KeyCode::Up) && in_preview_agent
+                    matches!(key_event.code, KeyCode::Char('k') | KeyCode::Up) && in_preview_scroll
                 }
                 UiCommand::ScrollDown => {
-                    matches!(key_event.code, KeyCode::Char('j') | KeyCode::Down) && in_preview_agent
+                    matches!(key_event.code, KeyCode::Char('j') | KeyCode::Down)
+                        && in_preview_scroll
                 }
-                UiCommand::PageUp => matches!(key_event.code, KeyCode::PageUp) && in_preview_agent,
+                UiCommand::PageUp => matches!(key_event.code, KeyCode::PageUp) && in_preview_scroll,
                 UiCommand::PageDown => {
-                    matches!(key_event.code, KeyCode::PageDown) && in_preview_agent
+                    matches!(key_event.code, KeyCode::PageDown) && in_preview_scroll
                 }
                 UiCommand::ScrollBottom => {
-                    matches!(key_event.code, KeyCode::Char('G') | KeyCode::End) && in_preview_agent
+                    matches!(key_event.code, KeyCode::Char('G') | KeyCode::End) && in_preview_scroll
                 }
                 UiCommand::PreviousTab => {
                     matches!(key_event.code, KeyCode::Char('[')) && in_preview_focus

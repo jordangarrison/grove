@@ -25,12 +25,15 @@ impl GroveApp {
             }
             return None;
         }
+        if self.preview_tab == PreviewTab::Shell {
+            return self.selected_shell_preview_session_if_ready();
+        }
 
         self.selected_agent_preview_session_if_ready()
     }
 
     fn selected_live_preview_session_for_completion(&self) -> Option<String> {
-        if self.preview_tab == PreviewTab::Git {
+        if matches!(self.preview_tab, PreviewTab::Git | PreviewTab::Shell) {
             return self.selected_live_preview_session_if_ready();
         }
 

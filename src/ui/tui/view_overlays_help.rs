@@ -35,6 +35,7 @@ impl GroveApp {
         let workspace_hints = self.keybind_help_line(HelpHintContext::Workspace);
         let list_hints = self.keybind_help_line(HelpHintContext::List);
         let preview_agent_hints = self.keybind_help_line(HelpHintContext::PreviewAgent);
+        let preview_shell_hints = self.keybind_help_line(HelpHintContext::PreviewShell);
         let preview_git_hints = self.keybind_help_line(HelpHintContext::PreviewGit);
 
         let lines = vec![
@@ -73,6 +74,13 @@ impl GroveApp {
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
                     format!("  Agent tab: {preview_agent_hints}").as_str(),
+                    content_width,
+                ),
+                Style::new().fg(theme.text),
+            )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    format!("  Shell tab: {preview_shell_hints}").as_str(),
                     content_width,
                 ),
                 Style::new().fg(theme.text),

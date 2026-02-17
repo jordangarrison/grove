@@ -43,6 +43,26 @@ impl UiCommand {
                 UiCommand::OpenHelp,
                 UiCommand::Quit,
             ],
+            StatusHintContext::PreviewShell => &[
+                UiCommand::PreviousTab,
+                UiCommand::NextTab,
+                UiCommand::EnterInteractive,
+                UiCommand::ScrollDown,
+                UiCommand::PageDown,
+                UiCommand::ScrollBottom,
+                UiCommand::FocusList,
+                UiCommand::NewWorkspace,
+                UiCommand::EditWorkspace,
+                UiCommand::MergeWorkspace,
+                UiCommand::UpdateFromBase,
+                UiCommand::OpenProjects,
+                UiCommand::DeleteWorkspace,
+                UiCommand::OpenSettings,
+                UiCommand::ToggleSidebar,
+                UiCommand::OpenCommandPalette,
+                UiCommand::OpenHelp,
+                UiCommand::Quit,
+            ],
             StatusHintContext::PreviewGit => &[
                 UiCommand::PreviousTab,
                 UiCommand::NextTab,
@@ -70,6 +90,7 @@ impl UiCommand {
             (UiCommand::NextTab, StatusHintContext::List) => Some("Alt+] next tab"),
             (UiCommand::FocusList, StatusHintContext::List)
             | (UiCommand::FocusList, StatusHintContext::PreviewAgent)
+            | (UiCommand::FocusList, StatusHintContext::PreviewShell)
             | (UiCommand::FocusList, StatusHintContext::PreviewGit) => Some("h/l pane"),
             (UiCommand::OpenPreview, StatusHintContext::List)
             | (UiCommand::OpenPreview, StatusHintContext::PreviewAgent) => Some("Enter open"),
@@ -77,15 +98,23 @@ impl UiCommand {
                 Some("Enter attach lazygit")
             }
             (UiCommand::PreviousTab, StatusHintContext::PreviewAgent)
+            | (UiCommand::PreviousTab, StatusHintContext::PreviewShell)
             | (UiCommand::PreviousTab, StatusHintContext::PreviewGit) => Some("[ prev tab"),
             (UiCommand::NextTab, StatusHintContext::PreviewAgent)
+            | (UiCommand::NextTab, StatusHintContext::PreviewShell)
             | (UiCommand::NextTab, StatusHintContext::PreviewGit) => Some("] next tab"),
             (UiCommand::EnterInteractive, StatusHintContext::PreviewAgent) => {
                 Some("Enter attach shell")
             }
+            (UiCommand::EnterInteractive, StatusHintContext::PreviewShell) => {
+                Some("Enter attach shell")
+            }
             (UiCommand::ScrollDown, StatusHintContext::PreviewAgent) => Some("j/k scroll"),
+            (UiCommand::ScrollDown, StatusHintContext::PreviewShell) => Some("j/k scroll"),
             (UiCommand::PageDown, StatusHintContext::PreviewAgent) => Some("PgUp/PgDn"),
+            (UiCommand::PageDown, StatusHintContext::PreviewShell) => Some("PgUp/PgDn"),
             (UiCommand::ScrollBottom, StatusHintContext::PreviewAgent) => Some("G/End bottom"),
+            (UiCommand::ScrollBottom, StatusHintContext::PreviewShell) => Some("G/End bottom"),
             (UiCommand::NewWorkspace, _context) => Some("n new"),
             (UiCommand::EditWorkspace, _context) => Some("e edit/switch"),
             (UiCommand::MergeWorkspace, _context) => Some("m merge"),
@@ -138,6 +167,14 @@ impl UiCommand {
                 UiCommand::StartAgent,
                 UiCommand::StopAgent,
             ],
+            HelpHintContext::PreviewShell => &[
+                UiCommand::PreviousTab,
+                UiCommand::NextTab,
+                UiCommand::EnterInteractive,
+                UiCommand::ScrollDown,
+                UiCommand::PageDown,
+                UiCommand::ScrollBottom,
+            ],
             HelpHintContext::PreviewGit => &[
                 UiCommand::PreviousTab,
                 UiCommand::NextTab,
@@ -173,15 +210,23 @@ impl UiCommand {
                 Some("j/k or Up/Down move selection")
             }
             (UiCommand::PreviousTab, HelpHintContext::PreviewAgent)
+            | (UiCommand::PreviousTab, HelpHintContext::PreviewShell)
             | (UiCommand::PreviousTab, HelpHintContext::PreviewGit) => Some("[ prev tab"),
             (UiCommand::NextTab, HelpHintContext::PreviewAgent)
+            | (UiCommand::NextTab, HelpHintContext::PreviewShell)
             | (UiCommand::NextTab, HelpHintContext::PreviewGit) => Some("] next tab"),
             (UiCommand::EnterInteractive, HelpHintContext::PreviewAgent) => {
                 Some("Enter attach shell/agent")
             }
+            (UiCommand::EnterInteractive, HelpHintContext::PreviewShell) => {
+                Some("Enter attach shell")
+            }
             (UiCommand::ScrollDown, HelpHintContext::PreviewAgent) => Some("j/k or Up/Down scroll"),
+            (UiCommand::ScrollDown, HelpHintContext::PreviewShell) => Some("j/k or Up/Down scroll"),
             (UiCommand::PageDown, HelpHintContext::PreviewAgent) => Some("PgUp/PgDn page"),
+            (UiCommand::PageDown, HelpHintContext::PreviewShell) => Some("PgUp/PgDn page"),
             (UiCommand::ScrollBottom, HelpHintContext::PreviewAgent) => Some("G or End bottom"),
+            (UiCommand::ScrollBottom, HelpHintContext::PreviewShell) => Some("G or End bottom"),
             (UiCommand::StartAgent, HelpHintContext::PreviewAgent) => Some("s start"),
             (UiCommand::StopAgent, HelpHintContext::PreviewAgent) => Some("x stop"),
             (UiCommand::EnterInteractive, HelpHintContext::PreviewGit) => {

@@ -44,6 +44,7 @@ pub(super) struct PaletteCommandSpec {
 pub(super) enum StatusHintContext {
     List,
     PreviewAgent,
+    PreviewShell,
     PreviewGit,
 }
 
@@ -53,6 +54,7 @@ pub(super) enum HelpHintContext {
     Workspace,
     List,
     PreviewAgent,
+    PreviewShell,
     PreviewGit,
 }
 

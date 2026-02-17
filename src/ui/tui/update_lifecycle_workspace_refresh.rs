@@ -1,6 +1,29 @@
 use super::*;
 
 impl GroveApp {
+    fn auto_launch_pending_workspace_shell(&mut self) -> bool {
+        let Some(pending_path) = self.pending_auto_launch_shell_workspace_path.clone() else {
+            return false;
+        };
+        self.pending_auto_launch_shell_workspace_path = None;
+
+        let Some(workspace) = self
+            .state
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.path == pending_path)
+            .cloned()
+        else {
+            return false;
+        };
+
+        let session_name = shell_session_name_for_workspace(&workspace);
+        let launched = self
+            .ensure_workspace_shell_session_for_workspace(workspace, false, true, true)
+            .is_some();
+        launched || self.shell_launch_in_flight.contains(&session_name)
+    }
+
     fn auto_start_pending_workspace_agent(&mut self) -> bool {
         let Some(pending_path) = self.pending_auto_start_workspace_path.clone() else {
             return false;
@@ -64,6 +87,7 @@ impl GroveApp {
         self.state.focus = previous_focus;
         self.clear_agent_activity_tracking();
         self.clear_status_tracking();
+        self.auto_launch_pending_workspace_shell();
         let started_in_background = self.auto_start_pending_workspace_agent();
         if !started_in_background {
             self.poll_preview();
@@ -94,6 +118,7 @@ impl GroveApp {
         self.refresh_in_flight = false;
         self.clear_agent_activity_tracking();
         self.clear_status_tracking();
+        self.auto_launch_pending_workspace_shell();
         let started_in_background = self.auto_start_pending_workspace_agent();
         if !started_in_background {
             self.poll_preview();

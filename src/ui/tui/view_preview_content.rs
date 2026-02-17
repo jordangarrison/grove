@@ -86,7 +86,7 @@ impl GroveApp {
         let tab_active_style = Style::new().fg(theme.base).bg(theme.blue).bold();
         let tab_inactive_style = Style::new().fg(theme.subtext0).bg(theme.surface0);
         let mut tab_spans = Vec::new();
-        for (index, tab) in [PreviewTab::Agent, PreviewTab::Git]
+        for (index, tab) in [PreviewTab::Agent, PreviewTab::Shell, PreviewTab::Git]
             .iter()
             .copied()
             .enumerate()
@@ -191,6 +191,22 @@ impl GroveApp {
         FtLine::raw(fallback.to_string())
     }
 
+    fn preview_shell_fallback_line(&self, selected_workspace: Option<&Workspace>) -> FtLine {
+        let fallback = if let Some(workspace) = selected_workspace {
+            let session_name = shell_session_name_for_workspace(workspace);
+            if self.shell_failed_sessions.contains(&session_name) {
+                "(shell launch failed)"
+            } else if self.shell_ready_sessions.contains(&session_name) {
+                "(no shell output yet)"
+            } else {
+                "(launching shell...)"
+            }
+        } else {
+            "(no workspace selected)"
+        };
+        FtLine::raw(fallback.to_string())
+    }
+
     pub(super) fn preview_tab_content_lines(
         &self,
         selected_workspace: Option<&Workspace>,
@@ -211,6 +227,7 @@ impl GroveApp {
         if visible_render_lines.is_empty() {
             return vec![match self.preview_tab {
                 PreviewTab::Agent => FtLine::raw("(no preview output)"),
+                PreviewTab::Shell => self.preview_shell_fallback_line(selected_workspace),
                 PreviewTab::Git => self.preview_git_fallback_line(selected_workspace),
             }];
         }

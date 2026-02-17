@@ -1306,6 +1306,23 @@ fn status_row_hides_agent_hints_in_git_tab() {
 }
 
 #[test]
+fn status_row_shows_shell_hints_without_agent_controls_in_shell_tab() {
+    let mut app = fixture_app();
+    app.state.mode = UiMode::Preview;
+    app.state.focus = PaneFocus::Preview;
+    app.preview_tab = PreviewTab::Shell;
+
+    with_rendered_frame(&app, 180, 24, |frame| {
+        let status_row = frame.height().saturating_sub(1);
+        let status_text = row_text(frame, status_row, 0, frame.width());
+        assert!(status_text.contains("Enter attach shell"));
+        assert!(status_text.contains("j/k scroll"));
+        assert!(!status_text.contains("s start"));
+        assert!(!status_text.contains("x stop"));
+    });
+}
+
+#[test]
 fn question_key_opens_keybind_help_modal() {
     let mut app = fixture_app();
 
@@ -1573,6 +1590,28 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
         preview_ids_with_shell
             .iter()
             .any(|id| id == &palette_id(UiCommand::EnterInteractive))
+    );
+
+    app.preview_tab = PreviewTab::Shell;
+    let shell_preview_ids: Vec<String> = app
+        .build_command_palette_actions()
+        .into_iter()
+        .map(|action| action.id)
+        .collect();
+    assert!(
+        shell_preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::ScrollDown))
+    );
+    assert!(
+        shell_preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::EnterInteractive))
+    );
+    assert!(
+        !shell_preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::StartAgent))
     );
 
     app.preview_tab = PreviewTab::Git;

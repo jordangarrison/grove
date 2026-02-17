@@ -154,6 +154,9 @@ impl GroveApp {
         if self.preview_agent_tab_is_focused() {
             return self.status_hints_line(StatusHintContext::PreviewAgent);
         }
+        if self.preview_shell_tab_is_focused() {
+            return self.status_hints_line(StatusHintContext::PreviewShell);
+        }
         if self.preview_git_tab_is_focused() {
             return self.status_hints_line(StatusHintContext::PreviewGit);
         }

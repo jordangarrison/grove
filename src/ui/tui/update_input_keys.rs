@@ -7,6 +7,18 @@ impl GroveApp {
             && self.preview_tab == PreviewTab::Agent
     }
 
+    pub(super) fn preview_shell_tab_is_focused(&self) -> bool {
+        self.state.mode == UiMode::Preview
+            && self.state.focus == PaneFocus::Preview
+            && self.preview_tab == PreviewTab::Shell
+    }
+
+    pub(super) fn preview_scroll_tab_is_focused(&self) -> bool {
+        self.state.mode == UiMode::Preview
+            && self.state.focus == PaneFocus::Preview
+            && matches!(self.preview_tab, PreviewTab::Agent | PreviewTab::Shell)
+    }
+
     pub(super) fn preview_git_tab_is_focused(&self) -> bool {
         self.state.mode == UiMode::Preview
             && self.state.focus == PaneFocus::Preview

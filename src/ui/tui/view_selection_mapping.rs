@@ -41,7 +41,7 @@ impl GroveApp {
     }
 
     pub(super) fn preview_text_point_at(&self, x: u16, y: u16) -> Option<TextSelectionPoint> {
-        if self.preview_tab != PreviewTab::Agent {
+        if self.preview_tab == PreviewTab::Git {
             return None;
         }
 

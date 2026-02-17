@@ -5,6 +5,22 @@ impl GroveApp {
         self.state
             .selected_workspace()
             .map(|workspace| {
+                if self.preview_tab == PreviewTab::Shell {
+                    let shell_session_name = shell_session_name_for_workspace(workspace);
+                    if self.shell_launch_in_flight.contains(&shell_session_name) {
+                        return format!("Starting shell session for {}...", workspace.name);
+                    }
+                    if self.shell_failed_sessions.contains(&shell_session_name) {
+                        return format!(
+                            "Shell session failed for {}.\nPress Enter to retry session launch.",
+                            workspace.name
+                        );
+                    }
+                    if workspace.is_orphaned {
+                        return format!("Reconnecting session for {}...", workspace.name);
+                    }
+                    return format!("Preparing shell session for {}...", workspace.name);
+                }
                 if workspace.is_main && !workspace.status.has_session() {
                     return self.main_worktree_splash();
                 }

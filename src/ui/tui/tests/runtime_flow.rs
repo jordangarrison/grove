@@ -1154,6 +1154,10 @@ fn create_workspace_completed_success_queues_refresh_task_in_background_mode() {
         app.pending_auto_start_workspace_path,
         Some(PathBuf::from("/repos/grove-feature-x"))
     );
+    assert_eq!(
+        app.pending_auto_launch_shell_workspace_path,
+        Some(PathBuf::from("/repos/grove-feature-x"))
+    );
 }
 
 #[test]
@@ -1176,6 +1180,27 @@ fn refresh_workspace_completion_autostarts_agent_for_new_workspace() {
         !app.shell_launch_in_flight
             .contains("grove-ws-feature-a-shell")
     );
+}
+
+#[test]
+fn refresh_workspace_completion_auto_launches_shell_for_new_workspace() {
+    let mut app = fixture_background_app(WorkspaceStatus::Idle);
+    app.pending_auto_launch_shell_workspace_path = Some(PathBuf::from("/repos/grove-feature-a"));
+
+    let cmd = ftui::Model::update(
+        &mut app,
+        Msg::RefreshWorkspacesCompleted(RefreshWorkspacesCompletion {
+            preferred_workspace_path: Some(PathBuf::from("/repos/grove-feature-a")),
+            bootstrap: fixture_bootstrap(WorkspaceStatus::Idle),
+        }),
+    );
+
+    assert!(cmd_contains_task(&cmd));
+    assert!(
+        app.shell_launch_in_flight
+            .contains("grove-ws-feature-a-shell")
+    );
+    assert!(app.pending_auto_launch_shell_workspace_path.is_none());
 }
 
 #[test]
@@ -1529,7 +1554,7 @@ fn alt_brackets_switch_preview_tab_from_list_focus() {
     );
     assert_eq!(app.state.mode, UiMode::Preview);
     assert_eq!(app.state.focus, PaneFocus::Preview);
-    assert_eq!(app.preview_tab, PreviewTab::Git);
+    assert_eq!(app.preview_tab, PreviewTab::Shell);
 
     ftui::Model::update(
         &mut app,
@@ -3012,6 +3037,16 @@ fn stop_key_stops_selected_workspace_agent() {
                 "history-limit".to_string(),
                 "10000".to_string(),
             ],
+            vec![
+                "tmux".to_string(),
+                "resize-window".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a-shell".to_string(),
+                "-x".to_string(),
+                "80".to_string(),
+                "-y".to_string(),
+                "36".to_string(),
+            ],
         ]
     );
     assert_eq!(
@@ -3229,6 +3264,72 @@ fn enter_on_active_main_workspace_starts_interactive_mode() {
 }
 
 #[test]
+fn enter_on_main_workspace_in_shell_tab_launches_shell_and_enters_interactive_mode() {
+    let (mut app, commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+    app.preview_tab = PreviewTab::Shell;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
+    assert_eq!(
+        commands.borrow().as_slice(),
+        &[
+            vec![
+                "tmux".to_string(),
+                "new-session".to_string(),
+                "-d".to_string(),
+                "-s".to_string(),
+                "grove-ws-grove-shell".to_string(),
+                "-c".to_string(),
+                "/repos/grove".to_string(),
+            ],
+            vec![
+                "tmux".to_string(),
+                "set-option".to_string(),
+                "-t".to_string(),
+                "grove-ws-grove-shell".to_string(),
+                "history-limit".to_string(),
+                "10000".to_string(),
+            ],
+            vec![
+                "tmux".to_string(),
+                "resize-window".to_string(),
+                "-t".to_string(),
+                "grove-ws-grove-shell".to_string(),
+                "-x".to_string(),
+                "80".to_string(),
+                "-y".to_string(),
+                "36".to_string(),
+            ],
+        ]
+    );
+    assert_eq!(
+        app.interactive
+            .as_ref()
+            .map(|state| state.target_session.as_str()),
+        Some("grove-ws-grove-shell")
+    );
+    assert_eq!(app.mode_label(), "Interactive");
+}
+
+#[test]
+fn shell_tab_main_workspace_summary_uses_shell_status_copy() {
+    let mut app = fixture_app();
+    app.preview_tab = PreviewTab::Shell;
+    app.state.selected_index = 0;
+    app.state.workspaces[0].status = WorkspaceStatus::Active;
+
+    app.refresh_preview_summary();
+
+    let combined = app.preview.lines.join("\n");
+    assert!(!combined.contains("Connecting to main workspace session"));
+    assert!(combined.contains("Preparing shell session for grove"));
+}
+
+#[test]
 fn enter_on_idle_workspace_launches_shell_session_and_enters_interactive_mode() {
     let (mut app, commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
@@ -3261,6 +3362,16 @@ fn enter_on_idle_workspace_launches_shell_session_and_enters_interactive_mode() 
                 "grove-ws-feature-a-shell".to_string(),
                 "history-limit".to_string(),
                 "10000".to_string(),
+            ],
+            vec![
+                "tmux".to_string(),
+                "resize-window".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a-shell".to_string(),
+                "-x".to_string(),
+                "80".to_string(),
+                "-y".to_string(),
+                "36".to_string(),
             ],
         ]
     );
@@ -3812,6 +3923,14 @@ fn alt_bracket_exits_interactive_and_switches_to_git_tab() {
     );
     assert!(app.interactive.is_some());
 
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char(']'))
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
     ftui::Model::update(
         &mut app,
         Msg::Key(
@@ -5333,6 +5452,9 @@ fn preview_mode_bracket_keys_cycle_tabs() {
     assert_eq!(app.preview_tab, PreviewTab::Agent);
 
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
+    assert_eq!(app.preview_tab, PreviewTab::Shell);
+
+    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
     assert_eq!(app.preview_tab, PreviewTab::Git);
 
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
@@ -5340,6 +5462,9 @@ fn preview_mode_bracket_keys_cycle_tabs() {
 
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('['))));
     assert_eq!(app.preview_tab, PreviewTab::Git);
+
+    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('['))));
+    assert_eq!(app.preview_tab, PreviewTab::Shell);
 }
 
 #[test]
@@ -5350,6 +5475,7 @@ fn preview_mode_scroll_keys_noop_in_git_tab() {
     app.preview.offset = 0;
     app.preview.auto_scroll = true;
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
+    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
     assert_eq!(app.preview_tab, PreviewTab::Git);
 
@@ -5373,6 +5499,7 @@ fn git_tab_renders_lazygit_placeholder_and_launches_session() {
     );
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
+    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
 
     let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
     let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
@@ -5385,6 +5512,7 @@ fn git_tab_renders_lazygit_placeholder_and_launches_session() {
         let output_line = row_text(frame, output_y, x_start, x_end);
 
         assert!(tabs_line.contains("Agent"));
+        assert!(tabs_line.contains("Shell"));
         assert!(tabs_line.contains("Git"));
         assert!(output_line.contains("lazygit"));
     });
@@ -5406,6 +5534,7 @@ fn git_tab_queues_async_lazygit_launch_when_supported() {
     );
 
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
+    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
     let cmd = ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
 
     assert_eq!(app.preview_tab, PreviewTab::Git);
@@ -5421,37 +5550,46 @@ fn git_tab_launches_lazygit_with_dedicated_tmux_session() {
 
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
+    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
 
-    assert_eq!(
-        commands.borrow().as_slice(),
-        &[
-            vec![
-                "tmux".to_string(),
-                "new-session".to_string(),
-                "-d".to_string(),
-                "-s".to_string(),
-                "grove-ws-grove-git".to_string(),
-                "-c".to_string(),
-                "/repos/grove".to_string(),
-            ],
-            vec![
-                "tmux".to_string(),
-                "set-option".to_string(),
-                "-t".to_string(),
-                "grove-ws-grove-git".to_string(),
-                "history-limit".to_string(),
-                "10000".to_string(),
-            ],
-            vec![
-                "tmux".to_string(),
-                "send-keys".to_string(),
-                "-t".to_string(),
-                "grove-ws-grove-git".to_string(),
-                lazygit_command,
-                "Enter".to_string(),
-            ],
-        ]
-    );
+    let expected_suffix = vec![
+        vec![
+            "tmux".to_string(),
+            "new-session".to_string(),
+            "-d".to_string(),
+            "-s".to_string(),
+            "grove-ws-grove-git".to_string(),
+            "-c".to_string(),
+            "/repos/grove".to_string(),
+        ],
+        vec![
+            "tmux".to_string(),
+            "set-option".to_string(),
+            "-t".to_string(),
+            "grove-ws-grove-git".to_string(),
+            "history-limit".to_string(),
+            "10000".to_string(),
+        ],
+        vec![
+            "tmux".to_string(),
+            "resize-window".to_string(),
+            "-t".to_string(),
+            "grove-ws-grove-git".to_string(),
+            "-x".to_string(),
+            "80".to_string(),
+            "-y".to_string(),
+            "36".to_string(),
+        ],
+        vec![
+            "tmux".to_string(),
+            "send-keys".to_string(),
+            "-t".to_string(),
+            "grove-ws-grove-git".to_string(),
+            lazygit_command,
+            "Enter".to_string(),
+        ],
+    ];
+    assert!(commands.borrow().as_slice().ends_with(&expected_suffix));
 }
 
 #[test]
@@ -5609,6 +5747,7 @@ fn enter_on_git_tab_attaches_to_lazygit_session() {
         fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
 
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
+    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
 

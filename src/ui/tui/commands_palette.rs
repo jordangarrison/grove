@@ -99,14 +99,18 @@ impl UiCommand {
                 id: "palette:previous_tab",
                 title: "Previous Preview Tab",
                 description: "Switch to previous preview tab (Alt+[ global, [ in preview)",
-                tags: &["previous", "tab", "[", "alt+[", "agent", "git", "lazygit"],
+                tags: &[
+                    "previous", "tab", "[", "alt+[", "agent", "shell", "git", "lazygit",
+                ],
                 category: "Navigation",
             }),
             Self::NextTab => Some(PaletteCommandSpec {
                 id: "palette:next_tab",
                 title: "Next Preview Tab",
                 description: "Switch to next preview tab (Alt+] global, ] in preview)",
-                tags: &["next", "tab", "]", "alt+]", "agent", "git", "lazygit"],
+                tags: &[
+                    "next", "tab", "]", "alt+]", "agent", "shell", "git", "lazygit",
+                ],
                 category: "Navigation",
             }),
             Self::NewWorkspace => Some(PaletteCommandSpec {

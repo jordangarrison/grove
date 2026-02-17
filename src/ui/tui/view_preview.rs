@@ -25,7 +25,7 @@ impl GroveApp {
         let selected_workspace = self.state.selected_workspace();
         let selected_agent = selected_workspace.map(|workspace| workspace.agent);
         let allow_cursor_overlay =
-            self.preview_tab == PreviewTab::Git || selected_agent != Some(AgentType::Codex);
+            self.preview_tab != PreviewTab::Agent || selected_agent != Some(AgentType::Codex);
 
         let metadata_rows = usize::from(PREVIEW_METADATA_ROWS);
         let preview_height = usize::from(inner.height)

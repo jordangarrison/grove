@@ -447,6 +447,13 @@ pub fn build_shell_launch_plan(
         request.session_name.clone(),
         request.command.clone(),
     );
+    if let Some(resize_cmd) = launch_resize_window_command(
+        &plan.session_name,
+        request.capture_cols,
+        request.capture_rows,
+    ) {
+        plan.pre_launch_cmds.push(resize_cmd);
+    }
     if request.command.trim().is_empty() {
         plan.launch_cmd = Vec::new();
     }

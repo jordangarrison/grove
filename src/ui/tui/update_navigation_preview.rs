@@ -118,15 +118,17 @@ impl GroveApp {
         Some(session_name)
     }
 
-    pub(super) fn ensure_workspace_shell_session_for_selected_workspace(
+    pub(super) fn ensure_workspace_shell_session_for_workspace(
         &mut self,
+        workspace: Workspace,
         retry_failed: bool,
+        allow_running_agent_session: bool,
+        allow_main_workspace: bool,
     ) -> Option<String> {
-        if self.start_in_flight {
+        if workspace.is_main && !allow_main_workspace {
             return None;
         }
-        let workspace = self.state.selected_workspace()?.clone();
-        if workspace.is_main || workspace.status.has_session() {
+        if !allow_running_agent_session && workspace.status.has_session() {
             return None;
         }
 
@@ -235,6 +237,21 @@ impl GroveApp {
         Some(session_name)
     }
 
+    pub(super) fn ensure_workspace_shell_session_for_selected_workspace(
+        &mut self,
+        retry_failed: bool,
+        allow_running_agent_session: bool,
+        allow_main_workspace: bool,
+    ) -> Option<String> {
+        let workspace = self.state.selected_workspace()?.clone();
+        self.ensure_workspace_shell_session_for_workspace(
+            workspace,
+            retry_failed,
+            allow_running_agent_session,
+            allow_main_workspace,
+        )
+    }
+
     pub(super) fn selected_agent_preview_session_if_ready(&self) -> Option<String> {
         let workspace = self.state.selected_workspace()?;
         if workspace.status.has_session() {
@@ -252,9 +269,23 @@ impl GroveApp {
         None
     }
 
+    pub(super) fn selected_shell_preview_session_if_ready(&self) -> Option<String> {
+        let workspace = self.state.selected_workspace()?;
+
+        let session_name = shell_session_name_for_workspace(workspace);
+        if self.shell_ready_sessions.contains(&session_name) {
+            return Some(session_name);
+        }
+
+        None
+    }
+
     pub(super) fn can_enter_interactive_session(&self) -> bool {
         if self.preview_tab == PreviewTab::Git {
             return workspace_can_enter_interactive(self.state.selected_workspace(), true);
+        }
+        if self.preview_tab == PreviewTab::Shell {
+            return self.selected_shell_preview_session_if_ready().is_some();
         }
 
         self.selected_agent_preview_session_if_ready().is_some()
@@ -265,7 +296,15 @@ impl GroveApp {
             return Some(session_name);
         }
 
-        self.ensure_workspace_shell_session_for_selected_workspace(true)
+        self.ensure_workspace_shell_session_for_selected_workspace(true, false, false)
+    }
+
+    pub(super) fn ensure_shell_preview_session_for_interactive(&mut self) -> Option<String> {
+        if let Some(session_name) = self.selected_shell_preview_session_if_ready() {
+            return Some(session_name);
+        }
+
+        self.ensure_workspace_shell_session_for_selected_workspace(true, true, true)
     }
 
     pub(super) fn prepare_live_preview_session(&mut self) -> Option<LivePreviewTarget> {
@@ -277,13 +316,27 @@ impl GroveApp {
                     include_escape_sequences: true,
                 });
         }
+        if self.preview_tab == PreviewTab::Shell {
+            if let Some(session_name) = self.selected_shell_preview_session_if_ready() {
+                return Some(LivePreviewTarget {
+                    session_name,
+                    include_escape_sequences: true,
+                });
+            }
+            return self
+                .ensure_workspace_shell_session_for_selected_workspace(false, true, true)
+                .map(|session_name| LivePreviewTarget {
+                    session_name,
+                    include_escape_sequences: true,
+                });
+        }
         if let Some(session_name) = self.selected_agent_preview_session_if_ready() {
             return Some(LivePreviewTarget {
                 session_name,
                 include_escape_sequences: true,
             });
         }
-        self.ensure_workspace_shell_session_for_selected_workspace(false)
+        self.ensure_workspace_shell_session_for_selected_workspace(false, false, false)
             .map(|session_name| LivePreviewTarget {
                 session_name,
                 include_escape_sequences: true,
@@ -381,7 +434,9 @@ impl GroveApp {
                     self.state.selected_workspace().is_some_and(|workspace| {
                         shell_session_name_for_workspace(workspace) == session_name
                     });
-                if selected_session_matches && self.preview_tab == PreviewTab::Agent {
+                if selected_session_matches
+                    && matches!(self.preview_tab, PreviewTab::Agent | PreviewTab::Shell)
+                {
                     self.poll_preview();
                 }
             }
@@ -400,7 +455,9 @@ impl GroveApp {
                         self.state.selected_workspace().is_some_and(|workspace| {
                             shell_session_name_for_workspace(workspace) == session_name
                         });
-                    if selected_session_matches && self.preview_tab == PreviewTab::Agent {
+                    if selected_session_matches
+                        && matches!(self.preview_tab, PreviewTab::Agent | PreviewTab::Shell)
+                    {
                         self.poll_preview();
                     }
                     return;

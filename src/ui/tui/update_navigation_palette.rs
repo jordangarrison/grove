@@ -88,7 +88,7 @@ impl GroveApp {
             | UiCommand::ScrollDown
             | UiCommand::PageUp
             | UiCommand::PageDown
-            | UiCommand::ScrollBottom => self.preview_agent_tab_is_focused(),
+            | UiCommand::ScrollBottom => self.preview_scroll_tab_is_focused(),
             UiCommand::PreviousTab | UiCommand::NextTab => {
                 self.state.selected_workspace().is_some()
             }

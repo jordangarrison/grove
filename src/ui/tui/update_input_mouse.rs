@@ -182,7 +182,7 @@ impl GroveApp {
                 if matches!(region, HitRegion::Preview) {
                     self.state.mode = UiMode::Preview;
                     self.state.focus = PaneFocus::Preview;
-                    if self.preview_tab == PreviewTab::Agent {
+                    if self.preview_scroll_tab_is_focused() {
                         self.scroll_preview(-Self::PREVIEW_MOUSE_SCROLL_LINES);
                     }
                 }
@@ -191,7 +191,7 @@ impl GroveApp {
                 if matches!(region, HitRegion::Preview) {
                     self.state.mode = UiMode::Preview;
                     self.state.focus = PaneFocus::Preview;
-                    if self.preview_tab == PreviewTab::Agent {
+                    if self.preview_scroll_tab_is_focused() {
                         self.scroll_preview(Self::PREVIEW_MOUSE_SCROLL_LINES);
                     }
                 }
