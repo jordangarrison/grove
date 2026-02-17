@@ -181,12 +181,14 @@ impl Default for PreviewState {
 }
 
 pub(crate) fn split_output_lines(output: &str) -> Vec<String> {
-    let trimmed = output.trim_end_matches('\n');
-    if trimmed.is_empty() {
+    if output.is_empty() {
         return Vec::new();
     }
 
-    trimmed.lines().map(ToOwned::to_owned).collect()
+    output
+        .split_terminator('\n')
+        .map(ToOwned::to_owned)
+        .collect()
 }
 
 #[cfg(test)]

@@ -91,18 +91,31 @@ impl GroveApp {
                 return;
             }
         };
-        let Some(state) = self.interactive.as_mut() else {
+        let session = cursor_capture.session.clone();
+        let Some(interactive_session) = self.interactive_target_session() else {
             return;
         };
-        let session = cursor_capture.session.clone();
+        if interactive_session != session {
+            self.event_log.log(
+                LogEvent::new("preview_poll", "cursor_session_mismatch_dropped")
+                    .with_data("captured_session", Value::from(session))
+                    .with_data("interactive_session", Value::from(interactive_session)),
+            );
+            return;
+        }
 
-        let changed = state.update_cursor(
-            metadata.cursor_row,
-            metadata.cursor_col,
-            metadata.cursor_visible,
-            metadata.pane_height,
-            metadata.pane_width,
-        );
+        let changed = {
+            let Some(state) = self.interactive.as_mut() else {
+                return;
+            };
+            state.update_cursor(
+                metadata.cursor_row,
+                metadata.cursor_col,
+                metadata.cursor_visible,
+                metadata.pane_height,
+                metadata.pane_width,
+            )
+        };
         self.verify_resize_after_cursor_capture(
             &session,
             metadata.pane_width,

@@ -28,6 +28,9 @@ impl GroveApp {
     }
 
     pub(super) fn handle_workspace_selection_changed(&mut self) {
+        if self.interactive.is_some() {
+            self.exit_interactive_to_list();
+        }
         self.preview.jump_to_bottom();
         self.clear_agent_activity_tracking();
         self.clear_preview_selection();

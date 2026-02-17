@@ -3395,6 +3395,52 @@ fn resize_verify_retries_once_then_stops() {
 }
 
 #[test]
+fn preview_poll_drops_cursor_capture_for_non_interactive_session() {
+    let (mut app, _commands, _captures, _cursor_captures, events) =
+        fixture_app_with_tmux_and_events(WorkspaceStatus::Active, Vec::new(), Vec::new());
+    app.state.selected_index = 1;
+    app.interactive = Some(InteractiveState::new(
+        "%0".to_string(),
+        "grove-ws-feature-a".to_string(),
+        Instant::now(),
+        20,
+        80,
+    ));
+    if let Some(state) = app.interactive.as_mut() {
+        state.update_cursor(3, 4, true, 20, 80);
+    }
+
+    ftui::Model::update(
+        &mut app,
+        Msg::PreviewPollCompleted(PreviewPollCompletion {
+            generation: 1,
+            live_capture: None,
+            cursor_capture: Some(CursorCapture {
+                session: "grove-ws-grove".to_string(),
+                capture_ms: 1,
+                result: Ok("1 9 7 88 22".to_string()),
+            }),
+            workspace_status_captures: Vec::new(),
+        }),
+    );
+
+    let state = app
+        .interactive
+        .as_ref()
+        .expect("interactive state should remain active");
+    assert_eq!(state.target_session, "grove-ws-feature-a");
+    assert_eq!(state.cursor_row, 3);
+    assert_eq!(state.cursor_col, 4);
+    assert_eq!(state.pane_height, 20);
+    assert_eq!(state.pane_width, 80);
+    assert!(
+        event_kinds(&events)
+            .iter()
+            .any(|kind| kind == "cursor_session_mismatch_dropped")
+    );
+}
+
+#[test]
 fn interactive_keys_forward_to_tmux_session() {
     let (mut app, commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -4364,6 +4410,39 @@ fn mouse_click_on_list_selects_workspace() {
     );
 
     assert_eq!(app.state.selected_index, 1);
+}
+
+#[test]
+fn mouse_workspace_switch_exits_interactive_mode() {
+    let (mut app, _commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    app.state.selected_index = 1;
+    assert!(app.enter_interactive(Instant::now()));
+
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+    let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
+    let first_row_y = sidebar_inner.y.saturating_add(1);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Resize {
+            width: 100,
+            height: 40,
+        },
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(
+            MouseEventKind::Down(MouseButton::Left),
+            sidebar_inner.x.saturating_add(1),
+            first_row_y,
+        )),
+    );
+
+    assert_eq!(app.state.selected_index, 0);
+    assert!(app.interactive.is_none());
+    assert_eq!(app.state.mode, UiMode::List);
+    assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
 }
 
 #[test]

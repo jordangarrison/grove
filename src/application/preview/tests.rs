@@ -3,12 +3,16 @@ use std::time::{Duration, Instant};
 use super::{PreviewState, split_output_lines};
 
 #[test]
-fn split_output_lines_trims_final_newline() {
+fn split_output_lines_preserves_trailing_blank_rows() {
     assert_eq!(
         split_output_lines("a\nb\n"),
         vec!["a".to_string(), "b".to_string()]
     );
-    assert!(split_output_lines("\n").is_empty());
+    assert_eq!(split_output_lines("\n"), vec!["".to_string()]);
+    assert_eq!(
+        split_output_lines("a\n\n\n"),
+        vec!["a".to_string(), "".to_string(), "".to_string()]
+    );
 }
 
 #[test]
