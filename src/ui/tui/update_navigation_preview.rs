@@ -82,14 +82,27 @@ impl GroveApp {
         );
         let duration_ms =
             Self::duration_millis(Instant::now().saturating_duration_since(launch_started_at));
+        let launch_succeeded = launch_result.is_ok();
         let mut completion_event = LogEvent::new("lazygit_launch", "completed")
             .with_data("session", Value::from(session_name.clone()))
             .with_data("multiplexer", Value::from(self.multiplexer.label()))
             .with_data("async", Value::from(false))
             .with_data("duration_ms", Value::from(duration_ms))
-            .with_data("ok", Value::from(launch_result.is_ok()));
+            .with_data("ok", Value::from(launch_succeeded));
 
         if let Err(error) = launch_result {
+            if tmux_launch_error_indicates_duplicate_session(&error) {
+                completion_event = completion_event
+                    .with_data("ok", Value::from(true))
+                    .with_data("reused_existing_session", Value::from(true))
+                    .with_data("error", Value::from(error));
+                self.event_log.log(completion_event);
+                self.last_tmux_error = None;
+                self.lazygit_failed_sessions.remove(&session_name);
+                self.lazygit_ready_sessions.insert(session_name.clone());
+                return Some(session_name);
+            }
+
             completion_event = completion_event.with_data("error", Value::from(error.clone()));
             self.event_log.log(completion_event);
             self.last_tmux_error = Some(error);
@@ -181,15 +194,28 @@ impl GroveApp {
         );
         let duration_ms =
             Self::duration_millis(Instant::now().saturating_duration_since(launch_started_at));
+        let launch_succeeded = launch_result.is_ok();
         let mut completion_event = LogEvent::new("workspace_shell_launch", "completed")
             .with_data("session", Value::from(session_name.clone()))
             .with_data("workspace", Value::from(workspace.name))
             .with_data("multiplexer", Value::from(self.multiplexer.label()))
             .with_data("async", Value::from(false))
             .with_data("duration_ms", Value::from(duration_ms))
-            .with_data("ok", Value::from(launch_result.is_ok()));
+            .with_data("ok", Value::from(launch_succeeded));
 
         if let Err(error) = launch_result {
+            if tmux_launch_error_indicates_duplicate_session(&error) {
+                completion_event = completion_event
+                    .with_data("ok", Value::from(true))
+                    .with_data("reused_existing_session", Value::from(true))
+                    .with_data("error", Value::from(error));
+                self.event_log.log(completion_event);
+                self.last_tmux_error = None;
+                self.shell_failed_sessions.remove(&session_name);
+                self.shell_ready_sessions.insert(session_name.clone());
+                return Some(session_name);
+            }
+
             completion_event = completion_event.with_data("error", Value::from(error.clone()));
             self.event_log.log(completion_event);
             self.last_tmux_error = Some(error.clone());
@@ -296,6 +322,26 @@ impl GroveApp {
                 }
             }
             Err(error) => {
+                if tmux_launch_error_indicates_duplicate_session(&error) {
+                    completion_event = completion_event
+                        .with_data("ok", Value::from(true))
+                        .with_data("reused_existing_session", Value::from(true))
+                        .with_data("error", Value::from(error));
+                    self.last_tmux_error = None;
+                    self.lazygit_failed_sessions.remove(&session_name);
+                    self.lazygit_ready_sessions.insert(session_name.clone());
+                    self.event_log.log(completion_event);
+
+                    let selected_session_matches =
+                        self.state.selected_workspace().is_some_and(|workspace| {
+                            git_session_name_for_workspace(workspace) == session_name
+                        });
+                    if selected_session_matches && self.preview_tab == PreviewTab::Git {
+                        self.poll_preview();
+                    }
+                    return;
+                }
+
                 completion_event = completion_event.with_data("error", Value::from(error.clone()));
                 self.event_log.log(completion_event);
                 self.last_tmux_error = Some(error.clone());
@@ -345,6 +391,30 @@ impl GroveApp {
                 }
             }
             Err(error) => {
+                if tmux_launch_error_indicates_duplicate_session(&error) {
+                    completion_event = completion_event
+                        .with_data("ok", Value::from(true))
+                        .with_data("reused_existing_session", Value::from(true))
+                        .with_data("error", Value::from(error));
+                    self.last_tmux_error = None;
+                    self.shell_failed_sessions.remove(&session_name);
+                    self.shell_ready_sessions.insert(session_name.clone());
+                    self.event_log.log(completion_event);
+
+                    let selected_session_matches =
+                        self.state.selected_workspace().is_some_and(|workspace| {
+                            shell_session_name_for_workspace(workspace) == session_name
+                        });
+                    if selected_session_matches
+                        && self.preview_tab == PreviewTab::Agent
+                        && self.state.mode == UiMode::Preview
+                        && self.state.focus == PaneFocus::Preview
+                    {
+                        self.poll_preview();
+                    }
+                    return;
+                }
+
                 completion_event = completion_event.with_data("error", Value::from(error.clone()));
                 self.event_log.log(completion_event);
                 self.last_tmux_error = Some(error.clone());

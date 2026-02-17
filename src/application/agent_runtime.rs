@@ -383,6 +383,10 @@ pub fn tmux_capture_error_indicates_missing_session(error: &str) -> bool {
         || lower.contains("session not found")
 }
 
+pub fn tmux_launch_error_indicates_duplicate_session(error: &str) -> bool {
+    error.to_ascii_lowercase().contains("duplicate session")
+}
+
 pub fn session_name_for_workspace_in_project(
     project_name: Option<&str>,
     workspace_name: &str,

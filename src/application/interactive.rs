@@ -26,11 +26,7 @@ pub struct InteractiveState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InteractiveKey {
     Enter,
-    ModifiedEnter {
-        shift: bool,
-        alt: bool,
-        ctrl: bool,
-    },
+    ModifiedEnter { shift: bool, alt: bool, ctrl: bool },
     Tab,
     BackTab,
     Backspace,

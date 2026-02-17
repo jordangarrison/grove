@@ -1466,6 +1466,37 @@ fn alt_j_and_alt_k_move_workspace_selection_from_preview_focus() {
 }
 
 #[test]
+fn alt_brackets_switch_preview_tab_from_list_focus() {
+    let mut app = fixture_app();
+    app.state.selected_index = 1;
+    app.state.mode = UiMode::List;
+    app.state.focus = PaneFocus::WorkspaceList;
+    app.preview_tab = PreviewTab::Agent;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char(']'))
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(app.state.mode, UiMode::Preview);
+    assert_eq!(app.state.focus, PaneFocus::Preview);
+    assert_eq!(app.preview_tab, PreviewTab::Git);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('['))
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(app.preview_tab, PreviewTab::Agent);
+}
+
+#[test]
 fn background_start_confirm_queues_lifecycle_task() {
     let mut app = fixture_background_app(WorkspaceStatus::Idle);
     app.state.selected_index = 1;
@@ -3542,6 +3573,34 @@ fn alt_k_exits_interactive_and_selects_previous_workspace() {
 }
 
 #[test]
+fn alt_bracket_exits_interactive_and_switches_to_git_tab() {
+    let (mut app, _commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    app.state.selected_index = 1;
+    app.preview_tab = PreviewTab::Agent;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+    assert!(app.interactive.is_some());
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char(']'))
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+
+    assert!(app.interactive.is_none());
+    assert_eq!(app.state.mode, UiMode::Preview);
+    assert_eq!(app.state.focus, PaneFocus::Preview);
+    assert_eq!(app.preview_tab, PreviewTab::Git);
+}
+
+#[test]
 fn interactive_key_schedules_debounced_poll_interval() {
     let (mut app, _commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -5175,6 +5234,29 @@ fn lazygit_launch_completion_failure_marks_session_failed() {
 }
 
 #[test]
+fn lazygit_launch_completion_duplicate_session_marks_session_ready() {
+    let mut app = fixture_app();
+    app.lazygit_launch_in_flight
+        .insert("grove-ws-grove-git".to_string());
+
+    ftui::Model::update(
+        &mut app,
+        Msg::LazygitLaunchCompleted(LazygitLaunchCompletion {
+            session_name: "grove-ws-grove-git".to_string(),
+            duration_ms: 9,
+            result: Err(
+                "command failed: tmux new-session -d -s grove-ws-grove-git -c /repos/grove; duplicate session: grove-ws-grove-git".to_string(),
+            ),
+        }),
+    );
+
+    assert!(app.lazygit_ready_sessions.contains("grove-ws-grove-git"));
+    assert!(!app.lazygit_launch_in_flight.contains("grove-ws-grove-git"));
+    assert!(!app.lazygit_failed_sessions.contains("grove-ws-grove-git"));
+    assert!(!app.status_bar_line().contains("lazygit launch failed"));
+}
+
+#[test]
 fn workspace_shell_launch_completion_success_marks_session_ready() {
     let mut app = fixture_app();
     app.shell_launch_in_flight
@@ -5200,6 +5282,41 @@ fn workspace_shell_launch_completion_success_marks_session_ready() {
     assert!(
         !app.shell_failed_sessions
             .contains("grove-ws-feature-a-shell")
+    );
+}
+
+#[test]
+fn workspace_shell_launch_completion_duplicate_session_marks_session_ready() {
+    let mut app = fixture_app();
+    app.shell_launch_in_flight
+        .insert("grove-ws-feature-a-shell".to_string());
+
+    ftui::Model::update(
+        &mut app,
+        Msg::WorkspaceShellLaunchCompleted(WorkspaceShellLaunchCompletion {
+            session_name: "grove-ws-feature-a-shell".to_string(),
+            duration_ms: 14,
+            result: Err(
+                "command failed: tmux new-session -d -s grove-ws-feature-a-shell -c /repos/grove-feature-a; duplicate session: grove-ws-feature-a-shell".to_string(),
+            ),
+        }),
+    );
+
+    assert!(
+        app.shell_ready_sessions
+            .contains("grove-ws-feature-a-shell")
+    );
+    assert!(
+        !app.shell_launch_in_flight
+            .contains("grove-ws-feature-a-shell")
+    );
+    assert!(
+        !app.shell_failed_sessions
+            .contains("grove-ws-feature-a-shell")
+    );
+    assert!(
+        !app.status_bar_line()
+            .contains("workspace shell launch failed")
     );
 }
 

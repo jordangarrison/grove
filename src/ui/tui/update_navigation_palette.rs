@@ -90,7 +90,7 @@ impl GroveApp {
             | UiCommand::PageDown
             | UiCommand::ScrollBottom => self.preview_agent_tab_is_focused(),
             UiCommand::PreviousTab | UiCommand::NextTab => {
-                self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview
+                self.state.selected_workspace().is_some()
             }
             UiCommand::StartAgent => {
                 self.preview_agent_tab_is_focused()

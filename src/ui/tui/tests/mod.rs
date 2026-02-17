@@ -1072,7 +1072,11 @@ fn interactive_input_echo_does_not_trigger_activity_spinner() {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
         assert!(
-            status_text.contains("j/k move, h/l pane, Enter open"),
+            status_text.contains("j/k move")
+                && status_text.contains("Alt+[ prev tab")
+                && status_text.contains("Alt+] next tab")
+                && status_text.contains("h/l pane")
+                && status_text.contains("Enter open"),
             "status row should show keybind hints, got: {status_text}"
         );
     });
@@ -1259,7 +1263,11 @@ fn status_row_shows_keybind_hints_not_toast_state() {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
         assert!(!status_text.contains("Agent started"));
-        assert!(status_text.contains("j/k move, h/l pane, Enter open"));
+        assert!(status_text.contains("j/k move"));
+        assert!(status_text.contains("Alt+[ prev tab"));
+        assert!(status_text.contains("Alt+] next tab"));
+        assert!(status_text.contains("h/l pane"));
+        assert!(status_text.contains("Enter open"));
     });
 }
 
@@ -1495,12 +1503,12 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
             .any(|id| id == &palette_id(UiCommand::StartAgent))
     );
     assert!(
-        !list_ids
+        list_ids
             .iter()
             .any(|id| id == &palette_id(UiCommand::PreviousTab))
     );
     assert!(
-        !list_ids
+        list_ids
             .iter()
             .any(|id| id == &palette_id(UiCommand::NextTab))
     );

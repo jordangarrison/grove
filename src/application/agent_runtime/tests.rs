@@ -19,10 +19,11 @@ use super::{
     reconcile_with_sessions, sanitize_workspace_name, session_name_for_workspace,
     session_name_for_workspace_ref, shell_launch_request_for_workspace,
     shell_session_name_for_workspace, stop_plan, strip_mouse_fragments,
-    tmux_capture_error_indicates_missing_session, workspace_can_enter_interactive,
-    workspace_can_start_agent, workspace_can_stop_agent, workspace_session_for_preview_tab,
-    workspace_should_poll_status, workspace_status_session_target,
-    workspace_status_targets_for_polling, workspace_status_targets_for_polling_with_live_preview,
+    tmux_capture_error_indicates_missing_session, tmux_launch_error_indicates_duplicate_session,
+    workspace_can_enter_interactive, workspace_can_start_agent, workspace_can_stop_agent,
+    workspace_session_for_preview_tab, workspace_should_poll_status,
+    workspace_status_session_target, workspace_status_targets_for_polling,
+    workspace_status_targets_for_polling_with_live_preview,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::config::MultiplexerKind;
@@ -423,6 +424,19 @@ fn tmux_missing_session_error_detection_matches_known_patterns() {
         "No active session found"
     ));
     assert!(!tmux_capture_error_indicates_missing_session(
+        "permission denied"
+    ));
+}
+
+#[test]
+fn tmux_duplicate_session_error_detection_matches_known_patterns() {
+    assert!(tmux_launch_error_indicates_duplicate_session(
+        "duplicate session: grove-ws-main-git"
+    ));
+    assert!(tmux_launch_error_indicates_duplicate_session(
+        "command failed: tmux new-session -d -s foo; Duplicate Session: foo"
+    ));
+    assert!(!tmux_launch_error_indicates_duplicate_session(
         "permission denied"
     ));
 }

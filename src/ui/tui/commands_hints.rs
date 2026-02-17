@@ -5,6 +5,8 @@ impl UiCommand {
         match context {
             StatusHintContext::List => &[
                 UiCommand::MoveSelectionDown,
+                UiCommand::PreviousTab,
+                UiCommand::NextTab,
                 UiCommand::FocusList,
                 UiCommand::OpenPreview,
                 UiCommand::NewWorkspace,
@@ -64,6 +66,8 @@ impl UiCommand {
     pub(super) fn status_hint_label(self, context: StatusHintContext) -> Option<&'static str> {
         match (self, context) {
             (UiCommand::MoveSelectionDown, StatusHintContext::List) => Some("j/k move"),
+            (UiCommand::PreviousTab, StatusHintContext::List) => Some("Alt+[ prev tab"),
+            (UiCommand::NextTab, StatusHintContext::List) => Some("Alt+] next tab"),
             (UiCommand::FocusList, StatusHintContext::List)
             | (UiCommand::FocusList, StatusHintContext::PreviewAgent)
             | (UiCommand::FocusList, StatusHintContext::PreviewGit) => Some("h/l pane"),
@@ -108,6 +112,8 @@ impl UiCommand {
                 UiCommand::ToggleSidebar,
                 UiCommand::FocusList,
                 UiCommand::MoveSelectionDown,
+                UiCommand::PreviousTab,
+                UiCommand::NextTab,
                 UiCommand::OpenPreview,
                 UiCommand::OpenCommandPalette,
             ],
@@ -148,6 +154,8 @@ impl UiCommand {
             (UiCommand::ToggleSidebar, HelpHintContext::Global) => Some("\\ toggle sidebar"),
             (UiCommand::FocusList, HelpHintContext::Global) => Some("Esc list pane"),
             (UiCommand::MoveSelectionDown, HelpHintContext::Global) => Some("Alt+J/K workspace"),
+            (UiCommand::PreviousTab, HelpHintContext::Global) => Some("Alt+[ prev tab"),
+            (UiCommand::NextTab, HelpHintContext::Global) => Some("Alt+] next tab"),
             (UiCommand::FocusPreview, HelpHintContext::Global) => Some("l preview pane"),
             (UiCommand::OpenPreview, HelpHintContext::Global) => Some("Enter open/attach"),
             (UiCommand::OpenCommandPalette, HelpHintContext::Global) => {

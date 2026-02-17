@@ -98,7 +98,7 @@ impl GroveApp {
             )]),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "  reserved: Ctrl+K palette, Esc Esc/Ctrl+\\ exit, Alt+J/K browse, Alt+C copy, Alt+V paste",
+                    "  reserved: Ctrl+K palette, Esc Esc/Ctrl+\\ exit, Alt+J/K browse, Alt+[/] tabs, Alt+C copy, Alt+V paste",
                     content_width,
                 ),
                 Style::new().fg(theme.text),

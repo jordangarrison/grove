@@ -107,12 +107,14 @@ impl GroveApp {
                 false
             }
             UiCommand::PreviousTab => {
+                reduce(&mut self.state, Action::EnterPreviewMode);
                 if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
                     self.cycle_preview_tab(-1);
                 }
                 false
             }
             UiCommand::NextTab => {
+                reduce(&mut self.state, Action::EnterPreviewMode);
                 if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
                     self.cycle_preview_tab(1);
                 }

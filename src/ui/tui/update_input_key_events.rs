@@ -16,6 +16,8 @@ impl GroveApp {
         match key_event.code {
             KeyCode::Char('j') | KeyCode::Char('J') => Some(UiCommand::MoveSelectionDown),
             KeyCode::Char('k') | KeyCode::Char('K') => Some(UiCommand::MoveSelectionUp),
+            KeyCode::Char('[') => Some(UiCommand::PreviousTab),
+            KeyCode::Char(']') => Some(UiCommand::NextTab),
             _ => None,
         }
     }
