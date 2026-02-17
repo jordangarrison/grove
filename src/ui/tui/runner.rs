@@ -2,8 +2,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use ftui::render::budget::FrameBudgetConfig;
-use ftui::runtime::WidgetRefreshConfig;
-use ftui::{App, ScreenMode};
+use ftui::runtime::{DiffStrategyConfig, WidgetRefreshConfig};
+use ftui::{Program, ProgramConfig};
 use serde_json::Value;
 
 use crate::infrastructure::event_log::{
@@ -47,13 +47,20 @@ fn run_with_logger(
         GroveApp::new_with_event_logger(event_log)
     };
 
-    App::new(app)
-        .screen_mode(ScreenMode::AltScreen)
+    let config = ProgramConfig::fullscreen()
         .with_mouse()
+        .with_diff_config(ftui::RuntimeDiffConfig::default().with_strategy_config(
+            DiffStrategyConfig {
+                c_scan: 1_000_000.0,
+                uncertainty_guard_variance: 1_000_000.0,
+                hysteresis_ratio: 0.0,
+                ..DiffStrategyConfig::default()
+            },
+        ))
         .with_budget(FrameBudgetConfig::strict(Duration::from_millis(250)))
         .with_widget_refresh(WidgetRefreshConfig {
             enabled: false,
             ..WidgetRefreshConfig::default()
-        })
-        .run()
+        });
+    Program::with_config(app, config)?.run()
 }

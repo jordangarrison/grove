@@ -27,7 +27,6 @@ impl UiCommand {
                 UiCommand::PageDown,
                 UiCommand::ScrollBottom,
                 UiCommand::FocusList,
-                UiCommand::OpenPreview,
                 UiCommand::NewWorkspace,
                 UiCommand::EditWorkspace,
                 UiCommand::MergeWorkspace,
