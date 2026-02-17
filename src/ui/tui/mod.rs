@@ -239,6 +239,7 @@ struct GroveApp {
     interactive_send_in_flight: bool,
     pending_resize_verification: Option<PendingResizeVerification>,
     refresh_in_flight: bool,
+    project_delete_in_flight: bool,
     delete_in_flight: bool,
     delete_in_flight_workspace: Option<PathBuf>,
     merge_in_flight: bool,

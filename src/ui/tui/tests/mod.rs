@@ -10,14 +10,14 @@ use self::render_support::{
 };
 use super::{
     AppDependencies, AppPaths, ClipboardAccess, CommandTmuxInput, CreateDialogField,
-    CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, DeleteWorkspaceCompletion,
-    GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST,
-    HIT_ID_WORKSPACE_ROW, LaunchDialogField, LaunchDialogState, LazygitLaunchCompletion,
-    LivePreviewCapture, MergeDialogField, Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification,
-    PreviewPollCompletion, PreviewTab, StartAgentCompletion, StopAgentCompletion,
-    TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT,
-    WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
-    ui_theme,
+    CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
+    DeleteWorkspaceCompletion, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS,
+    HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW, LaunchDialogField, LaunchDialogState,
+    LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, Msg, PREVIEW_METADATA_ROWS,
+    PendingResizeVerification, PreviewPollCompletion, PreviewTab, StartAgentCompletion,
+    StopAgentCompletion, TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField,
+    WORKSPACE_ITEM_HEIGHT, WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line,
+    parse_cursor_metadata, ui_theme,
 };
 use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
 use crate::application::interactive::InteractiveState;
@@ -1459,6 +1459,11 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
         list_ids
             .iter()
             .any(|id| id == &palette_id(UiCommand::OpenProjects))
+    );
+    assert!(
+        list_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::DeleteProject))
     );
     assert!(
         list_ids

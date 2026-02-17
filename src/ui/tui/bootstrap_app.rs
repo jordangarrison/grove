@@ -209,6 +209,7 @@ impl GroveApp {
             interactive_send_in_flight: false,
             pending_resize_verification: None,
             refresh_in_flight: false,
+            project_delete_in_flight: false,
             delete_in_flight: false,
             delete_in_flight_workspace: None,
             merge_in_flight: false,
