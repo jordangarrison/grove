@@ -3248,6 +3248,38 @@ fn interactive_shift_tab_forwards_to_tmux_session() {
 }
 
 #[test]
+fn interactive_shift_enter_forwards_to_tmux_session() {
+    let (mut app, commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    app.state.selected_index = 1;
+    assert!(app.enter_interactive(Instant::now()));
+    assert!(app.interactive.is_some());
+
+    let cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Enter)
+                .with_modifiers(Modifiers::SHIFT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+
+    assert!(!matches!(cmd, Cmd::Quit));
+    assert!(app.next_tick_due_at.is_some());
+    assert_eq!(
+        commands.borrow().as_slice(),
+        &[vec![
+            "tmux".to_string(),
+            "send-keys".to_string(),
+            "-l".to_string(),
+            "-t".to_string(),
+            "grove-ws-feature-a".to_string(),
+            "\u{1b}[13;2u".to_string(),
+        ]]
+    );
+}
+
+#[test]
 fn interactive_filters_split_mouse_bracket_fragment() {
     let (mut app, commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());

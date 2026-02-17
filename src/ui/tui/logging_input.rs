@@ -28,6 +28,7 @@ impl GroveApp {
     pub(super) fn interactive_key_kind(key: &InteractiveKey) -> &'static str {
         match key {
             InteractiveKey::Enter => "enter",
+            InteractiveKey::ModifiedEnter { .. } => "modified_enter",
             InteractiveKey::Tab => "tab",
             InteractiveKey::BackTab => "back_tab",
             InteractiveKey::Backspace => "backspace",

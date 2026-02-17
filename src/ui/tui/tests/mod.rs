@@ -1718,10 +1718,13 @@ fn keybind_help_lists_interactive_reserved_keys() {
     with_rendered_frame(&app, 160, 28, |frame| {
         let has_shift_tab = (0..frame.height())
             .any(|row| row_text(frame, row, 0, frame.width()).contains("Shift+Tab"));
+        let has_shift_enter = (0..frame.height())
+            .any(|row| row_text(frame, row, 0, frame.width()).contains("Shift+Enter"));
         let has_reserved = (0..frame.height())
             .any(|row| row_text(frame, row, 0, frame.width()).contains("Ctrl+K palette"));
 
         assert!(has_shift_tab);
+        assert!(has_shift_enter);
         assert!(has_reserved);
     });
 }

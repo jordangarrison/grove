@@ -94,6 +94,64 @@ fn back_tab_maps_to_tmux_btab() {
 }
 
 #[test]
+fn modified_enter_maps_to_kitty_csi_u_sequence() {
+    let now = Instant::now();
+    let mut state =
+        InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+
+    assert_eq!(
+        state.handle_key(
+            InteractiveKey::ModifiedEnter {
+                shift: true,
+                alt: false,
+                ctrl: false,
+            },
+            now
+        ),
+        InteractiveAction::SendLiteral("\u{1b}[13;2u".to_string())
+    );
+
+    assert_eq!(
+        state.handle_key(
+            InteractiveKey::ModifiedEnter {
+                shift: true,
+                alt: true,
+                ctrl: true,
+            },
+            now
+        ),
+        InteractiveAction::SendLiteral("\u{1b}[13;8u".to_string())
+    );
+}
+
+#[test]
+fn modified_enter_forwards_via_tmux_literal_send_keys() {
+    let now = Instant::now();
+    let mut state =
+        InteractiveState::new("%1".to_string(), "grove-ws-auth".to_string(), now, 40, 120);
+    let action = state.handle_key(
+        InteractiveKey::ModifiedEnter {
+            shift: true,
+            alt: false,
+            ctrl: false,
+        },
+        now,
+    );
+
+    assert_eq!(
+        tmux_send_keys_command("grove-ws-auth", &action),
+        Some(vec![
+            "tmux".to_string(),
+            "send-keys".to_string(),
+            "-l".to_string(),
+            "-t".to_string(),
+            "grove-ws-auth".to_string(),
+            "\u{1b}[13;2u".to_string(),
+        ])
+    );
+}
+
+#[test]
 fn paste_payload_wraps_only_when_bracketed_mode_and_large_input() {
     assert!(!is_paste_event("short"));
     assert!(is_paste_event("line 1\nline 2"));

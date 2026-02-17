@@ -10,9 +10,15 @@ impl GroveApp {
     fn map_interactive_key(key_event: KeyEvent) -> Option<InteractiveKey> {
         let ctrl = key_event.modifiers.contains(Modifiers::CTRL);
         let alt = key_event.modifiers.contains(Modifiers::ALT);
+        let shift = key_event.modifiers.contains(Modifiers::SHIFT);
 
         match key_event.code {
-            KeyCode::Enter => Some(InteractiveKey::Enter),
+            KeyCode::Enter => {
+                if ctrl || alt || shift {
+                    return Some(InteractiveKey::ModifiedEnter { shift, alt, ctrl });
+                }
+                Some(InteractiveKey::Enter)
+            }
             KeyCode::Tab => Some(InteractiveKey::Tab),
             KeyCode::BackTab => Some(InteractiveKey::BackTab),
             KeyCode::Backspace => Some(InteractiveKey::Backspace),

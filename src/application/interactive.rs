@@ -26,6 +26,11 @@ pub struct InteractiveState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InteractiveKey {
     Enter,
+    ModifiedEnter {
+        shift: bool,
+        alt: bool,
+        ctrl: bool,
+    },
     Tab,
     BackTab,
     Backspace,
@@ -191,6 +196,19 @@ fn is_mouse_fragment_character(character: char) -> bool {
 fn key_to_action(key: InteractiveKey) -> InteractiveAction {
     match key {
         InteractiveKey::Enter => InteractiveAction::SendNamed("Enter".to_string()),
+        InteractiveKey::ModifiedEnter { shift, alt, ctrl } => {
+            let mut modifier_value = 1u8;
+            if shift {
+                modifier_value = modifier_value.saturating_add(1);
+            }
+            if alt {
+                modifier_value = modifier_value.saturating_add(2);
+            }
+            if ctrl {
+                modifier_value = modifier_value.saturating_add(4);
+            }
+            InteractiveAction::SendLiteral(format!("\u{1b}[13;{modifier_value}u"))
+        }
         InteractiveKey::Tab => InteractiveAction::SendNamed("Tab".to_string()),
         InteractiveKey::BackTab => InteractiveAction::SendNamed("BTab".to_string()),
         InteractiveKey::Backspace => InteractiveAction::SendNamed("BSpace".to_string()),
