@@ -280,10 +280,6 @@ impl GroveApp {
                 include_escape_sequences: true,
             });
         }
-        if self.state.mode != UiMode::Preview || self.state.focus != PaneFocus::Preview {
-            return None;
-        }
-
         self.ensure_workspace_shell_session_for_selected_workspace(false)
             .map(|session_name| LivePreviewTarget {
                 session_name,
@@ -382,11 +378,7 @@ impl GroveApp {
                     self.state.selected_workspace().is_some_and(|workspace| {
                         shell_session_name_for_workspace(workspace) == session_name
                     });
-                if selected_session_matches
-                    && self.preview_tab == PreviewTab::Agent
-                    && self.state.mode == UiMode::Preview
-                    && self.state.focus == PaneFocus::Preview
-                {
+                if selected_session_matches && self.preview_tab == PreviewTab::Agent {
                     self.poll_preview();
                 }
             }
@@ -405,11 +397,7 @@ impl GroveApp {
                         self.state.selected_workspace().is_some_and(|workspace| {
                             shell_session_name_for_workspace(workspace) == session_name
                         });
-                    if selected_session_matches
-                        && self.preview_tab == PreviewTab::Agent
-                        && self.state.mode == UiMode::Preview
-                        && self.state.focus == PaneFocus::Preview
-                    {
+                    if selected_session_matches && self.preview_tab == PreviewTab::Agent {
                         self.poll_preview();
                     }
                     return;

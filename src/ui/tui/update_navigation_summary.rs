@@ -8,14 +8,25 @@ impl GroveApp {
                 if workspace.is_main && !workspace.status.has_session() {
                     return self.main_worktree_splash();
                 }
-                format!(
-                    "Workspace: {}\nBranch: {}\nPath: {}\nAgent: {}\nOrphaned session: {}",
-                    workspace.name,
-                    workspace.branch,
-                    workspace.path.display(),
-                    workspace.agent.label(),
-                    if workspace.is_orphaned { "yes" } else { "no" }
-                )
+                if workspace.is_main {
+                    return "Connecting to main workspace session...".to_string();
+                }
+
+                let shell_session_name = shell_session_name_for_workspace(workspace);
+                if self.shell_launch_in_flight.contains(&shell_session_name) {
+                    return format!("Starting shell session for {}...", workspace.name);
+                }
+                if self.shell_failed_sessions.contains(&shell_session_name) {
+                    return format!(
+                        "Shell session failed for {}.\nPress Enter to retry session launch.",
+                        workspace.name
+                    );
+                }
+                if workspace.is_orphaned {
+                    return format!("Reconnecting session for {}...", workspace.name);
+                }
+
+                format!("Preparing session for {}...", workspace.name)
             })
             .unwrap_or_else(|| "No workspace selected".to_string())
     }

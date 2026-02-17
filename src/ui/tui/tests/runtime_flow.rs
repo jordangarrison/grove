@@ -120,6 +120,41 @@ fn async_preview_polls_workspace_status_targets_when_live_preview_missing() {
 }
 
 #[test]
+fn prepare_live_preview_session_launches_shell_from_list_mode() {
+    let (mut app, commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+    app.state.selected_index = 1;
+    app.state.mode = UiMode::List;
+    app.state.focus = PaneFocus::WorkspaceList;
+
+    let live_preview = app.prepare_live_preview_session();
+
+    assert_eq!(
+        live_preview
+            .as_ref()
+            .map(|target| target.session_name.as_str()),
+        Some("grove-ws-feature-a-shell")
+    );
+    assert!(live_preview.is_some_and(|target| target.include_escape_sequences));
+    assert!(
+        app.shell_ready_sessions
+            .contains("grove-ws-feature-a-shell")
+    );
+    assert!(commands.borrow().iter().any(|command| {
+        command
+            == &vec![
+                "tmux".to_string(),
+                "new-session".to_string(),
+                "-d".to_string(),
+                "-s".to_string(),
+                "grove-ws-feature-a-shell".to_string(),
+                "-c".to_string(),
+                "/repos/grove-feature-a".to_string(),
+            ]
+    }));
+}
+
+#[test]
 fn preview_poll_completion_runs_deferred_background_poll_request() {
     let mut app = fixture_background_app(WorkspaceStatus::Active);
     app.state.selected_index = 1;
@@ -5283,6 +5318,28 @@ fn workspace_shell_launch_completion_success_marks_session_ready() {
         !app.shell_failed_sessions
             .contains("grove-ws-feature-a-shell")
     );
+}
+
+#[test]
+fn workspace_shell_launch_completion_success_polls_from_list_mode() {
+    let mut app = fixture_background_app(WorkspaceStatus::Idle);
+    app.state.selected_index = 1;
+    app.state.mode = UiMode::List;
+    app.state.focus = PaneFocus::WorkspaceList;
+    app.preview_tab = PreviewTab::Agent;
+    app.shell_launch_in_flight
+        .insert("grove-ws-feature-a-shell".to_string());
+
+    let cmd = ftui::Model::update(
+        &mut app,
+        Msg::WorkspaceShellLaunchCompleted(WorkspaceShellLaunchCompletion {
+            session_name: "grove-ws-feature-a-shell".to_string(),
+            duration_ms: 14,
+            result: Ok(()),
+        }),
+    );
+
+    assert!(cmd_contains_task(&cmd));
 }
 
 #[test]
