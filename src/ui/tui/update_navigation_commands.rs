@@ -1,6 +1,13 @@
 use super::*;
 
 impl GroveApp {
+    fn preview_page_scroll_delta(&self) -> i32 {
+        let viewport_height = self
+            .preview_output_dimensions()
+            .map_or(1, |(_, height)| i32::from(height));
+        viewport_height.saturating_sub(1).max(1)
+    }
+
     fn cycle_preview_tab(&mut self, direction: i8) {
         let next_tab = if direction.is_negative() {
             self.preview_tab.previous()
@@ -83,13 +90,13 @@ impl GroveApp {
             }
             UiCommand::PageUp => {
                 if self.preview_agent_tab_is_focused() {
-                    self.scroll_preview(-5);
+                    self.scroll_preview(-self.preview_page_scroll_delta());
                 }
                 false
             }
             UiCommand::PageDown => {
                 if self.preview_agent_tab_is_focused() {
-                    self.scroll_preview(5);
+                    self.scroll_preview(self.preview_page_scroll_delta());
                 }
                 false
             }

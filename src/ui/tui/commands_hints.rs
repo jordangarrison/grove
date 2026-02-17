@@ -82,7 +82,7 @@ impl UiCommand {
             }
             (UiCommand::ScrollDown, StatusHintContext::PreviewAgent) => Some("j/k scroll"),
             (UiCommand::PageDown, StatusHintContext::PreviewAgent) => Some("PgUp/PgDn"),
-            (UiCommand::ScrollBottom, StatusHintContext::PreviewAgent) => Some("G bottom"),
+            (UiCommand::ScrollBottom, StatusHintContext::PreviewAgent) => Some("G/End bottom"),
             (UiCommand::NewWorkspace, _context) => Some("n new"),
             (UiCommand::EditWorkspace, _context) => Some("e edit"),
             (UiCommand::MergeWorkspace, _context) => Some("m merge"),
@@ -172,7 +172,7 @@ impl UiCommand {
             }
             (UiCommand::ScrollDown, HelpHintContext::PreviewAgent) => Some("j/k or Up/Down scroll"),
             (UiCommand::PageDown, HelpHintContext::PreviewAgent) => Some("PgUp/PgDn page"),
-            (UiCommand::ScrollBottom, HelpHintContext::PreviewAgent) => Some("G bottom"),
+            (UiCommand::ScrollBottom, HelpHintContext::PreviewAgent) => Some("G or End bottom"),
             (UiCommand::StartAgent, HelpHintContext::PreviewAgent) => Some("s start"),
             (UiCommand::StopAgent, HelpHintContext::PreviewAgent) => Some("x stop"),
             (UiCommand::EnterInteractive, HelpHintContext::PreviewGit) => {

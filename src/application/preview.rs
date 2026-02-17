@@ -3,8 +3,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::application::agent_runtime::{OutputDigest, evaluate_capture_change};
 
-const SCROLL_DEBOUNCE_MS: u64 = 40;
-const SCROLL_BURST_DEBOUNCE_MS: u64 = 120;
+const SCROLL_BURST_WINDOW_MS: u64 = 40;
 const CAPTURE_RING_CAPACITY: usize = 10;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,17 +114,8 @@ impl PreviewState {
 
         if let Some(last_scroll_time) = self.last_scroll_time {
             let since_last = now.saturating_duration_since(last_scroll_time);
-            if since_last < Duration::from_millis(SCROLL_DEBOUNCE_MS) {
+            if since_last < Duration::from_millis(SCROLL_BURST_WINDOW_MS) {
                 self.scroll_burst_count = self.scroll_burst_count.saturating_add(1);
-                let burst_debounce = if self.scroll_burst_count > 4 {
-                    SCROLL_BURST_DEBOUNCE_MS
-                } else {
-                    SCROLL_DEBOUNCE_MS
-                };
-
-                if since_last < Duration::from_millis(burst_debounce) {
-                    return false;
-                }
             } else {
                 self.scroll_burst_count = 1;
             }

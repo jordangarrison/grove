@@ -91,8 +91,8 @@ impl UiCommand {
             Self::ScrollBottom => Some(PaletteCommandSpec {
                 id: "palette:scroll_bottom",
                 title: "Jump To Bottom",
-                description: "Jump preview output to bottom (G)",
-                tags: &["bottom", "latest", "G"],
+                description: "Jump preview output to bottom (G / End)",
+                tags: &["bottom", "latest", "G", "End"],
                 category: "Preview",
             }),
             Self::PreviousTab => Some(PaletteCommandSpec {

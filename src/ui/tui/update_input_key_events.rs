@@ -96,7 +96,7 @@ impl GroveApp {
                     matches!(key_event.code, KeyCode::PageDown) && in_preview_agent
                 }
                 UiCommand::ScrollBottom => {
-                    matches!(key_event.code, KeyCode::Char('G')) && in_preview_agent
+                    matches!(key_event.code, KeyCode::Char('G') | KeyCode::End) && in_preview_agent
                 }
                 UiCommand::PreviousTab => {
                     matches!(key_event.code, KeyCode::Char('[')) && in_preview_focus

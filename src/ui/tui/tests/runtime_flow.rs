@@ -3442,7 +3442,7 @@ fn mouse_scroll_in_preview_scrolls_output() {
         Msg::Mouse(MouseEvent::new(MouseEventKind::ScrollUp, 90, 10)),
     );
 
-    assert!(app.preview.offset > 0);
+    assert!(app.preview.offset >= 3);
     assert!(!app.preview.auto_scroll);
 }
 
@@ -4165,6 +4165,49 @@ fn preview_mode_keys_scroll_and_jump_to_bottom() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('G')).with_kind(KeyEventKind::Press)),
     );
+    assert_eq!(app.preview.offset, 0);
+    assert!(app.preview.auto_scroll);
+}
+
+#[test]
+fn preview_mode_arrow_page_keys_and_end_control_scrollback() {
+    let mut app = fixture_app();
+    app.preview.lines = (1..=240).map(|value| value.to_string()).collect();
+    app.preview.render_lines = app.preview.lines.clone();
+    ftui::Model::update(
+        &mut app,
+        Msg::Resize {
+            width: 100,
+            height: 40,
+        },
+    );
+    let page_delta = app
+        .preview_output_dimensions()
+        .map_or(1usize, |(_, height)| usize::from(height).saturating_sub(1))
+        .max(1);
+
+    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
+    assert_eq!(app.state.mode, crate::ui::state::UiMode::Preview);
+
+    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Up)));
+    assert_eq!(app.preview.offset, 1);
+    assert!(!app.preview.auto_scroll);
+
+    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Down)));
+    assert_eq!(app.preview.offset, 0);
+    assert!(app.preview.auto_scroll);
+
+    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::PageUp)));
+    assert_eq!(app.preview.offset, page_delta);
+    assert!(!app.preview.auto_scroll);
+
+    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::PageDown)));
+    assert_eq!(app.preview.offset, 0);
+    assert!(app.preview.auto_scroll);
+
+    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::PageUp)));
+    assert_eq!(app.preview.offset, page_delta);
+    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::End)));
     assert_eq!(app.preview.offset, 0);
     assert!(app.preview.auto_scroll);
 }

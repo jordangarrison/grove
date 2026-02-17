@@ -1,6 +1,8 @@
 use super::*;
 
 impl GroveApp {
+    const PREVIEW_MOUSE_SCROLL_LINES: i32 = 3;
+
     fn sidebar_workspace_index_at_y(&self, y: u16) -> Option<usize> {
         if self.projects.is_empty() {
             return None;
@@ -181,7 +183,7 @@ impl GroveApp {
                     self.state.mode = UiMode::Preview;
                     self.state.focus = PaneFocus::Preview;
                     if self.preview_tab == PreviewTab::Agent {
-                        self.scroll_preview(-1);
+                        self.scroll_preview(-Self::PREVIEW_MOUSE_SCROLL_LINES);
                     }
                 }
             }
@@ -190,7 +192,7 @@ impl GroveApp {
                     self.state.mode = UiMode::Preview;
                     self.state.focus = PaneFocus::Preview;
                     if self.preview_tab == PreviewTab::Agent {
-                        self.scroll_preview(1);
+                        self.scroll_preview(Self::PREVIEW_MOUSE_SCROLL_LINES);
                     }
                 }
             }

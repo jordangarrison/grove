@@ -79,18 +79,21 @@ fn apply_capture_clamps_existing_offset_when_output_shrinks() {
 }
 
 #[test]
-fn scroll_burst_guard_drops_rapid_bursts() {
+fn rapid_scroll_events_are_not_dropped() {
     let mut state = PreviewState::new();
     state.lines = (1..=20).map(|value| value.to_string()).collect();
     let base = Instant::now();
 
     assert!(state.scroll(-1, base, 5));
-    assert!(!state.scroll(-1, base + Duration::from_millis(1), 5));
-    assert!(!state.scroll(-1, base + Duration::from_millis(2), 5));
-    assert!(!state.scroll(-1, base + Duration::from_millis(3), 5));
-    assert!(!state.scroll(-1, base + Duration::from_millis(4), 5));
-    assert!(state.scroll(-1, base + Duration::from_millis(50), 5));
-    assert!(state.scroll(-1, base + Duration::from_millis(130), 5));
+    assert!(state.scroll(-1, base + Duration::from_millis(1), 5));
+    assert!(state.scroll(-1, base + Duration::from_millis(2), 5));
+    assert!(state.scroll(-1, base + Duration::from_millis(3), 5));
+    assert!(state.scroll(-1, base + Duration::from_millis(4), 5));
+    assert_eq!(state.offset, 5);
+    assert_eq!(state.scroll_burst_count, 5);
+
+    assert!(state.scroll(-1, base + Duration::from_millis(100), 5));
+    assert_eq!(state.scroll_burst_count, 1);
 }
 
 #[test]
