@@ -156,8 +156,11 @@ impl GroveApp {
                         i32::from(mouse_event.x).saturating_sub(i32::from(layout.divider.x));
                 }
                 HitRegion::WorkspaceList => {
-                    self.state.focus = PaneFocus::WorkspaceList;
-                    self.state.mode = UiMode::List;
+                    if self.interactive.is_some() {
+                        self.exit_interactive_to_list();
+                    } else {
+                        reduce(&mut self.state, Action::EnterListMode);
+                    }
                     if let Some(row_data) = row_data {
                         if let Ok(index) = usize::try_from(row_data) {
                             self.select_workspace_by_index(index);
@@ -167,10 +170,14 @@ impl GroveApp {
                     }
                 }
                 HitRegion::Preview => {
-                    self.state.focus = PaneFocus::Preview;
-                    self.state.mode = UiMode::Preview;
+                    let interactive_before_click = self.interactive.is_some();
+                    self.enter_preview_or_interactive();
                     if self.interactive.is_some() {
-                        self.prepare_preview_selection_drag(mouse_event.x, mouse_event.y);
+                        if interactive_before_click {
+                            self.prepare_preview_selection_drag(mouse_event.x, mouse_event.y);
+                        } else {
+                            self.clear_preview_selection();
+                        }
                     } else {
                         self.clear_preview_selection();
                     }

@@ -4677,6 +4677,71 @@ fn mouse_workspace_switch_exits_interactive_mode() {
 }
 
 #[test]
+fn mouse_click_preview_enters_interactive_mode() {
+    let (mut app, _commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    app.state.selected_index = 1;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Resize {
+            width: 100,
+            height: 40,
+        },
+    );
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(
+            MouseEventKind::Down(MouseButton::Left),
+            layout.preview.x.saturating_add(1),
+            layout.preview.y.saturating_add(1),
+        )),
+    );
+
+    assert!(app.interactive.is_some());
+    assert_eq!(app.state.mode, UiMode::Preview);
+    assert_eq!(app.state.focus, PaneFocus::Preview);
+}
+
+#[test]
+fn mouse_workspace_click_exits_interactive_without_selection_change() {
+    let (mut app, _commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    app.state.selected_index = 1;
+    assert!(app.enter_interactive(Instant::now()));
+
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+    let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
+    let second_row_y = sidebar_inner
+        .y
+        .saturating_add(1)
+        .saturating_add(WORKSPACE_ITEM_HEIGHT);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Resize {
+            width: 100,
+            height: 40,
+        },
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(
+            MouseEventKind::Down(MouseButton::Left),
+            sidebar_inner.x.saturating_add(1),
+            second_row_y,
+        )),
+    );
+
+    assert_eq!(app.state.selected_index, 1);
+    assert!(app.interactive.is_none());
+    assert_eq!(app.state.mode, UiMode::List);
+    assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+}
+
+#[test]
 fn mouse_drag_on_divider_updates_sidebar_ratio() {
     let mut app = fixture_app();
 
