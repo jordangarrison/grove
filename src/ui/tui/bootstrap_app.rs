@@ -216,6 +216,8 @@ impl GroveApp {
             project_delete_in_flight: false,
             delete_in_flight: false,
             delete_in_flight_workspace: None,
+            pending_delete_workspaces: VecDeque::new(),
+            delete_requested_workspaces: HashSet::new(),
             merge_in_flight: false,
             update_from_base_in_flight: false,
             create_in_flight: false,

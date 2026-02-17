@@ -43,8 +43,15 @@ impl GroveApp {
         &mut self,
         completion: DeleteWorkspaceCompletion,
     ) {
-        self.delete_in_flight = false;
-        self.delete_in_flight_workspace = None;
+        self.delete_requested_workspaces
+            .remove(&completion.workspace_path);
+        if self
+            .delete_in_flight_workspace
+            .as_ref()
+            .is_some_and(|workspace_path| workspace_path == &completion.workspace_path)
+        {
+            self.delete_in_flight_workspace = None;
+        }
         match completion.result {
             Ok(()) => {
                 self.event_log.log(
@@ -84,6 +91,7 @@ impl GroveApp {
                 self.show_toast(format!("workspace delete failed: {error}"), true);
             }
         }
+        self.start_next_queued_delete_workspace();
     }
 
     pub(super) fn apply_merge_workspace_completion(

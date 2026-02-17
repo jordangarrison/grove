@@ -2027,6 +2027,35 @@ fn delete_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
     );
 }
 
+fn fixture_background_app_with_two_feature_workspaces() -> GroveApp {
+    let mut bootstrap = fixture_bootstrap(WorkspaceStatus::Idle);
+    let mut second_feature_workspace = Workspace::try_new(
+        "feature-b".to_string(),
+        PathBuf::from("/repos/grove-feature-b"),
+        "feature-b".to_string(),
+        Some(1_700_000_050),
+        AgentType::Codex,
+        WorkspaceStatus::Idle,
+        false,
+    )
+    .expect("workspace should be valid");
+    second_feature_workspace.project_path = Some(PathBuf::from("/repos/grove"));
+    second_feature_workspace.base_branch = Some("main".to_string());
+    bootstrap.workspaces.push(second_feature_workspace);
+
+    GroveApp::from_parts(
+        bootstrap,
+        Box::new(BackgroundOnlyTmuxInput),
+        AppPaths::new(
+            unique_sidebar_ratio_path("delete-queue"),
+            unique_config_path("delete-queue"),
+        ),
+        MultiplexerKind::Tmux,
+        Box::new(NullEventLogger),
+        None,
+    )
+}
+
 #[test]
 fn delete_dialog_confirm_queues_background_task() {
     let mut app = fixture_background_app(WorkspaceStatus::Idle);
@@ -2046,6 +2075,106 @@ fn delete_dialog_confirm_queues_background_task() {
     assert!(app.delete_dialog.is_none());
     assert!(app.delete_in_flight);
     assert_eq!(app.delete_in_flight_workspace, Some(deleting_path));
+    assert!(
+        app.delete_requested_workspaces
+            .contains(&app.state.workspaces[1].path)
+    );
+}
+
+#[test]
+fn delete_dialog_confirm_queues_additional_delete_request_when_one_is_in_flight() {
+    let mut app = fixture_background_app_with_two_feature_workspaces();
+    let first_workspace_path = app.state.workspaces[1].path.clone();
+    let second_workspace_path = app.state.workspaces[2].path.clone();
+
+    app.state.selected_index = 1;
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
+    );
+    let first_cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
+    );
+    assert!(cmd_contains_task(&first_cmd));
+
+    app.state.selected_index = 2;
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
+    );
+    let second_cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(!cmd_contains_task(&second_cmd));
+    assert!(app.delete_in_flight);
+    assert_eq!(
+        app.delete_in_flight_workspace,
+        Some(first_workspace_path.clone())
+    );
+    assert_eq!(app.pending_delete_workspaces.len(), 1);
+    assert!(
+        app.delete_requested_workspaces
+            .contains(&first_workspace_path)
+    );
+    assert!(
+        app.delete_requested_workspaces
+            .contains(&second_workspace_path)
+    );
+}
+
+#[test]
+fn delete_workspace_completion_starts_next_queued_delete_request() {
+    let mut app = fixture_background_app_with_two_feature_workspaces();
+    let first_workspace_path = app.state.workspaces[1].path.clone();
+    let second_workspace_path = app.state.workspaces[2].path.clone();
+
+    app.state.selected_index = 1;
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
+    );
+    app.state.selected_index = 2;
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
+    );
+
+    let completion_cmd = ftui::Model::update(
+        &mut app,
+        Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {
+            workspace_name: "feature-a".to_string(),
+            workspace_path: first_workspace_path.clone(),
+            result: Ok(()),
+            warnings: Vec::new(),
+        }),
+    );
+
+    assert!(cmd_contains_task(&completion_cmd));
+    assert!(app.delete_in_flight);
+    assert_eq!(
+        app.delete_in_flight_workspace,
+        Some(second_workspace_path.clone())
+    );
+    assert!(app.pending_delete_workspaces.is_empty());
+    assert!(
+        !app.delete_requested_workspaces
+            .contains(&first_workspace_path)
+    );
+    assert!(
+        app.delete_requested_workspaces
+            .contains(&second_workspace_path)
+    );
 }
 
 #[test]
@@ -2054,12 +2183,14 @@ fn delete_workspace_completion_clears_in_flight_workspace_marker() {
     let deleting_path = app.state.workspaces[1].path.clone();
     app.delete_in_flight = true;
     app.delete_in_flight_workspace = Some(deleting_path.clone());
+    app.delete_requested_workspaces
+        .insert(deleting_path.clone());
 
     let _ = ftui::Model::update(
         &mut app,
         Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {
             workspace_name: "feature-a".to_string(),
-            workspace_path: deleting_path,
+            workspace_path: deleting_path.clone(),
             result: Ok(()),
             warnings: Vec::new(),
         }),
@@ -2067,6 +2198,7 @@ fn delete_workspace_completion_clears_in_flight_workspace_marker() {
 
     assert!(!app.delete_in_flight);
     assert!(app.delete_in_flight_workspace.is_none());
+    assert!(!app.delete_requested_workspaces.contains(&deleting_path));
 }
 
 #[test]

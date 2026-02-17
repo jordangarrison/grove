@@ -811,6 +811,8 @@ fn sidebar_row_shows_deleting_indicator_for_in_flight_delete() {
     app.state.selected_index = 1;
     app.delete_in_flight = true;
     app.delete_in_flight_workspace = Some(app.state.workspaces[1].path.clone());
+    app.delete_requested_workspaces
+        .insert(app.state.workspaces[1].path.clone());
 
     let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
     let x_start = layout.sidebar.x.saturating_add(1);

@@ -103,11 +103,9 @@ impl GroveApp {
                     && workspace_can_stop_agent(self.state.selected_workspace())
             }
             UiCommand::DeleteWorkspace => {
-                !self.delete_in_flight
-                    && self
-                        .state
-                        .selected_workspace()
-                        .is_some_and(|workspace| !workspace.is_main)
+                self.state.selected_workspace().is_some_and(|workspace| {
+                    !workspace.is_main && !self.workspace_delete_requested(&workspace.path)
+                })
             }
             UiCommand::DeleteProject => {
                 !self.project_delete_in_flight

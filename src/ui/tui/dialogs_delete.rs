@@ -1,10 +1,67 @@
 use super::*;
 
 impl GroveApp {
-    pub(super) fn handle_delete_dialog_key(&mut self, key_event: KeyEvent) {
-        if self.delete_in_flight {
+    pub(super) fn workspace_delete_requested(&self, workspace_path: &Path) -> bool {
+        self.delete_requested_workspaces.contains(workspace_path)
+    }
+
+    fn queue_or_start_delete_workspace(&mut self, queued_delete: QueuedDeleteWorkspace) {
+        if !self
+            .delete_requested_workspaces
+            .insert(queued_delete.workspace_path.clone())
+        {
+            self.show_toast(
+                format!(
+                    "workspace '{}' delete already requested",
+                    queued_delete.workspace_name
+                ),
+                true,
+            );
             return;
         }
+
+        if self.delete_in_flight {
+            let queued_workspace_name = queued_delete.workspace_name.clone();
+            self.pending_delete_workspaces.push_back(queued_delete);
+            self.show_toast(
+                format!("workspace '{}' delete queued", queued_workspace_name),
+                false,
+            );
+            return;
+        }
+
+        self.launch_delete_workspace_task(queued_delete);
+    }
+
+    fn launch_delete_workspace_task(&mut self, queued_delete: QueuedDeleteWorkspace) {
+        let multiplexer = self.multiplexer;
+        let request = queued_delete.request;
+        let workspace_name = queued_delete.workspace_name;
+        let workspace_path = queued_delete.workspace_path;
+        self.delete_in_flight = true;
+        self.delete_in_flight_workspace = Some(workspace_path.clone());
+        self.queue_cmd(Cmd::task(move || {
+            let (result, warnings) = delete_workspace(request, multiplexer);
+            Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {
+                workspace_name,
+                workspace_path,
+                result,
+                warnings,
+            })
+        }));
+    }
+
+    pub(super) fn start_next_queued_delete_workspace(&mut self) {
+        if let Some(queued_delete) = self.pending_delete_workspaces.pop_front() {
+            self.launch_delete_workspace_task(queued_delete);
+            return;
+        }
+
+        self.delete_in_flight = false;
+        self.delete_in_flight_workspace = None;
+    }
+
+    pub(super) fn handle_delete_dialog_key(&mut self, key_event: KeyEvent) {
         let no_modifiers = key_event.modifiers.is_empty();
         match key_event.code {
             KeyCode::Escape => {
@@ -98,10 +155,6 @@ impl GroveApp {
         if self.modal_open() {
             return;
         }
-        if self.delete_in_flight {
-            self.show_toast("workspace delete already in progress", true);
-            return;
-        }
 
         let Some(workspace) = self.state.selected_workspace() else {
             self.show_toast("no workspace selected", true);
@@ -109,6 +162,13 @@ impl GroveApp {
         };
         if workspace.is_main {
             self.show_toast("cannot delete base workspace", true);
+            return;
+        }
+        if self.workspace_delete_requested(&workspace.path) {
+            self.show_toast(
+                format!("workspace '{}' delete already requested", workspace.name),
+                true,
+            );
             return;
         }
 
@@ -141,10 +201,6 @@ impl GroveApp {
         self.last_tmux_error = None;
     }
     fn confirm_delete_dialog(&mut self) {
-        if self.delete_in_flight {
-            return;
-        }
-
         let Some(dialog) = self.delete_dialog.take() else {
             return;
         };
@@ -191,17 +247,10 @@ impl GroveApp {
             return;
         }
 
-        let multiplexer = self.multiplexer;
-        self.delete_in_flight = true;
-        self.delete_in_flight_workspace = Some(workspace_path.clone());
-        self.queue_cmd(Cmd::task(move || {
-            let (result, warnings) = delete_workspace(request, multiplexer);
-            Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {
-                workspace_name,
-                workspace_path,
-                result,
-                warnings,
-            })
-        }));
+        self.queue_or_start_delete_workspace(QueuedDeleteWorkspace {
+            request,
+            workspace_name,
+            workspace_path,
+        });
     }
 }

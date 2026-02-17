@@ -175,6 +175,13 @@ mod view_selection_logging;
 mod view_selection_mapping;
 mod view_status;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct QueuedDeleteWorkspace {
+    request: DeleteWorkspaceRequest,
+    workspace_name: String,
+    workspace_path: PathBuf,
+}
+
 struct GroveApp {
     repo_name: String,
     projects: Vec<ProjectConfig>,
@@ -245,6 +252,8 @@ struct GroveApp {
     project_delete_in_flight: bool,
     delete_in_flight: bool,
     delete_in_flight_workspace: Option<PathBuf>,
+    pending_delete_workspaces: VecDeque<QueuedDeleteWorkspace>,
+    delete_requested_workspaces: HashSet<PathBuf>,
     merge_in_flight: bool,
     update_from_base_in_flight: bool,
     create_in_flight: bool,
