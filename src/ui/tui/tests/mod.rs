@@ -10,8 +10,8 @@ use self::render_support::{
 };
 use super::{
     AppDependencies, AppPaths, ClipboardAccess, CommandTmuxInput, CreateDialogField,
-    CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, EditDialogField, GroveApp,
-    DeleteProjectCompletion, DeleteWorkspaceCompletion, HIT_ID_HEADER, HIT_ID_PREVIEW,
+    CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
+    DeleteWorkspaceCompletion, EditDialogField, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW,
     HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
     LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, Msg,
     PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
