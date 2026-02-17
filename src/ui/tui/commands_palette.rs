@@ -113,6 +113,32 @@ impl UiCommand {
                 ],
                 category: "Navigation",
             }),
+            Self::ResizeSidebarNarrower => Some(PaletteCommandSpec {
+                id: "palette:resize_sidebar_narrower",
+                title: "Resize Sidebar Narrower",
+                description: "Shrink sidebar and widen preview (Alt+Left, Alt+H, Alt+B)",
+                tags: &[
+                    "resize", "sidebar", "preview", "left", "alt+left", "h", "alt+h", "b", "alt+b",
+                ],
+                category: "Navigation",
+            }),
+            Self::ResizeSidebarWider => Some(PaletteCommandSpec {
+                id: "palette:resize_sidebar_wider",
+                title: "Resize Sidebar Wider",
+                description: "Widen sidebar and shrink preview (Alt+Right, Alt+L, Alt+F)",
+                tags: &[
+                    "resize",
+                    "sidebar",
+                    "preview",
+                    "right",
+                    "alt+right",
+                    "l",
+                    "alt+l",
+                    "f",
+                    "alt+f",
+                ],
+                category: "Navigation",
+            }),
             Self::NewWorkspace => Some(PaletteCommandSpec {
                 id: "palette:new_workspace",
                 title: "New Workspace",

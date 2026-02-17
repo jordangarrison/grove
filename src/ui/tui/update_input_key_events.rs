@@ -9,7 +9,7 @@ impl GroveApp {
             )
     }
     fn global_workspace_navigation_command(key_event: &KeyEvent) -> Option<UiCommand> {
-        if key_event.modifiers != Modifiers::ALT {
+        if !key_event.modifiers.contains(Modifiers::ALT) {
             return None;
         }
 
@@ -18,6 +18,14 @@ impl GroveApp {
             KeyCode::Char('k') | KeyCode::Char('K') => Some(UiCommand::MoveSelectionUp),
             KeyCode::Char('[') => Some(UiCommand::PreviousTab),
             KeyCode::Char(']') => Some(UiCommand::NextTab),
+            KeyCode::Char('b') | KeyCode::Char('B') => Some(UiCommand::ResizeSidebarNarrower),
+            KeyCode::Char('f') | KeyCode::Char('F') => Some(UiCommand::ResizeSidebarWider),
+            KeyCode::Char('h') | KeyCode::Char('H') | KeyCode::Left => {
+                Some(UiCommand::ResizeSidebarNarrower)
+            }
+            KeyCode::Char('l') | KeyCode::Char('L') | KeyCode::Right => {
+                Some(UiCommand::ResizeSidebarWider)
+            }
             _ => None,
         }
     }
@@ -127,6 +135,7 @@ impl GroveApp {
                 UiCommand::NextTab => {
                     matches!(key_event.code, KeyCode::Char(']')) && in_preview_focus
                 }
+                UiCommand::ResizeSidebarNarrower | UiCommand::ResizeSidebarWider => false,
                 UiCommand::NewWorkspace => {
                     matches!(key_event.code, KeyCode::Char('n') | KeyCode::Char('N'))
                 }
@@ -193,7 +202,15 @@ impl GroveApp {
         if !self.modal_open()
             && let Some(command) = Self::global_workspace_navigation_command(&key_event)
         {
-            if self.interactive.is_some() {
+            if self.interactive.is_some()
+                && matches!(
+                    command,
+                    UiCommand::MoveSelectionDown
+                        | UiCommand::MoveSelectionUp
+                        | UiCommand::PreviousTab
+                        | UiCommand::NextTab
+                )
+            {
                 self.exit_interactive_to_list();
             }
             return (self.execute_ui_command(command), Cmd::None);

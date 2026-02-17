@@ -1568,6 +1568,107 @@ fn alt_brackets_switch_preview_tab_from_list_focus() {
 }
 
 #[test]
+fn alt_arrows_hl_bf_and_alt_with_extra_modifier_resize_sidebar_globally() {
+    let mut app = fixture_app();
+    app.sidebar_width_pct = 33;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Right)
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(app.sidebar_width_pct, 35);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Left)
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(app.sidebar_width_pct, 33);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('l'))
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(app.sidebar_width_pct, 35);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('h'))
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(app.sidebar_width_pct, 33);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('f'))
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(app.sidebar_width_pct, 35);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('b'))
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(app.sidebar_width_pct, 33);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Right)
+                .with_modifiers(Modifiers::ALT | Modifiers::SHIFT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    assert_eq!(app.sidebar_width_pct, 35);
+}
+
+#[test]
+fn alt_resize_keeps_interactive_mode_active() {
+    let mut app = fixture_app();
+    app.sidebar_width_pct = 33;
+    app.interactive = Some(InteractiveState::new(
+        "%0".to_string(),
+        "grove-ws-feature-a-shell".to_string(),
+        Instant::now(),
+        34,
+        78,
+    ));
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Right)
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+
+    assert!(app.interactive.is_some());
+    assert_eq!(app.sidebar_width_pct, 35);
+}
+
+#[test]
 fn background_start_confirm_queues_lifecycle_task() {
     let mut app = fixture_background_app(WorkspaceStatus::Idle);
     app.state.selected_index = 1;
@@ -4653,7 +4754,65 @@ fn mouse_drag_near_divider_still_updates_sidebar_ratio() {
         )),
     );
 
+    assert_eq!(app.sidebar_width_pct, 51);
+}
+
+#[test]
+fn mouse_drag_uses_rendered_width_without_resize_message() {
+    let mut app = fixture_app();
+    with_rendered_frame(&app, 200, 40, |_| {});
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(
+            MouseEventKind::Down(MouseButton::Left),
+            66,
+            8,
+        )),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(
+            MouseEventKind::Drag(MouseButton::Left),
+            100,
+            8,
+        )),
+    );
+
     assert_eq!(app.sidebar_width_pct, 50);
+}
+
+#[test]
+fn mouse_drag_from_divider_hit_padding_does_not_jump_on_first_drag_event() {
+    let mut app = fixture_app();
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Resize {
+            width: 100,
+            height: 40,
+        },
+    );
+    assert_eq!(app.sidebar_width_pct, 33);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(
+            MouseEventKind::Down(MouseButton::Left),
+            32,
+            8,
+        )),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(
+            MouseEventKind::Drag(MouseButton::Left),
+            32,
+            8,
+        )),
+    );
+
+    assert_eq!(app.sidebar_width_pct, 33);
 }
 
 #[test]

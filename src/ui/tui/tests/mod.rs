@@ -1510,6 +1510,16 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
             .any(|id| id == &palette_id(UiCommand::ToggleSidebar))
     );
     assert!(
+        list_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::ResizeSidebarNarrower))
+    );
+    assert!(
+        list_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::ResizeSidebarWider))
+    );
+    assert!(
         !list_ids
             .iter()
             .any(|id| id == &palette_id(UiCommand::ScrollDown))
@@ -1567,6 +1577,16 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
         preview_ids
             .iter()
             .any(|id| id == &palette_id(UiCommand::ToggleSidebar))
+    );
+    assert!(
+        preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::ResizeSidebarNarrower))
+    );
+    assert!(
+        preview_ids
+            .iter()
+            .any(|id| id == &palette_id(UiCommand::ResizeSidebarWider))
     );
     assert!(
         preview_ids

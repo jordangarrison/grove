@@ -71,6 +71,8 @@ impl GroveApp {
         match command {
             UiCommand::ToggleFocus
             | UiCommand::ToggleSidebar
+            | UiCommand::ResizeSidebarNarrower
+            | UiCommand::ResizeSidebarWider
             | UiCommand::NewWorkspace
             | UiCommand::EditWorkspace
             | UiCommand::OpenProjects

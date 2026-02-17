@@ -148,7 +148,7 @@ impl GroveApp {
                 .to_string();
         }
         if self.interactive.is_some() {
-            return "Reserved: Ctrl+K palette, Esc Esc/Ctrl+\\ exit, Alt+J/K browse, Alt+[/] tabs, Alt+C copy, Alt+V paste"
+            return "Reserved: Ctrl+K palette, Esc Esc/Ctrl+\\ exit, Alt+J/K browse, Alt+[/] tabs, Alt+Left/Right or Alt+H/L resize (Alt+B/F fallback), Alt+C copy, Alt+V paste"
                 .to_string();
         }
         if self.preview_agent_tab_is_focused() {

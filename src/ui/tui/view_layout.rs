@@ -70,6 +70,9 @@ impl GroveApp {
     }
 
     pub(super) fn divider_hit_area(divider: Rect, viewport_width: u16) -> Rect {
+        if divider.is_empty() {
+            return divider;
+        }
         let left = divider.x.saturating_sub(1);
         let right = divider.right().saturating_add(1).min(viewport_width);
         Rect::new(left, divider.y, right.saturating_sub(left), divider.height)

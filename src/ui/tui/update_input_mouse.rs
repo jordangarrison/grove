@@ -3,6 +3,24 @@ use super::*;
 impl GroveApp {
     const PREVIEW_MOUSE_SCROLL_LINES: i32 = 3;
 
+    fn sidebar_ratio_for_drag_pointer(&self, pointer_x: i32) -> u16 {
+        let layout = self.view_layout();
+        let total_width = layout.preview.right().saturating_sub(layout.sidebar.x);
+        if total_width == 0 {
+            return self.sidebar_width_pct;
+        }
+
+        let left = i32::from(layout.sidebar.x);
+        let right = left.saturating_add(i32::from(total_width).saturating_sub(1));
+        let clamped_x = pointer_x.clamp(left, right);
+        let relative_x = clamped_x.saturating_sub(left);
+        let Some(relative_x_u16) = u16::try_from(relative_x).ok() else {
+            return self.sidebar_width_pct;
+        };
+
+        ratio_from_drag(total_width, relative_x_u16)
+    }
+
     fn sidebar_workspace_index_at_y(&self, y: u16) -> Option<usize> {
         if self.projects.is_empty() {
             return None;
@@ -133,6 +151,9 @@ impl GroveApp {
             MouseEventKind::Down(MouseButton::Left) => match region {
                 HitRegion::Divider => {
                     self.divider_drag_active = true;
+                    let layout = self.view_layout();
+                    self.divider_drag_pointer_offset =
+                        i32::from(mouse_event.x).saturating_sub(i32::from(layout.divider.x));
                 }
                 HitRegion::WorkspaceList => {
                     self.state.focus = PaneFocus::WorkspaceList;
@@ -158,13 +179,10 @@ impl GroveApp {
             },
             MouseEventKind::Drag(MouseButton::Left) => {
                 if self.divider_drag_active {
-                    let ratio =
-                        clamp_sidebar_ratio(ratio_from_drag(self.viewport_width, mouse_event.x));
-                    if ratio != self.sidebar_width_pct {
-                        self.sidebar_width_pct = ratio;
-                        self.persist_sidebar_ratio();
-                        self.sync_interactive_session_geometry();
-                    }
+                    let drag_pointer =
+                        i32::from(mouse_event.x).saturating_sub(self.divider_drag_pointer_offset);
+                    let ratio = self.sidebar_ratio_for_drag_pointer(drag_pointer);
+                    self.set_sidebar_ratio(ratio);
                 } else if self.interactive.is_some() {
                     self.update_preview_selection_drag(mouse_event.x, mouse_event.y);
                 }
@@ -176,6 +194,7 @@ impl GroveApp {
             }
             MouseEventKind::Up(MouseButton::Left) => {
                 self.divider_drag_active = false;
+                self.divider_drag_pointer_offset = 0;
                 self.finish_preview_selection_drag(mouse_event.x, mouse_event.y);
             }
             MouseEventKind::ScrollUp => {
@@ -200,7 +219,7 @@ impl GroveApp {
         }
     }
 
-    fn persist_sidebar_ratio(&mut self) {
+    pub(super) fn persist_sidebar_ratio(&mut self) {
         if let Err(error) = fs::write(
             &self.sidebar_ratio_path,
             serialize_sidebar_ratio(self.sidebar_width_pct),

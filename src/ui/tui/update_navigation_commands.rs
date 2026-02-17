@@ -1,11 +1,39 @@
 use super::*;
 
 impl GroveApp {
+    const SIDEBAR_KEYBOARD_RESIZE_STEP_PCT: i16 = 2;
+
     fn preview_page_scroll_delta(&self) -> i32 {
         let viewport_height = self
             .preview_output_dimensions()
             .map_or(1, |(_, height)| i32::from(height));
         viewport_height.saturating_sub(1).max(1)
+    }
+
+    pub(super) fn set_sidebar_ratio(&mut self, ratio: u16) {
+        let clamped = clamp_sidebar_ratio(ratio);
+        if clamped == self.sidebar_width_pct {
+            return;
+        }
+
+        self.sidebar_width_pct = clamped;
+        self.persist_sidebar_ratio();
+        self.sync_interactive_session_geometry();
+    }
+
+    fn resize_sidebar_by_keyboard(&mut self, delta_pct: i16) {
+        if self.sidebar_hidden {
+            return;
+        }
+
+        let next = i32::from(self.sidebar_width_pct).saturating_add(i32::from(delta_pct));
+        let min_pct = i32::from(clamp_sidebar_ratio(0));
+        let max_pct = i32::from(clamp_sidebar_ratio(u16::MAX));
+        let bounded = next.clamp(min_pct, max_pct);
+        let Some(ratio) = u16::try_from(bounded).ok() else {
+            return;
+        };
+        self.set_sidebar_ratio(ratio);
     }
 
     fn cycle_preview_tab(&mut self, direction: i8) {
@@ -44,6 +72,7 @@ impl GroveApp {
                 self.sidebar_hidden = !self.sidebar_hidden;
                 if self.sidebar_hidden {
                     self.divider_drag_active = false;
+                    self.divider_drag_pointer_offset = 0;
                 }
                 false
             }
@@ -118,6 +147,14 @@ impl GroveApp {
                 if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
                     self.cycle_preview_tab(1);
                 }
+                false
+            }
+            UiCommand::ResizeSidebarNarrower => {
+                self.resize_sidebar_by_keyboard(-Self::SIDEBAR_KEYBOARD_RESIZE_STEP_PCT);
+                false
+            }
+            UiCommand::ResizeSidebarWider => {
+                self.resize_sidebar_by_keyboard(Self::SIDEBAR_KEYBOARD_RESIZE_STEP_PCT);
                 false
             }
             UiCommand::NewWorkspace => {

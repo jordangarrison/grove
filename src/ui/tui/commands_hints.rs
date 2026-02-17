@@ -139,6 +139,7 @@ impl UiCommand {
                 UiCommand::Quit,
                 UiCommand::ToggleFocus,
                 UiCommand::ToggleSidebar,
+                UiCommand::ResizeSidebarNarrower,
                 UiCommand::FocusList,
                 UiCommand::MoveSelectionDown,
                 UiCommand::PreviousTab,
@@ -189,6 +190,10 @@ impl UiCommand {
             (UiCommand::Quit, HelpHintContext::Global) => Some("q quit"),
             (UiCommand::ToggleFocus, HelpHintContext::Global) => Some("Tab/h/l switch pane"),
             (UiCommand::ToggleSidebar, HelpHintContext::Global) => Some("\\ toggle sidebar"),
+            (UiCommand::ResizeSidebarNarrower, HelpHintContext::Global)
+            | (UiCommand::ResizeSidebarWider, HelpHintContext::Global) => {
+                Some("Alt+Left/Right or Alt+H/L resize (Alt+B/F fallback)")
+            }
             (UiCommand::FocusList, HelpHintContext::Global) => Some("Esc list pane"),
             (UiCommand::MoveSelectionDown, HelpHintContext::Global) => Some("Alt+J/K workspace"),
             (UiCommand::PreviousTab, HelpHintContext::Global) => Some("Alt+[ prev tab"),

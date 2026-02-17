@@ -15,6 +15,8 @@ pub(super) enum UiCommand {
     ScrollBottom,
     PreviousTab,
     NextTab,
+    ResizeSidebarNarrower,
+    ResizeSidebarWider,
     NewWorkspace,
     EditWorkspace,
     StartAgent,
@@ -59,7 +61,7 @@ pub(super) enum HelpHintContext {
 }
 
 impl UiCommand {
-    pub(super) const ALL: [UiCommand; 29] = [
+    pub(super) const ALL: [UiCommand; 31] = [
         UiCommand::ToggleFocus,
         UiCommand::ToggleSidebar,
         UiCommand::OpenPreview,
@@ -75,6 +77,8 @@ impl UiCommand {
         UiCommand::ScrollBottom,
         UiCommand::PreviousTab,
         UiCommand::NextTab,
+        UiCommand::ResizeSidebarNarrower,
+        UiCommand::ResizeSidebarWider,
         UiCommand::NewWorkspace,
         UiCommand::EditWorkspace,
         UiCommand::StartAgent,

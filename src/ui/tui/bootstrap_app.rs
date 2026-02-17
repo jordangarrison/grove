@@ -198,6 +198,7 @@ impl GroveApp {
             launch_skip_permissions: false,
             sidebar_ratio_path,
             divider_drag_active: false,
+            divider_drag_pointer_offset: 0,
             preview_selection: TextSelectionState::default(),
             copied_text: None,
             event_log,

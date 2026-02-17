@@ -229,6 +229,7 @@ struct GroveApp {
     launch_skip_permissions: bool,
     sidebar_ratio_path: PathBuf,
     divider_drag_active: bool,
+    divider_drag_pointer_offset: i32,
     preview_selection: TextSelectionState,
     copied_text: Option<String>,
     event_log: Box<dyn EventLogger>,
