@@ -20,7 +20,7 @@ impl GroveApp {
             modal_start_agent_config_rows(content_width, theme, &dialog.start_config, |field| {
                 focused(LaunchDialogField::StartConfig(field))
             });
-        let body = FtText::from_lines(vec![
+        let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width("Launch profile", content_width),
                 Style::new().fg(theme.overlay0),
@@ -38,14 +38,13 @@ impl GroveApp {
                 start_focused,
                 cancel_focused,
             ),
-            FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width(
-                    "Tab/C-n next, S-Tab/C-p prev, Space toggle unsafe, Enter start, Esc cancel",
-                    content_width,
-                ),
-                Style::new().fg(theme.overlay0),
-            )]),
-        ]);
+        ];
+        lines.extend(modal_wrapped_hint_rows(
+            content_width,
+            theme,
+            "Tab/C-n next, S-Tab/C-p prev, Space toggle unsafe, Enter start, Esc cancel",
+        ));
+        let body = FtText::from_lines(lines);
         let content = OverlayModalContent {
             title: "Start Agent",
             body,
