@@ -8,6 +8,23 @@ impl GroveApp {
                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Char('p') | KeyCode::Char('P')
             )
     }
+
+    fn remap_command_palette_nav_key(key_event: KeyEvent) -> KeyEvent {
+        if key_event.modifiers != Modifiers::CTRL {
+            return key_event;
+        }
+
+        match key_event.code {
+            KeyCode::Char('n') | KeyCode::Char('N') => KeyEvent::new(KeyCode::Down)
+                .with_modifiers(key_event.modifiers)
+                .with_kind(key_event.kind),
+            KeyCode::Char('p') | KeyCode::Char('P') => KeyEvent::new(KeyCode::Up)
+                .with_modifiers(key_event.modifiers)
+                .with_kind(key_event.kind),
+            _ => key_event,
+        }
+    }
+
     fn global_workspace_navigation_command(key_event: &KeyEvent) -> Option<UiCommand> {
         if !key_event.modifiers.contains(Modifiers::ALT) {
             return None;
@@ -188,7 +205,7 @@ impl GroveApp {
         }
 
         if self.command_palette.is_visible() {
-            let event = Event::Key(key_event);
+            let event = Event::Key(Self::remap_command_palette_nav_key(key_event));
             if let Some(action) = self.command_palette.handle_event(&event) {
                 return match action {
                     PaletteAction::Dismiss => (false, Cmd::None),

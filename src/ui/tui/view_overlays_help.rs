@@ -57,6 +57,13 @@ impl GroveApp {
                 ),
                 Style::new().fg(theme.text),
             )]),
+            FtLine::from_spans(vec![FtSpan::styled(
+                pad_or_truncate_to_display_width(
+                    "  [Palette] Type search, Up/Down/C-n/C-p move, Enter run, Esc close",
+                    content_width,
+                ),
+                Style::new().fg(theme.subtext0),
+            )]),
             FtLine::raw(""),
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width("[List]", content_width),

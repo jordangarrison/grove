@@ -93,7 +93,7 @@ impl GroveApp {
 
     fn keybind_hints_line(&self) -> String {
         if self.command_palette.is_visible() {
-            return "Type to search, Up/Down choose, Enter run, Esc close".to_string();
+            return "Type to search, Up/Down or C-n/C-p choose, Enter run, Esc close".to_string();
         }
         if self.keybind_help_open {
             return "Esc/? close help".to_string();

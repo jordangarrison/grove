@@ -1473,6 +1473,53 @@ fn command_palette_enter_executes_selected_action() {
 }
 
 #[test]
+fn command_palette_ctrl_n_moves_selection_down() {
+    let mut app = fixture_app();
+    app.open_command_palette();
+    assert!(app.command_palette.is_visible());
+    assert!(app.command_palette.result_count() > 1);
+    assert_eq!(app.command_palette.selected_index(), 0);
+
+    let _ = app.handle_key(
+        KeyEvent::new(KeyCode::Char('n'))
+            .with_modifiers(Modifiers::CTRL)
+            .with_kind(KeyEventKind::Press),
+    );
+
+    assert_eq!(app.command_palette.query(), "");
+    assert_eq!(app.command_palette.selected_index(), 1);
+}
+
+#[test]
+fn command_palette_ctrl_p_moves_selection_up() {
+    let mut app = fixture_app();
+    app.open_command_palette();
+    assert!(app.command_palette.is_visible());
+    assert!(app.command_palette.result_count() > 2);
+
+    let _ = app.handle_key(
+        KeyEvent::new(KeyCode::Char('n'))
+            .with_modifiers(Modifiers::CTRL)
+            .with_kind(KeyEventKind::Press),
+    );
+    let _ = app.handle_key(
+        KeyEvent::new(KeyCode::Char('n'))
+            .with_modifiers(Modifiers::CTRL)
+            .with_kind(KeyEventKind::Press),
+    );
+    assert_eq!(app.command_palette.selected_index(), 2);
+
+    let _ = app.handle_key(
+        KeyEvent::new(KeyCode::Char('p'))
+            .with_modifiers(Modifiers::CTRL)
+            .with_kind(KeyEventKind::Press),
+    );
+
+    assert_eq!(app.command_palette.query(), "");
+    assert_eq!(app.command_palette.selected_index(), 1);
+}
+
+#[test]
 fn command_palette_action_set_scopes_to_focus_and_mode() {
     let palette_id = |command: UiCommand| -> String {
         command
@@ -1813,10 +1860,13 @@ fn keybind_help_lists_interactive_reserved_keys() {
             .any(|row| row_text(frame, row, 0, frame.width()).contains("Shift+Enter"));
         let has_reserved = (0..frame.height())
             .any(|row| row_text(frame, row, 0, frame.width()).contains("Ctrl+K palette"));
+        let has_palette_nav = (0..frame.height())
+            .any(|row| row_text(frame, row, 0, frame.width()).contains("[Palette] Type search"));
 
         assert!(has_shift_tab);
         assert!(has_shift_enter);
         assert!(has_reserved);
+        assert!(has_palette_nav);
     });
 }
 
@@ -1841,6 +1891,7 @@ fn status_row_shows_palette_hints_when_palette_open() {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
         assert!(status_text.contains("Type to search"));
+        assert!(status_text.contains("C-n/C-p"));
         assert!(status_text.contains("Enter run"));
     });
 }
