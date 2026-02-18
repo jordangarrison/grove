@@ -52,23 +52,27 @@ impl GroveApp {
             lines.push(format!("Field: {}", dialog.focused_field.label()));
             lines.push(format!(
                 "Prompt: {}",
-                if dialog.prompt.is_empty() {
+                if dialog.start_config.prompt.is_empty() {
                     "(empty)".to_string()
                 } else {
-                    dialog.prompt.clone()
+                    dialog.start_config.prompt.clone()
                 }
             ));
             lines.push(format!(
                 "Pre-launch command: {}",
-                if dialog.pre_launch_command.is_empty() {
+                if dialog.start_config.pre_launch_command.is_empty() {
                     "(empty)".to_string()
                 } else {
-                    dialog.pre_launch_command.clone()
+                    dialog.start_config.pre_launch_command.clone()
                 }
             ));
             lines.push(format!(
                 "Unsafe launch: {}",
-                if dialog.skip_permissions { "on" } else { "off" }
+                if dialog.start_config.skip_permissions {
+                    "on"
+                } else {
+                    "off"
+                }
             ));
         }
         if let Some(dialog) = &self.delete_dialog {

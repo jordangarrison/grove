@@ -8,6 +8,7 @@ pub(super) struct CreateDialogState {
     pub(super) base_branch: String,
     pub(super) setup_commands: String,
     pub(super) auto_run_setup_commands: bool,
+    pub(super) start_config: StartAgentConfigState,
     pub(super) focused_field: CreateDialogField,
 }
 
@@ -31,6 +32,7 @@ pub(super) enum CreateDialogField {
     SetupCommands,
     AutoRunSetupCommands,
     Agent,
+    StartConfig(StartAgentConfigField),
     CreateButton,
     CancelButton,
 }
@@ -71,7 +73,14 @@ impl CreateDialogField {
             Self::BaseBranch => Self::SetupCommands,
             Self::SetupCommands => Self::AutoRunSetupCommands,
             Self::AutoRunSetupCommands => Self::Agent,
-            Self::Agent => Self::CreateButton,
+            Self::Agent => Self::StartConfig(StartAgentConfigField::Prompt),
+            Self::StartConfig(field) => {
+                if field == StartAgentConfigField::Unsafe {
+                    Self::CreateButton
+                } else {
+                    Self::StartConfig(field.next())
+                }
+            }
             Self::CreateButton => Self::CancelButton,
             Self::CancelButton => Self::WorkspaceName,
         }
@@ -85,7 +94,14 @@ impl CreateDialogField {
             Self::SetupCommands => Self::BaseBranch,
             Self::AutoRunSetupCommands => Self::SetupCommands,
             Self::Agent => Self::AutoRunSetupCommands,
-            Self::CreateButton => Self::Agent,
+            Self::StartConfig(field) => {
+                if field == StartAgentConfigField::Prompt {
+                    Self::Agent
+                } else {
+                    Self::StartConfig(field.previous())
+                }
+            }
+            Self::CreateButton => Self::StartConfig(StartAgentConfigField::Unsafe),
             Self::CancelButton => Self::CreateButton,
         }
     }
@@ -99,6 +115,7 @@ impl CreateDialogField {
             Self::SetupCommands => "setup_commands",
             Self::AutoRunSetupCommands => "auto_run_setup_commands",
             Self::Agent => "agent",
+            Self::StartConfig(field) => field.label(),
             Self::CreateButton => "create",
             Self::CancelButton => "cancel",
         }

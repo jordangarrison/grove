@@ -181,6 +181,12 @@ struct QueuedDeleteWorkspace {
     workspace_path: PathBuf,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PendingAutoStartWorkspace {
+    workspace_path: PathBuf,
+    start_config: StartAgentConfigState,
+}
+
 struct GroveApp {
     repo_name: String,
     projects: Vec<ProjectConfig>,
@@ -258,7 +264,8 @@ struct GroveApp {
     merge_in_flight: bool,
     update_from_base_in_flight: bool,
     create_in_flight: bool,
-    pending_auto_start_workspace_path: Option<PathBuf>,
+    pending_auto_start_workspace: Option<PendingAutoStartWorkspace>,
+    pending_create_start_config: Option<StartAgentConfigState>,
     pending_auto_launch_shell_workspace_path: Option<PathBuf>,
     start_in_flight: bool,
     stop_in_flight: bool,

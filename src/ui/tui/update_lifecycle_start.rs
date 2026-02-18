@@ -105,34 +105,31 @@ impl GroveApp {
                 ("workspace".to_string(), Value::from(workspace_name)),
                 (
                     "prompt_len".to_string(),
-                    Value::from(u64::try_from(dialog.prompt.len()).unwrap_or(u64::MAX)),
+                    Value::from(
+                        u64::try_from(dialog.start_config.prompt.len()).unwrap_or(u64::MAX),
+                    ),
                 ),
                 (
                     "skip_permissions".to_string(),
-                    Value::from(dialog.skip_permissions),
+                    Value::from(dialog.start_config.skip_permissions),
                 ),
                 (
                     "pre_launch_len".to_string(),
-                    Value::from(u64::try_from(dialog.pre_launch_command.len()).unwrap_or(u64::MAX)),
+                    Value::from(
+                        u64::try_from(dialog.start_config.pre_launch_command.len())
+                            .unwrap_or(u64::MAX),
+                    ),
                 ),
             ],
         );
 
-        self.launch_skip_permissions = dialog.skip_permissions;
-        let prompt = if dialog.prompt.trim().is_empty() {
-            None
-        } else {
-            Some(dialog.prompt.trim().to_string())
-        };
-        let pre_launch_command = if dialog.pre_launch_command.trim().is_empty() {
-            None
-        } else {
-            Some(dialog.pre_launch_command.trim().to_string())
-        };
+        let (prompt, pre_launch_command, skip_permissions) =
+            dialog.start_config.parse_start_options();
+        self.launch_skip_permissions = skip_permissions;
         self.start_selected_workspace_agent_with_options(
             prompt,
             pre_launch_command,
-            dialog.skip_permissions,
+            skip_permissions,
         );
     }
 }

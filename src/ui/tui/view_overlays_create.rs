@@ -10,7 +10,7 @@ impl GroveApp {
         }
 
         let dialog_width = area.width.saturating_sub(8).min(90);
-        let dialog_height = 20u16;
+        let dialog_height = 23u16;
         let theme = ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
         let selected_project_label = self
@@ -48,7 +48,7 @@ impl GroveApp {
 
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width("Workspace setup", content_width),
+                pad_or_truncate_to_display_width("Workspace setup (create/setup)", content_width),
                 Style::new().fg(theme.overlay0),
             )]),
             FtLine::raw(""),
@@ -79,9 +79,9 @@ impl GroveApp {
             modal_labeled_input_row(
                 content_width,
                 theme,
-                "SetupCmds",
+                "WsSetupCmds",
                 dialog.setup_commands.as_str(),
-                "direnv allow; cmd2; cmd3",
+                "one-time setup on workspace create/setup",
                 focused(CreateDialogField::SetupCommands),
             ),
             modal_focus_badged_row(
@@ -168,7 +168,7 @@ impl GroveApp {
         if focused(CreateDialogField::SetupCommands) {
             lines.push(FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
-                    "  [SetupCmds] Separate commands with ';'",
+                    "  [WsSetupCmds] ';' separated, per-workspace (not per-start)",
                     content_width,
                 ),
                 Style::new().fg(theme.overlay0),
@@ -178,6 +178,18 @@ impl GroveApp {
         lines.push(FtLine::raw(""));
         lines.push(agent_row(AgentType::Claude));
         lines.push(agent_row(AgentType::Codex));
+        lines.push(FtLine::raw(""));
+        lines.push(FtLine::from_spans(vec![FtSpan::styled(
+            pad_or_truncate_to_display_width("Agent startup (every start)", content_width),
+            Style::new().fg(theme.overlay0),
+        )]));
+        let start_config_rows =
+            modal_start_agent_config_rows(content_width, theme, &dialog.start_config, |field| {
+                focused(CreateDialogField::StartConfig(field))
+            });
+        lines.push(start_config_rows[0].clone());
+        lines.push(start_config_rows[1].clone());
+        lines.push(start_config_rows[2].clone());
         lines.push(FtLine::raw(""));
         let create_focused = focused(CreateDialogField::CreateButton);
         let cancel_focused = focused(CreateDialogField::CancelButton);
@@ -191,7 +203,7 @@ impl GroveApp {
         ));
         lines.push(FtLine::from_spans(vec![FtSpan::styled(
             pad_or_truncate_to_display_width(
-                "Tab/C-n next, S-Tab/C-p prev, j/k adjust project/branch, Space toggles auto-run, Enter create, Esc cancel",
+                "Tab/C-n next, S-Tab/C-p prev, j/k adjust project/branch, Space toggles auto-run or unsafe, Enter create, Esc cancel",
                 content_width,
             ),
             Style::new().fg(theme.overlay0),

@@ -124,6 +124,11 @@ impl GroveApp {
             base_branch: selected_base_branch.clone(),
             setup_commands,
             auto_run_setup_commands,
+            start_config: StartAgentConfigState::new(
+                String::new(),
+                String::new(),
+                self.launch_skip_permissions,
+            ),
             focused_field: CreateDialogField::WorkspaceName,
         });
         self.refresh_create_dialog_branch_candidates(selected_base_branch);

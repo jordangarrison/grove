@@ -44,7 +44,8 @@ impl GroveApp {
                         | CreateDialogField::Project
                         | CreateDialogField::BaseBranch
                         | CreateDialogField::SetupCommands
-                        | CreateDialogField::Agent => EnterAction::AdvanceField,
+                        | CreateDialogField::Agent
+                        | CreateDialogField::StartConfig(_) => EnterAction::AdvanceField,
                     });
 
                 match action {
@@ -102,6 +103,12 @@ impl GroveApp {
                 {
                     dialog.auto_run_setup_commands = !dialog.auto_run_setup_commands;
                 }
+                if let Some(dialog) = self.create_dialog.as_mut()
+                    && dialog.focused_field
+                        == CreateDialogField::StartConfig(StartAgentConfigField::Unsafe)
+                {
+                    dialog.start_config.toggle_unsafe();
+                }
             }
             KeyCode::Down => {
                 if self.create_base_branch_dropdown_visible()
@@ -129,6 +136,12 @@ impl GroveApp {
                 {
                     dialog.auto_run_setup_commands = !dialog.auto_run_setup_commands;
                 }
+                if let Some(dialog) = self.create_dialog.as_mut()
+                    && dialog.focused_field
+                        == CreateDialogField::StartConfig(StartAgentConfigField::Unsafe)
+                {
+                    dialog.start_config.toggle_unsafe();
+                }
             }
             KeyCode::Char(_) if ctrl_n || ctrl_p => {
                 if let Some(dialog) = self.create_dialog.as_mut() {
@@ -152,6 +165,9 @@ impl GroveApp {
                         }
                         CreateDialogField::SetupCommands => {
                             dialog.setup_commands.pop();
+                        }
+                        CreateDialogField::StartConfig(field) => {
+                            dialog.start_config.backspace(field);
                         }
                         CreateDialogField::Project
                         | CreateDialogField::AutoRunSetupCommands
@@ -191,6 +207,13 @@ impl GroveApp {
                         && (character == 'j' || character == 'k' || character == ' ')
                     {
                         dialog.auto_run_setup_commands = !dialog.auto_run_setup_commands;
+                        return;
+                    }
+                    if dialog.focused_field
+                        == CreateDialogField::StartConfig(StartAgentConfigField::Unsafe)
+                        && (character == 'j' || character == 'k' || character == ' ')
+                    {
+                        dialog.start_config.toggle_unsafe();
                         return;
                     }
                     if (dialog.focused_field == CreateDialogField::CreateButton
@@ -239,6 +262,15 @@ impl GroveApp {
                                 dialog.setup_commands.push(character);
                             }
                         }
+                        CreateDialogField::StartConfig(field) => match field {
+                            StartAgentConfigField::Prompt
+                            | StartAgentConfigField::PreLaunchCommand => {
+                                if !character.is_control() {
+                                    dialog.start_config.push_char(field, character);
+                                }
+                            }
+                            StartAgentConfigField::Unsafe => {}
+                        },
                         CreateDialogField::AutoRunSetupCommands => {}
                         CreateDialogField::Agent => {}
                         CreateDialogField::CreateButton | CreateDialogField::CancelButton => {}

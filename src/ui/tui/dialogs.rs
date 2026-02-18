@@ -147,6 +147,56 @@ pub(super) fn modal_actions_row(
     )])
 }
 
+pub(super) fn unsafe_state_label(skip_permissions: bool) -> &'static str {
+    if skip_permissions {
+        "on, bypass approvals and sandbox"
+    } else {
+        "off, standard safety checks"
+    }
+}
+
+pub(super) fn modal_start_agent_config_rows<F>(
+    content_width: usize,
+    theme: UiTheme,
+    start_config: &StartAgentConfigState,
+    is_focused: F,
+) -> [FtLine; 3]
+where
+    F: Fn(StartAgentConfigField) -> bool,
+{
+    [
+        modal_labeled_input_row(
+            content_width,
+            theme,
+            "Prompt",
+            start_config.prompt.as_str(),
+            "Describe initial task for the agent",
+            is_focused(StartAgentConfigField::Prompt),
+        ),
+        modal_labeled_input_row(
+            content_width,
+            theme,
+            "PreLaunchCmd",
+            start_config.pre_launch_command.as_str(),
+            "Runs before each agent start, e.g. direnv allow",
+            is_focused(StartAgentConfigField::PreLaunchCommand),
+        ),
+        modal_focus_badged_row(
+            content_width,
+            theme,
+            "Unsafe",
+            unsafe_state_label(start_config.skip_permissions),
+            is_focused(StartAgentConfigField::Unsafe),
+            theme.peach,
+            if start_config.skip_permissions {
+                theme.red
+            } else {
+                theme.text
+            },
+        ),
+    ]
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct OverlayModalContent<'a> {
     pub(super) title: &'a str,

@@ -14,10 +14,11 @@ use super::{
     DeleteWorkspaceCompletion, EditDialogField, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW,
     HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
     LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, Msg,
-    PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
-    ProjectAddDialogField, ProjectDefaultsDialogField, RefreshWorkspacesCompletion,
-    SettingsDialogField, StartAgentCompletion, StopAgentCompletion, TextSelectionPoint, TmuxInput,
-    UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceShellLaunchCompletion,
+    PREVIEW_METADATA_ROWS, PendingAutoStartWorkspace, PendingResizeVerification,
+    PreviewPollCompletion, PreviewTab, ProjectAddDialogField, ProjectDefaultsDialogField,
+    RefreshWorkspacesCompletion, SettingsDialogField, StartAgentCompletion, StartAgentConfigField,
+    StartAgentConfigState, StopAgentCompletion, TextSelectionPoint, TmuxInput, UiCommand,
+    UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceShellLaunchCompletion,
     WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
     ui_theme,
 };
@@ -1078,10 +1079,8 @@ fn interactive_input_echo_does_not_trigger_activity_spinner() {
 fn modal_dialog_renders_over_sidebar() {
     let mut app = fixture_app();
     app.launch_dialog = Some(LaunchDialogState {
-        prompt: String::new(),
-        pre_launch_command: String::new(),
-        skip_permissions: false,
-        focused_field: LaunchDialogField::Prompt,
+        start_config: StartAgentConfigState::new(String::new(), String::new(), false),
+        focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
     });
 
     with_rendered_frame(&app, 80, 24, |frame| {
@@ -1093,10 +1092,8 @@ fn modal_dialog_renders_over_sidebar() {
 fn launch_dialog_uses_opaque_background_fill() {
     let mut app = fixture_app();
     app.launch_dialog = Some(LaunchDialogState {
-        prompt: String::new(),
-        pre_launch_command: String::new(),
-        skip_permissions: false,
-        focused_field: LaunchDialogField::Prompt,
+        start_config: StartAgentConfigState::new(String::new(), String::new(), false),
+        focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
     });
 
     with_rendered_frame(&app, 80, 24, |frame| {
@@ -1120,7 +1117,7 @@ fn create_dialog_uses_opaque_background_fill() {
 
     with_rendered_frame(&app, 80, 24, |frame| {
         let dialog_width = frame.width().saturating_sub(8).min(90);
-        let dialog_height = 20u16;
+        let dialog_height = 23u16;
         let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
         let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
         let probe_x = dialog_x.saturating_add(dialog_width.saturating_sub(3));
@@ -1947,7 +1944,7 @@ fn status_row_shows_create_dialog_keybind_hints_when_modal_open() {
     let mut app = fixture_app();
     app.open_create_dialog();
 
-    with_rendered_frame(&app, 80, 24, |frame| {
+    with_rendered_frame(&app, 140, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
         assert!(status_text.contains("Tab/S-Tab or C-n/C-p field"));
@@ -1972,17 +1969,14 @@ fn status_row_shows_edit_dialog_keybind_hints_when_modal_open() {
 fn status_row_shows_launch_dialog_keybind_hints_when_modal_open() {
     let mut app = fixture_app();
     app.launch_dialog = Some(LaunchDialogState {
-        prompt: String::new(),
-        pre_launch_command: String::new(),
-        skip_permissions: false,
-        focused_field: LaunchDialogField::Prompt,
+        start_config: StartAgentConfigState::new(String::new(), String::new(), false),
+        focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
     });
 
-    with_rendered_frame(&app, 80, 24, |frame| {
+    with_rendered_frame(&app, 140, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
-        assert!(status_text.contains("Tab/S-Tab or C-n/C-p field"));
-        assert!(status_text.contains("Space toggle unsafe"));
+        assert!(status_text.contains("Space toggles unsafe"));
     });
 }
 

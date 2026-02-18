@@ -27,9 +27,7 @@ impl GroveApp {
                     .map(|dialog| match dialog.focused_field {
                         LaunchDialogField::StartButton => EnterAction::ConfirmStart,
                         LaunchDialogField::CancelButton => EnterAction::CancelDialog,
-                        LaunchDialogField::Prompt
-                        | LaunchDialogField::PreLaunchCommand
-                        | LaunchDialogField::Unsafe => EnterAction::ConfirmStart,
+                        LaunchDialogField::StartConfig(_) => EnterAction::ConfirmStart,
                     });
 
                 match action {
@@ -62,22 +60,14 @@ impl GroveApp {
                 }
             }
             KeyCode::Backspace => {
-                if let Some(dialog) = self.launch_dialog.as_mut() {
-                    match dialog.focused_field {
-                        LaunchDialogField::Prompt => {
-                            dialog.prompt.pop();
-                        }
-                        LaunchDialogField::PreLaunchCommand => {
-                            dialog.pre_launch_command.pop();
-                        }
-                        LaunchDialogField::Unsafe
-                        | LaunchDialogField::StartButton
-                        | LaunchDialogField::CancelButton => {}
-                    }
+                if let Some(dialog) = self.launch_dialog.as_mut()
+                    && let LaunchDialogField::StartConfig(field) = dialog.focused_field
+                {
+                    dialog.start_config.backspace(field);
                 }
             }
             KeyCode::Left | KeyCode::Right => {}
-            KeyCode::Char(character) if key_event.modifiers.is_empty() => {
+            KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
                 if let Some(dialog) = self.launch_dialog.as_mut() {
                     if (dialog.focused_field == LaunchDialogField::StartButton
                         || dialog.focused_field == LaunchDialogField::CancelButton)
@@ -92,15 +82,19 @@ impl GroveApp {
                         return;
                     }
                     match dialog.focused_field {
-                        LaunchDialogField::Prompt => dialog.prompt.push(character),
-                        LaunchDialogField::PreLaunchCommand => {
-                            dialog.pre_launch_command.push(character)
-                        }
-                        LaunchDialogField::Unsafe => {
-                            if character == ' ' || character == 'j' || character == 'k' {
-                                dialog.skip_permissions = !dialog.skip_permissions;
+                        LaunchDialogField::StartConfig(field) => match field {
+                            StartAgentConfigField::Prompt
+                            | StartAgentConfigField::PreLaunchCommand => {
+                                if !character.is_control() {
+                                    dialog.start_config.push_char(field, character);
+                                }
                             }
-                        }
+                            StartAgentConfigField::Unsafe => {
+                                if character == ' ' || character == 'j' || character == 'k' {
+                                    dialog.start_config.toggle_unsafe();
+                                }
+                            }
+                        },
                         LaunchDialogField::StartButton | LaunchDialogField::CancelButton => {}
                     }
                 }
@@ -135,10 +129,12 @@ impl GroveApp {
         let prompt = read_workspace_launch_prompt(&workspace.path).unwrap_or_default();
         let skip_permissions = self.launch_skip_permissions;
         self.launch_dialog = Some(LaunchDialogState {
-            prompt: prompt.clone(),
-            pre_launch_command: String::new(),
-            skip_permissions,
-            focused_field: LaunchDialogField::Prompt,
+            start_config: StartAgentConfigState::new(
+                prompt.clone(),
+                String::new(),
+                skip_permissions,
+            ),
+            focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
         });
         self.log_dialog_event_with_fields(
             "launch",

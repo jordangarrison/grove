@@ -14,12 +14,13 @@ impl GroveApp {
 
     fn keybinding_input_nonempty(&self) -> bool {
         if let Some(dialog) = self.launch_dialog.as_ref() {
-            return !dialog.prompt.is_empty() || !dialog.pre_launch_command.is_empty();
+            return dialog.start_config.is_input_nonempty();
         }
         if let Some(dialog) = self.create_dialog.as_ref() {
             return !dialog.workspace_name.is_empty()
                 || !dialog.base_branch.is_empty()
-                || !dialog.setup_commands.is_empty();
+                || !dialog.setup_commands.is_empty()
+                || dialog.start_config.is_input_nonempty();
         }
         if let Some(project_dialog) = self.project_dialog.as_ref() {
             if !project_dialog.filter.is_empty() {
@@ -78,11 +79,8 @@ impl GroveApp {
             KeybindingAction::ClearInput => {
                 if let Some(dialog) = self.launch_dialog.as_mut() {
                     match dialog.focused_field {
-                        LaunchDialogField::Prompt => dialog.prompt.clear(),
-                        LaunchDialogField::PreLaunchCommand => dialog.pre_launch_command.clear(),
-                        LaunchDialogField::Unsafe
-                        | LaunchDialogField::StartButton
-                        | LaunchDialogField::CancelButton => {}
+                        LaunchDialogField::StartConfig(field) => dialog.start_config.clear(field),
+                        LaunchDialogField::StartButton | LaunchDialogField::CancelButton => {}
                     }
                     return false;
                 }
@@ -96,6 +94,9 @@ impl GroveApp {
                         }
                         CreateDialogField::SetupCommands => {
                             dialog.setup_commands.clear();
+                        }
+                        CreateDialogField::StartConfig(field) => {
+                            dialog.start_config.clear(field);
                         }
                         CreateDialogField::Project
                         | CreateDialogField::AutoRunSetupCommands

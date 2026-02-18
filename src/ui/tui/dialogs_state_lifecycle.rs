@@ -1,10 +1,75 @@
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct LaunchDialogState {
+pub(super) struct StartAgentConfigState {
     pub(super) prompt: String,
     pub(super) pre_launch_command: String,
     pub(super) skip_permissions: bool,
+}
+
+impl StartAgentConfigState {
+    pub(super) fn new(prompt: String, pre_launch_command: String, skip_permissions: bool) -> Self {
+        Self {
+            prompt,
+            pre_launch_command,
+            skip_permissions,
+        }
+    }
+
+    pub(super) fn is_input_nonempty(&self) -> bool {
+        !self.prompt.is_empty() || !self.pre_launch_command.is_empty()
+    }
+
+    pub(super) fn parse_start_options(&self) -> (Option<String>, Option<String>, bool) {
+        let prompt = if self.prompt.trim().is_empty() {
+            None
+        } else {
+            Some(self.prompt.trim().to_string())
+        };
+        let pre_launch_command = if self.pre_launch_command.trim().is_empty() {
+            None
+        } else {
+            Some(self.pre_launch_command.trim().to_string())
+        };
+        (prompt, pre_launch_command, self.skip_permissions)
+    }
+
+    pub(super) fn backspace(&mut self, field: StartAgentConfigField) {
+        match field {
+            StartAgentConfigField::Prompt => {
+                self.prompt.pop();
+            }
+            StartAgentConfigField::PreLaunchCommand => {
+                self.pre_launch_command.pop();
+            }
+            StartAgentConfigField::Unsafe => {}
+        }
+    }
+
+    pub(super) fn clear(&mut self, field: StartAgentConfigField) {
+        match field {
+            StartAgentConfigField::Prompt => self.prompt.clear(),
+            StartAgentConfigField::PreLaunchCommand => self.pre_launch_command.clear(),
+            StartAgentConfigField::Unsafe => {}
+        }
+    }
+
+    pub(super) fn push_char(&mut self, field: StartAgentConfigField, character: char) {
+        match field {
+            StartAgentConfigField::Prompt => self.prompt.push(character),
+            StartAgentConfigField::PreLaunchCommand => self.pre_launch_command.push(character),
+            StartAgentConfigField::Unsafe => {}
+        }
+    }
+
+    pub(super) fn toggle_unsafe(&mut self) {
+        self.skip_permissions = !self.skip_permissions;
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct LaunchDialogState {
+    pub(super) start_config: StartAgentConfigState,
     pub(super) focused_field: LaunchDialogField,
 }
 
@@ -117,32 +182,26 @@ impl UpdateFromBaseDialogField {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum LaunchDialogField {
+pub(super) enum StartAgentConfigField {
     Prompt,
     PreLaunchCommand,
     Unsafe,
-    StartButton,
-    CancelButton,
 }
 
-impl LaunchDialogField {
+impl StartAgentConfigField {
     pub(super) fn next(self) -> Self {
         match self {
             Self::Prompt => Self::PreLaunchCommand,
             Self::PreLaunchCommand => Self::Unsafe,
-            Self::Unsafe => Self::StartButton,
-            Self::StartButton => Self::CancelButton,
-            Self::CancelButton => Self::Prompt,
+            Self::Unsafe => Self::Prompt,
         }
     }
 
     pub(super) fn previous(self) -> Self {
         match self {
-            Self::Prompt => Self::CancelButton,
+            Self::Prompt => Self::Unsafe,
             Self::PreLaunchCommand => Self::Prompt,
             Self::Unsafe => Self::PreLaunchCommand,
-            Self::StartButton => Self::Unsafe,
-            Self::CancelButton => Self::StartButton,
         }
     }
 
@@ -152,6 +211,50 @@ impl LaunchDialogField {
             Self::Prompt => "prompt",
             Self::PreLaunchCommand => "pre_launch_command",
             Self::Unsafe => "unsafe",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum LaunchDialogField {
+    StartConfig(StartAgentConfigField),
+    StartButton,
+    CancelButton,
+}
+
+impl LaunchDialogField {
+    pub(super) fn next(self) -> Self {
+        match self {
+            Self::StartConfig(field) => {
+                if field == StartAgentConfigField::Unsafe {
+                    Self::StartButton
+                } else {
+                    Self::StartConfig(field.next())
+                }
+            }
+            Self::StartButton => Self::CancelButton,
+            Self::CancelButton => Self::StartConfig(StartAgentConfigField::Prompt),
+        }
+    }
+
+    pub(super) fn previous(self) -> Self {
+        match self {
+            Self::StartConfig(field) => {
+                if field == StartAgentConfigField::Prompt {
+                    Self::CancelButton
+                } else {
+                    Self::StartConfig(field.previous())
+                }
+            }
+            Self::StartButton => Self::StartConfig(StartAgentConfigField::Unsafe),
+            Self::CancelButton => Self::StartButton,
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::StartConfig(field) => field.label(),
             Self::StartButton => "start",
             Self::CancelButton => "cancel",
         }

@@ -575,7 +575,7 @@ fn create_dialog_confirmed_event_includes_branch_payload() {
             Msg::Key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press)),
         );
     }
-    for _ in 0..6 {
+    for _ in 0..9 {
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -1148,8 +1148,20 @@ fn create_workspace_completed_success_queues_refresh_task_in_background_mode() {
     assert!(cmd_contains_task(&cmd));
     assert!(app.refresh_in_flight);
     assert_eq!(
-        app.pending_auto_start_workspace_path,
+        app.pending_auto_start_workspace
+            .as_ref()
+            .map(|pending| pending.workspace_path.clone()),
         Some(PathBuf::from("/repos/grove-feature-x"))
+    );
+    assert_eq!(
+        app.pending_auto_start_workspace
+            .as_ref()
+            .map(|pending| pending.start_config.clone()),
+        Some(StartAgentConfigState::new(
+            String::new(),
+            String::new(),
+            false
+        ))
     );
     assert_eq!(
         app.pending_auto_launch_shell_workspace_path,
@@ -1160,7 +1172,10 @@ fn create_workspace_completed_success_queues_refresh_task_in_background_mode() {
 #[test]
 fn refresh_workspace_completion_autostarts_agent_for_new_workspace() {
     let mut app = fixture_background_app(WorkspaceStatus::Idle);
-    app.pending_auto_start_workspace_path = Some(PathBuf::from("/repos/grove-feature-a"));
+    app.pending_auto_start_workspace = Some(PendingAutoStartWorkspace {
+        workspace_path: PathBuf::from("/repos/grove-feature-a"),
+        start_config: StartAgentConfigState::new(String::new(), String::new(), true),
+    });
 
     let cmd = ftui::Model::update(
         &mut app,
@@ -1172,7 +1187,8 @@ fn refresh_workspace_completion_autostarts_agent_for_new_workspace() {
 
     assert!(cmd_contains_task(&cmd));
     assert!(app.start_in_flight);
-    assert!(app.pending_auto_start_workspace_path.is_none());
+    assert!(app.pending_auto_start_workspace.is_none());
+    assert!(app.launch_skip_permissions);
     assert!(
         !app.shell_launch_in_flight
             .contains("grove-ws-feature-a-shell")
@@ -1198,6 +1214,53 @@ fn refresh_workspace_completion_auto_launches_shell_for_new_workspace() {
             .contains("grove-ws-feature-a-shell")
     );
     assert!(app.pending_auto_launch_shell_workspace_path.is_none());
+}
+
+#[test]
+fn auto_start_pending_workspace_agent_uses_pending_start_config() {
+    let workspace_dir = unique_temp_workspace_dir("pending-auto-start");
+    fs::create_dir_all(workspace_dir.join(".grove")).expect(".grove dir should be writable");
+
+    let (mut app, commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+    app.state.selected_index = 1;
+    app.state.workspaces[1].path = workspace_dir.clone();
+    app.pending_auto_start_workspace = Some(PendingAutoStartWorkspace {
+        workspace_path: workspace_dir.clone(),
+        start_config: StartAgentConfigState::new(
+            "fix flaky test".to_string(),
+            "direnv allow".to_string(),
+            true,
+        ),
+    });
+
+    let _ = app.auto_start_pending_workspace_agent();
+
+    assert!(app.pending_auto_start_workspace.is_none());
+    assert!(!app.start_in_flight);
+    assert!(app.launch_skip_permissions);
+    assert_eq!(
+        commands.borrow().last(),
+        Some(&vec![
+            "tmux".to_string(),
+            "send-keys".to_string(),
+            "-t".to_string(),
+            "grove-ws-feature-a".to_string(),
+            format!("bash {}/.grove/start.sh", workspace_dir.display()),
+            "Enter".to_string(),
+        ])
+    );
+
+    let launcher_path = workspace_dir.join(".grove/start.sh");
+    let launcher_script =
+        fs::read_to_string(&launcher_path).expect("launcher script should be written");
+    assert!(launcher_script.contains("fix flaky test"));
+    assert!(
+        launcher_script
+            .contains("direnv allow && codex --dangerously-bypass-approvals-and-sandbox")
+    );
+
+    let _ = fs::remove_dir_all(workspace_dir);
 }
 
 #[test]
@@ -1846,13 +1909,15 @@ fn start_dialog_field_navigation_can_toggle_unsafe_for_launch() {
         app.launch_dialog
             .as_ref()
             .map(|dialog| dialog.focused_field),
-        Some(LaunchDialogField::Unsafe)
+        Some(LaunchDialogField::StartConfig(
+            StartAgentConfigField::Unsafe
+        ))
     );
     app.handle_launch_dialog_key(KeyEvent::new(KeyCode::Char(' ')).with_kind(KeyEventKind::Press));
     assert_eq!(
         app.launch_dialog
             .as_ref()
-            .map(|dialog| dialog.skip_permissions),
+            .map(|dialog| dialog.start_config.skip_permissions),
         Some(true)
     );
     ftui::Model::update(
@@ -1895,7 +1960,7 @@ fn start_dialog_blocks_background_navigation_and_escape_cancels() {
     assert_eq!(
         app.launch_dialog
             .as_ref()
-            .map(|dialog| dialog.prompt.clone()),
+            .map(|dialog| dialog.start_config.prompt.clone()),
         Some("k".to_string())
     );
 
@@ -1918,7 +1983,9 @@ fn start_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         app.launch_dialog
             .as_ref()
             .map(|dialog| dialog.focused_field),
-        Some(LaunchDialogField::Prompt)
+        Some(LaunchDialogField::StartConfig(
+            StartAgentConfigField::Prompt
+        ))
     );
 
     ftui::Model::update(
@@ -1933,7 +2000,9 @@ fn start_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         app.launch_dialog
             .as_ref()
             .map(|dialog| dialog.focused_field),
-        Some(LaunchDialogField::PreLaunchCommand)
+        Some(LaunchDialogField::StartConfig(
+            StartAgentConfigField::PreLaunchCommand
+        ))
     );
 
     ftui::Model::update(
@@ -1948,7 +2017,9 @@ fn start_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         app.launch_dialog
             .as_ref()
             .map(|dialog| dialog.focused_field),
-        Some(LaunchDialogField::Prompt)
+        Some(LaunchDialogField::StartConfig(
+            StartAgentConfigField::Prompt
+        ))
     );
 }
 
@@ -2891,7 +2962,9 @@ fn create_dialog_ctrl_n_and_ctrl_p_follow_tab_navigation() {
         app.create_dialog
             .as_ref()
             .map(|dialog| dialog.focused_field),
-        Some(CreateDialogField::CreateButton)
+        Some(CreateDialogField::StartConfig(
+            StartAgentConfigField::Prompt
+        ))
     );
     ftui::Model::update(
         &mut app,
@@ -3052,7 +3125,7 @@ fn create_dialog_enter_without_name_shows_validation_toast() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
     );
-    for _ in 0..6 {
+    for _ in 0..9 {
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -3075,7 +3148,7 @@ fn create_dialog_enter_on_cancel_closes_modal() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
     );
-    for _ in 0..7 {
+    for _ in 0..10 {
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),

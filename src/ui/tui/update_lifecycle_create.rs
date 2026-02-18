@@ -35,6 +35,23 @@ impl GroveApp {
                     "setup_commands".to_string(),
                     Value::from(dialog.setup_commands.clone()),
                 ),
+                (
+                    "prompt_len".to_string(),
+                    Value::from(
+                        u64::try_from(dialog.start_config.prompt.len()).unwrap_or(u64::MAX),
+                    ),
+                ),
+                (
+                    "skip_permissions".to_string(),
+                    Value::from(dialog.start_config.skip_permissions),
+                ),
+                (
+                    "pre_launch_len".to_string(),
+                    Value::from(
+                        u64::try_from(dialog.start_config.pre_launch_command.len())
+                            .unwrap_or(u64::MAX),
+                    ),
+                ),
             ],
         );
         let Some(project) = self.projects.get(dialog.project_index).cloned() else {
@@ -61,6 +78,7 @@ impl GroveApp {
             return;
         }
 
+        self.pending_create_start_config = Some(dialog.start_config.clone());
         let repo_root = project.path;
         if !self.tmux_input.supports_background_launch() {
             let git = CommandGitRunner;
@@ -100,12 +118,20 @@ impl GroveApp {
         completion: CreateWorkspaceCompletion,
     ) {
         self.create_in_flight = false;
+        let fallback_skip_permissions = self.launch_skip_permissions;
+        let start_config = self.pending_create_start_config.take().unwrap_or_else(|| {
+            StartAgentConfigState::new(String::new(), String::new(), fallback_skip_permissions)
+        });
         let workspace_name = completion.request.workspace_name;
         match completion.result {
             Ok(result) => {
                 self.create_dialog = None;
                 self.clear_create_branch_picker();
-                self.pending_auto_start_workspace_path = Some(result.workspace_path.clone());
+                self.pending_auto_start_workspace = Some(PendingAutoStartWorkspace {
+                    workspace_path: result.workspace_path.clone(),
+                    start_config: start_config.clone(),
+                });
+                self.launch_skip_permissions = start_config.skip_permissions;
                 self.pending_auto_launch_shell_workspace_path = Some(result.workspace_path.clone());
                 self.refresh_workspaces(Some(result.workspace_path));
                 self.state.mode = UiMode::List;

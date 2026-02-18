@@ -25,7 +25,7 @@ impl GroveApp {
             DiscoveryState::Ready => {
                 if let Some(dialog) = &self.create_dialog {
                     return format!(
-                        "Status: new workspace, field={}, agent={}, base_branch=\"{}\", setup_auto_run={}, setup_commands=\"{}\", name=\"{}\"",
+                        "Status: new workspace, field={}, agent={}, base_branch=\"{}\", setup_auto_run={}, unsafe={}, setup_commands=\"{}\", name=\"{}\", prompt=\"{}\", pre=\"{}\"",
                         dialog.focused_field.label(),
                         dialog.agent.label(),
                         dialog.base_branch.replace('\n', "\\n"),
@@ -34,17 +34,28 @@ impl GroveApp {
                         } else {
                             "off"
                         },
+                        if dialog.start_config.skip_permissions {
+                            "on"
+                        } else {
+                            "off"
+                        },
                         dialog.setup_commands.replace('\n', "\\n"),
-                        dialog.workspace_name
+                        dialog.workspace_name,
+                        dialog.start_config.prompt.replace('\n', "\\n"),
+                        dialog.start_config.pre_launch_command.replace('\n', "\\n"),
                     );
                 }
                 if let Some(dialog) = &self.launch_dialog {
                     return format!(
                         "Status: start agent, field={}, unsafe={}, prompt=\"{}\", pre=\"{}\"",
                         dialog.focused_field.label(),
-                        if dialog.skip_permissions { "on" } else { "off" },
-                        dialog.prompt.replace('\n', "\\n"),
-                        dialog.pre_launch_command.replace('\n', "\\n"),
+                        if dialog.start_config.skip_permissions {
+                            "on"
+                        } else {
+                            "off"
+                        },
+                        dialog.start_config.prompt.replace('\n', "\\n"),
+                        dialog.start_config.pre_launch_command.replace('\n', "\\n"),
                     );
                 }
                 if self.interactive.is_some() {
@@ -99,7 +110,7 @@ impl GroveApp {
             return "Esc/? close help".to_string();
         }
         if self.create_dialog.is_some() {
-            return "Tab/S-Tab or C-n/C-p field, j/k adjust controls, ';' separates setup commands, Space toggles auto-run, h/l buttons, Enter select/create, Esc cancel"
+            return "Tab/S-Tab or C-n/C-p field, j/k adjust controls, ';' separates workspace setup cmds, Space toggles auto-run or unsafe, h/l buttons, Enter select/create, Esc cancel"
                 .to_string();
         }
         if self.edit_dialog.is_some() {
@@ -115,7 +126,7 @@ impl GroveApp {
                 .to_string();
         }
         if self.launch_dialog.is_some() {
-            return "Tab/S-Tab or C-n/C-p field, h/l buttons, Space toggle unsafe, Enter select/start, Esc cancel"
+            return "Tab/S-Tab or C-n/C-p field, h/l buttons, Space toggles unsafe, Enter select/start, Esc cancel"
                 .to_string();
         }
         if self.delete_dialog.is_some() {

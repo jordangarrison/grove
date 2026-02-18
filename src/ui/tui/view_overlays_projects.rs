@@ -112,9 +112,9 @@ impl GroveApp {
                 modal_labeled_input_row(
                     content_width,
                     theme,
-                    "SetupCmds",
+                    "WsSetupCmds",
                     defaults_dialog.setup_commands.as_str(),
-                    "direnv allow; cmd2; cmd3",
+                    "one-time setup on workspace create/setup",
                     focused(ProjectDefaultsDialogField::SetupCommands),
                 ),
                 modal_focus_badged_row(

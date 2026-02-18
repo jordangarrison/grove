@@ -24,21 +24,28 @@ impl GroveApp {
         launched || self.shell_launch_in_flight.contains(&session_name)
     }
 
-    fn auto_start_pending_workspace_agent(&mut self) -> bool {
-        let Some(pending_path) = self.pending_auto_start_workspace_path.clone() else {
+    pub(super) fn auto_start_pending_workspace_agent(&mut self) -> bool {
+        let Some(pending) = self.pending_auto_start_workspace.clone() else {
             return false;
         };
-        self.pending_auto_start_workspace_path = None;
+        self.pending_auto_start_workspace = None;
 
         let selected_matches = self
             .state
             .selected_workspace()
-            .is_some_and(|workspace| workspace.path == pending_path);
+            .is_some_and(|workspace| workspace.path == pending.workspace_path);
         if !selected_matches {
             return false;
         }
 
-        self.start_selected_workspace_agent_with_options(None, None, self.launch_skip_permissions);
+        let (prompt, pre_launch_command, skip_permissions) =
+            pending.start_config.parse_start_options();
+        self.launch_skip_permissions = skip_permissions;
+        self.start_selected_workspace_agent_with_options(
+            prompt,
+            pre_launch_command,
+            skip_permissions,
+        );
         self.start_in_flight
     }
 
