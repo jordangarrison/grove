@@ -3,8 +3,6 @@ use std::time::Instant;
 use ftui::PackedRgba;
 use ftui::core::geometry::Rect;
 
-pub(super) const DEFAULT_SIDEBAR_WIDTH_PCT: u16 = 33;
-pub(super) const SIDEBAR_RATIO_FILENAME: &str = ".grove-sidebar-width";
 pub(super) const WORKSPACE_LAUNCH_PROMPT_FILENAME: &str = ".grove-prompt";
 pub(super) const HEADER_HEIGHT: u16 = 1;
 pub(super) const STATUS_HEIGHT: u16 = 1;

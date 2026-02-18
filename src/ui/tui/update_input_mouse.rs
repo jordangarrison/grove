@@ -276,10 +276,13 @@ impl GroveApp {
     }
 
     pub(super) fn persist_sidebar_ratio(&mut self) {
-        if let Err(error) = fs::write(
-            &self.sidebar_ratio_path,
-            serialize_sidebar_ratio(self.sidebar_width_pct),
-        ) {
+        let config = GroveConfig {
+            multiplexer: self.multiplexer,
+            sidebar_width_pct: self.sidebar_width_pct,
+            projects: self.projects.clone(),
+        };
+        if let Err(error) = crate::infrastructure::config::save_to_path(&self.config_path, &config)
+        {
             self.last_tmux_error = Some(format!("sidebar ratio persist failed: {error}"));
         }
     }

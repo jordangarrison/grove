@@ -3,22 +3,18 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::infrastructure::config::{GroveConfig, MultiplexerKind, ProjectConfig};
-use crate::ui::mouse::parse_sidebar_ratio;
+use crate::ui::mouse::clamp_sidebar_ratio;
 
 use super::*;
 
 #[derive(Debug)]
 pub(super) struct AppPaths {
-    pub(super) sidebar_ratio_path: PathBuf,
     pub(super) config_path: PathBuf,
 }
 
 impl AppPaths {
-    pub(super) fn new(sidebar_ratio_path: PathBuf, config_path: PathBuf) -> Self {
-        Self {
-            sidebar_ratio_path,
-            config_path,
-        }
+    pub(super) fn new(config_path: PathBuf) -> Self {
+        Self { config_path }
     }
 }
 
@@ -31,19 +27,10 @@ pub(super) struct AppDependencies {
     pub(super) debug_record_start_ts: Option<u64>,
 }
 
-pub(super) fn default_sidebar_ratio_path() -> PathBuf {
-    match std::env::current_dir() {
-        Ok(cwd) => cwd.join(SIDEBAR_RATIO_FILENAME),
-        Err(_) => PathBuf::from(SIDEBAR_RATIO_FILENAME),
-    }
-}
-
-pub(super) fn load_sidebar_ratio(path: &Path) -> u16 {
-    let Ok(raw) = fs::read_to_string(path) else {
-        return DEFAULT_SIDEBAR_WIDTH_PCT;
-    };
-
-    parse_sidebar_ratio(&raw).unwrap_or(DEFAULT_SIDEBAR_WIDTH_PCT)
+pub(super) fn load_sidebar_width_pct(config_path: &Path) -> u16 {
+    let config = crate::infrastructure::config::load_from_path(config_path)
+        .unwrap_or_else(|_| GroveConfig::default());
+    clamp_sidebar_ratio(config.sidebar_width_pct)
 }
 
 fn default_config_path() -> PathBuf {

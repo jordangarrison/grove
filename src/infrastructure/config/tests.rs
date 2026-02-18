@@ -22,6 +22,7 @@ fn missing_config_defaults_to_tmux() {
         config,
         GroveConfig {
             multiplexer: MultiplexerKind::Tmux,
+            sidebar_width_pct: 33,
             projects: Vec::new(),
         }
     );
@@ -32,6 +33,7 @@ fn save_and_load_round_trip() {
     let path = unique_temp_path("roundtrip");
     let config = GroveConfig {
         multiplexer: MultiplexerKind::Tmux,
+        sidebar_width_pct: 52,
         projects: vec![ProjectConfig {
             name: "grove".to_string(),
             path: PathBuf::from("/repos/grove"),
@@ -59,6 +61,7 @@ fn load_old_config_without_projects_defaults_to_empty_projects() {
     fs::write(&path, "multiplexer = \"tmux\"\n").expect("fixture should write");
 
     let loaded = load_from_path(&path).expect("legacy config should load");
+    assert_eq!(loaded.sidebar_width_pct, 33);
     assert_eq!(loaded.projects, Vec::<ProjectConfig>::new());
 
     let _ = fs::remove_file(path);
@@ -75,6 +78,7 @@ fn load_project_without_defaults_uses_project_defaults_fallback() {
 
     let loaded = load_from_path(&path).expect("legacy project config should load");
     assert_eq!(loaded.projects.len(), 1);
+    assert_eq!(loaded.sidebar_width_pct, 33);
     assert_eq!(loaded.projects[0].defaults.base_branch, "");
     assert_eq!(
         loaded.projects[0].defaults.setup_commands,

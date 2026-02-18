@@ -24,12 +24,28 @@ impl MultiplexerKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroveConfig {
     #[serde(default)]
     pub multiplexer: MultiplexerKind,
+    #[serde(default = "default_sidebar_width_pct")]
+    pub sidebar_width_pct: u16,
     #[serde(default)]
     pub projects: Vec<ProjectConfig>,
+}
+
+const fn default_sidebar_width_pct() -> u16 {
+    33
+}
+
+impl Default for GroveConfig {
+    fn default() -> Self {
+        Self {
+            multiplexer: MultiplexerKind::default(),
+            sidebar_width_pct: default_sidebar_width_pct(),
+            projects: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

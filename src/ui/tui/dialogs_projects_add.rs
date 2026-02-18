@@ -13,17 +13,24 @@ impl GroveApp {
     fn save_projects_config_to_path(
         config_path: &Path,
         multiplexer: MultiplexerKind,
+        sidebar_width_pct: u16,
         projects: &[ProjectConfig],
     ) -> Result<(), String> {
         let config = GroveConfig {
             multiplexer,
+            sidebar_width_pct,
             projects: projects.to_vec(),
         };
         crate::infrastructure::config::save_to_path(config_path, &config)
     }
 
     fn save_projects_config(&self) -> Result<(), String> {
-        Self::save_projects_config_to_path(&self.config_path, self.multiplexer, &self.projects)
+        Self::save_projects_config_to_path(
+            &self.config_path,
+            self.multiplexer,
+            self.sidebar_width_pct,
+            &self.projects,
+        )
     }
 
     pub(super) fn delete_selected_project_from_dialog(&mut self) {
@@ -86,6 +93,7 @@ impl GroveApp {
             let result = Self::save_projects_config_to_path(
                 &self.config_path,
                 self.multiplexer,
+                self.sidebar_width_pct,
                 &updated_projects,
             );
             self.apply_delete_project_completion(DeleteProjectCompletion {
@@ -99,10 +107,15 @@ impl GroveApp {
 
         let config_path = self.config_path.clone();
         let multiplexer = self.multiplexer;
+        let sidebar_width_pct = self.sidebar_width_pct;
         self.project_delete_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let result =
-                Self::save_projects_config_to_path(&config_path, multiplexer, &updated_projects);
+            let result = Self::save_projects_config_to_path(
+                &config_path,
+                multiplexer,
+                sidebar_width_pct,
+                &updated_projects,
+            );
             Msg::DeleteProjectCompleted(DeleteProjectCompletion {
                 project_name: project.name,
                 project_path: project.path,

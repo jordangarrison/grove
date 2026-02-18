@@ -45,11 +45,11 @@ fn preview_poll_change_emits_output_changed_event() {
 
 #[test]
 fn tick_queues_async_preview_poll_with_background_io() {
-    let sidebar_ratio_path = unique_sidebar_ratio_path("background-poll");
+    let config_path = unique_config_path("background-poll");
     let mut app = GroveApp::from_parts(
         fixture_bootstrap(WorkspaceStatus::Active),
         Box::new(BackgroundOnlyTmuxInput),
-        AppPaths::new(sidebar_ratio_path, unique_config_path("background-poll")),
+        AppPaths::new(config_path),
         MultiplexerKind::Tmux,
         Box::new(NullEventLogger),
         None,
@@ -63,14 +63,11 @@ fn tick_queues_async_preview_poll_with_background_io() {
 
 #[test]
 fn tick_queues_async_poll_for_background_workspace_statuses_only() {
-    let sidebar_ratio_path = unique_sidebar_ratio_path("background-status-only");
+    let config_path = unique_config_path("background-status-only");
     let mut app = GroveApp::from_parts(
         fixture_bootstrap(WorkspaceStatus::Idle),
         Box::new(BackgroundOnlyTmuxInput),
-        AppPaths::new(
-            sidebar_ratio_path,
-            unique_config_path("background-status-only"),
-        ),
+        AppPaths::new(config_path),
         MultiplexerKind::Tmux,
         Box::new(NullEventLogger),
         None,
@@ -2385,10 +2382,7 @@ fn fixture_background_app_with_two_feature_workspaces() -> GroveApp {
     GroveApp::from_parts(
         bootstrap,
         Box::new(BackgroundOnlyTmuxInput),
-        AppPaths::new(
-            unique_sidebar_ratio_path("delete-queue"),
-            unique_config_path("delete-queue"),
-        ),
+        AppPaths::new(unique_config_path("delete-queue")),
         MultiplexerKind::Tmux,
         Box::new(NullEventLogger),
         None,
@@ -4530,15 +4524,15 @@ fn ansi_line_parser_preserves_text_and_styles() {
 
 #[test]
 fn tick_polls_cursor_metadata_and_renders_overlay() {
-    let sidebar_ratio_path = unique_sidebar_ratio_path("cursor-overlay");
-    let (mut app, _commands, _captures, _cursor_captures) = fixture_app_with_tmux_and_sidebar_path(
+    let config_path = unique_config_path("cursor-overlay");
+    let (mut app, _commands, _captures, _cursor_captures) = fixture_app_with_tmux_and_config_path(
         WorkspaceStatus::Active,
         vec![
             Ok("first\nsecond\nthird\n".to_string()),
             Ok("first\nsecond\nthird\n".to_string()),
         ],
         vec![Ok("1 1 1 78 34".to_string()), Ok("1 1 1 78 34".to_string())],
-        sidebar_ratio_path,
+        config_path,
     );
     app.state.workspaces[1].agent = AgentType::Claude;
     app.state.selected_index = 1;
@@ -4564,12 +4558,12 @@ fn tick_polls_cursor_metadata_and_renders_overlay() {
 
 #[test]
 fn divider_ratio_persists_across_app_instances() {
-    let sidebar_ratio_path = unique_sidebar_ratio_path("persist");
-    let (mut app, _commands, _captures, _cursor_captures) = fixture_app_with_tmux_and_sidebar_path(
+    let config_path = unique_config_path("persist");
+    let (mut app, _commands, _captures, _cursor_captures) = fixture_app_with_tmux_and_config_path(
         WorkspaceStatus::Idle,
         Vec::new(),
         Vec::new(),
-        sidebar_ratio_path.clone(),
+        config_path.clone(),
     );
 
     ftui::Model::update(
@@ -4597,21 +4591,20 @@ fn divider_ratio_persists_across_app_instances() {
     );
 
     assert_eq!(app.sidebar_width_pct, 52);
-    assert_eq!(
-        fs::read_to_string(&sidebar_ratio_path).expect("ratio file should be written"),
-        "52"
-    );
+    let saved = crate::infrastructure::config::load_from_path(&config_path)
+        .expect("config should be readable");
+    assert_eq!(saved.sidebar_width_pct, 52);
 
     let (app_reloaded, _commands, _captures, _cursor_captures) =
-        fixture_app_with_tmux_and_sidebar_path(
+        fixture_app_with_tmux_and_config_path(
             WorkspaceStatus::Idle,
             Vec::new(),
             Vec::new(),
-            sidebar_ratio_path.clone(),
+            config_path.clone(),
         );
 
     assert_eq!(app_reloaded.sidebar_width_pct, 52);
-    let _ = fs::remove_file(sidebar_ratio_path);
+    let _ = fs::remove_file(config_path);
 }
 
 #[test]
@@ -5599,12 +5592,12 @@ fn bracketed_paste_event_forwards_wrapped_literal() {
 
 #[test]
 fn alt_copy_then_alt_paste_uses_visible_preview_text_when_no_selection() {
-    let sidebar_ratio_path = unique_sidebar_ratio_path("alt-copy-paste");
-    let (mut app, commands, captures, _cursor_captures) = fixture_app_with_tmux_and_sidebar_path(
+    let config_path = unique_config_path("alt-copy-paste");
+    let (mut app, commands, captures, _cursor_captures) = fixture_app_with_tmux_and_config_path(
         WorkspaceStatus::Active,
         vec![Ok(String::new())],
         vec![Ok("1 0 0 78 34".to_string())],
-        sidebar_ratio_path,
+        config_path,
     );
     app.state.selected_index = 1;
 
@@ -5660,7 +5653,7 @@ fn shell_contains_list_preview_and_status_placeholders() {
 
 #[test]
 fn shell_renders_discovery_error_state() {
-    let sidebar_ratio_path = unique_sidebar_ratio_path("error-state");
+    let config_path = unique_config_path("error-state");
     let app = GroveApp::from_parts(
         BootstrapData {
             repo_name: "grove".to_string(),
@@ -5674,7 +5667,7 @@ fn shell_renders_discovery_error_state() {
             cursor_captures: Rc::new(RefCell::new(Vec::new())),
             calls: Rc::new(RefCell::new(Vec::new())),
         }),
-        AppPaths::new(sidebar_ratio_path, unique_config_path("error-state")),
+        AppPaths::new(config_path),
         MultiplexerKind::Tmux,
         Box::new(NullEventLogger),
         None,
@@ -5832,14 +5825,11 @@ fn git_tab_renders_lazygit_placeholder_and_launches_session() {
 
 #[test]
 fn git_tab_queues_async_lazygit_launch_when_supported() {
-    let sidebar_ratio_path = unique_sidebar_ratio_path("background-lazygit-launch");
+    let config_path = unique_config_path("background-lazygit-launch");
     let mut app = GroveApp::from_parts(
         fixture_bootstrap(WorkspaceStatus::Idle),
         Box::new(BackgroundLaunchTmuxInput),
-        AppPaths::new(
-            sidebar_ratio_path,
-            unique_config_path("background-lazygit-launch"),
-        ),
+        AppPaths::new(config_path),
         MultiplexerKind::Tmux,
         Box::new(NullEventLogger),
         None,
@@ -6102,7 +6092,7 @@ fn preview_mode_scroll_keys_noop_when_content_fits_viewport() {
 
 #[test]
 fn frame_debug_record_logs_every_view() {
-    let sidebar_ratio_path = unique_sidebar_ratio_path("frame-log");
+    let config_path = unique_config_path("frame-log");
     let events = Arc::new(Mutex::new(Vec::new()));
     let event_log = RecordingEventLogger {
         events: events.clone(),
@@ -6115,7 +6105,7 @@ fn frame_debug_record_logs_every_view() {
             cursor_captures: Rc::new(RefCell::new(Vec::new())),
             calls: Rc::new(RefCell::new(Vec::new())),
         }),
-        AppPaths::new(sidebar_ratio_path, unique_config_path("frame-log")),
+        AppPaths::new(config_path),
         MultiplexerKind::Tmux,
         Box::new(event_log),
         Some(1_771_023_000_000),
@@ -6149,7 +6139,7 @@ fn frame_debug_record_logs_every_view() {
 
 #[test]
 fn frame_debug_record_includes_frame_lines() {
-    let sidebar_ratio_path = unique_sidebar_ratio_path("frame-lines");
+    let config_path = unique_config_path("frame-lines");
     let events = Arc::new(Mutex::new(Vec::new()));
     let event_log = RecordingEventLogger {
         events: events.clone(),
@@ -6162,7 +6152,7 @@ fn frame_debug_record_includes_frame_lines() {
             cursor_captures: Rc::new(RefCell::new(Vec::new())),
             calls: Rc::new(RefCell::new(Vec::new())),
         }),
-        AppPaths::new(sidebar_ratio_path, unique_config_path("frame-lines")),
+        AppPaths::new(config_path),
         MultiplexerKind::Tmux,
         Box::new(event_log),
         Some(1_771_023_000_123),
@@ -6216,7 +6206,7 @@ fn frame_debug_record_includes_frame_lines() {
 
 #[test]
 fn frame_debug_record_includes_interactive_cursor_snapshot() {
-    let sidebar_ratio_path = unique_sidebar_ratio_path("frame-cursor-snapshot");
+    let config_path = unique_config_path("frame-cursor-snapshot");
     let events = Arc::new(Mutex::new(Vec::new()));
     let event_log = RecordingEventLogger {
         events: events.clone(),
@@ -6229,10 +6219,7 @@ fn frame_debug_record_includes_interactive_cursor_snapshot() {
             cursor_captures: Rc::new(RefCell::new(Vec::new())),
             calls: Rc::new(RefCell::new(Vec::new())),
         }),
-        AppPaths::new(
-            sidebar_ratio_path,
-            unique_config_path("frame-cursor-snapshot"),
-        ),
+        AppPaths::new(config_path),
         MultiplexerKind::Tmux,
         Box::new(event_log),
         Some(1_771_023_000_124),

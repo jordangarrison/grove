@@ -103,6 +103,7 @@ impl GroveApp {
         self.tmux_input = input_for_multiplexer(selected);
         let config = GroveConfig {
             multiplexer: selected,
+            sidebar_width_pct: self.sidebar_width_pct,
             projects: self.projects.clone(),
         };
         if let Err(error) = crate::infrastructure::config::save_to_path(&self.config_path, &config)

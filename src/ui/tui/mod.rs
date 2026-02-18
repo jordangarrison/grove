@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque, hash_map::DefaultHasher};
-use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -65,7 +64,7 @@ use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
 use crate::infrastructure::config::{GroveConfig, MultiplexerKind, ProjectConfig, ProjectDefaults};
 use crate::infrastructure::event_log::{Event as LogEvent, EventLogger};
-use crate::ui::mouse::{clamp_sidebar_ratio, ratio_from_drag, serialize_sidebar_ratio};
+use crate::ui::mouse::{clamp_sidebar_ratio, ratio_from_drag};
 use crate::ui::state::{Action, AppState, PaneFocus, UiMode, reduce};
 
 mod ansi;
@@ -227,7 +226,6 @@ struct GroveApp {
     sidebar_width_pct: u16,
     sidebar_hidden: bool,
     launch_skip_permissions: bool,
-    sidebar_ratio_path: PathBuf,
     divider_drag_active: bool,
     divider_drag_pointer_offset: i32,
     preview_selection: TextSelectionState,

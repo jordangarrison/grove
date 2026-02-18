@@ -9,8 +9,7 @@ use std::path::{Path, PathBuf};
 #[cfg(test)]
 use super::bootstrap_config::project_paths_equal;
 use super::bootstrap_config::{
-    AppDependencies, AppPaths, default_sidebar_ratio_path, input_for_multiplexer,
-    load_runtime_config, load_sidebar_ratio,
+    AppDependencies, AppPaths, input_for_multiplexer, load_runtime_config, load_sidebar_width_pct,
 };
 use super::bootstrap_discovery::bootstrap_data_for_projects;
 use super::*;
@@ -24,7 +23,7 @@ impl GroveApp {
             bootstrap,
             config.projects,
             input_for_multiplexer(multiplexer),
-            AppPaths::new(default_sidebar_ratio_path(), config_path),
+            AppPaths::new(config_path),
             multiplexer,
             event_log,
             None,
@@ -42,7 +41,7 @@ impl GroveApp {
             bootstrap,
             config.projects,
             input_for_multiplexer(multiplexer),
-            AppPaths::new(default_sidebar_ratio_path(), config_path),
+            AppPaths::new(config_path),
             multiplexer,
             event_log,
             Some(app_start_ts),
@@ -134,11 +133,8 @@ impl GroveApp {
             event_log,
             debug_record_start_ts,
         } = dependencies;
-        let AppPaths {
-            sidebar_ratio_path,
-            config_path,
-        } = paths;
-        let sidebar_width_pct = load_sidebar_ratio(&sidebar_ratio_path);
+        let AppPaths { config_path } = paths;
+        let sidebar_width_pct = load_sidebar_width_pct(&config_path);
         let mapper_config = KeybindingConfig::from_env().with_sequence_config(
             KeySequenceConfig::from_env()
                 .disable_sequences()
@@ -196,7 +192,6 @@ impl GroveApp {
             sidebar_width_pct,
             sidebar_hidden: false,
             launch_skip_permissions: false,
-            sidebar_ratio_path,
             divider_drag_active: false,
             divider_drag_pointer_offset: 0,
             preview_selection: TextSelectionState::default(),

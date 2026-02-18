@@ -318,7 +318,6 @@ fn fixture_projects() -> Vec<ProjectConfig> {
 }
 
 fn fixture_app() -> GroveApp {
-    let sidebar_ratio_path = unique_sidebar_ratio_path("fixture");
     let config_path = unique_config_path("fixture");
     GroveApp::from_parts_with_clipboard_and_projects(
         fixture_bootstrap(WorkspaceStatus::Idle),
@@ -331,7 +330,7 @@ fn fixture_app() -> GroveApp {
                 calls: Rc::new(RefCell::new(Vec::new())),
             }),
             clipboard: test_clipboard(),
-            paths: AppPaths::new(sidebar_ratio_path, config_path),
+            paths: AppPaths::new(config_path),
             multiplexer: MultiplexerKind::Tmux,
             event_log: Box::new(NullEventLogger),
             debug_record_start_ts: None,
@@ -430,17 +429,6 @@ fn arb_msg() -> impl Strategy<Value = Msg> {
     ]
 }
 
-fn unique_sidebar_ratio_path(label: &str) -> PathBuf {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or(Duration::from_secs(0))
-        .as_nanos();
-    std::env::temp_dir().join(format!(
-        "grove-sidebar-width-{label}-{}-{timestamp}.txt",
-        std::process::id()
-    ))
-}
-
 fn unique_config_path(label: &str) -> PathBuf {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -469,19 +457,19 @@ fn fixture_app_with_tmux(
     status: WorkspaceStatus,
     captures: Vec<Result<String, String>>,
 ) -> FixtureApp {
-    fixture_app_with_tmux_and_sidebar_path(
+    fixture_app_with_tmux_and_config_path(
         status,
         captures,
         Vec::new(),
-        unique_sidebar_ratio_path("fixture-with-tmux"),
+        unique_config_path("fixture-with-tmux"),
     )
 }
 
-fn fixture_app_with_tmux_and_sidebar_path(
+fn fixture_app_with_tmux_and_config_path(
     status: WorkspaceStatus,
     captures: Vec<Result<String, String>>,
     cursor_captures: Vec<Result<String, String>>,
-    sidebar_ratio_path: PathBuf,
+    config_path: PathBuf,
 ) -> FixtureApp {
     let commands = Rc::new(RefCell::new(Vec::new()));
     let captures = Rc::new(RefCell::new(captures));
@@ -499,7 +487,7 @@ fn fixture_app_with_tmux_and_sidebar_path(
             AppDependencies {
                 tmux_input: Box::new(tmux),
                 clipboard: test_clipboard(),
-                paths: AppPaths::new(sidebar_ratio_path, unique_config_path("fixture-with-tmux")),
+                paths: AppPaths::new(config_path),
                 multiplexer: MultiplexerKind::Tmux,
                 event_log: Box::new(NullEventLogger),
                 debug_record_start_ts: None,
@@ -516,7 +504,7 @@ fn fixture_app_with_tmux_and_calls(
     captures: Vec<Result<String, String>>,
     cursor_captures: Vec<Result<String, String>>,
 ) -> FixtureAppWithCalls {
-    let sidebar_ratio_path = unique_sidebar_ratio_path("fixture-with-calls");
+    let config_path = unique_config_path("fixture-with-calls");
     let commands = Rc::new(RefCell::new(Vec::new()));
     let captures = Rc::new(RefCell::new(captures));
     let cursor_captures = Rc::new(RefCell::new(cursor_captures));
@@ -535,7 +523,7 @@ fn fixture_app_with_tmux_and_calls(
             AppDependencies {
                 tmux_input: Box::new(tmux),
                 clipboard: test_clipboard(),
-                paths: AppPaths::new(sidebar_ratio_path, unique_config_path("fixture-with-calls")),
+                paths: AppPaths::new(config_path),
                 multiplexer: MultiplexerKind::Tmux,
                 event_log: Box::new(NullEventLogger),
                 debug_record_start_ts: None,
@@ -553,7 +541,7 @@ fn fixture_app_with_tmux_and_events(
     captures: Vec<Result<String, String>>,
     cursor_captures: Vec<Result<String, String>>,
 ) -> FixtureAppWithEvents {
-    let sidebar_ratio_path = unique_sidebar_ratio_path("fixture-with-events");
+    let config_path = unique_config_path("fixture-with-events");
     let commands = Rc::new(RefCell::new(Vec::new()));
     let captures = Rc::new(RefCell::new(captures));
     let cursor_captures = Rc::new(RefCell::new(cursor_captures));
@@ -575,10 +563,7 @@ fn fixture_app_with_tmux_and_events(
             AppDependencies {
                 tmux_input: Box::new(tmux),
                 clipboard: test_clipboard(),
-                paths: AppPaths::new(
-                    sidebar_ratio_path,
-                    unique_config_path("fixture-with-events"),
-                ),
+                paths: AppPaths::new(config_path),
                 multiplexer: MultiplexerKind::Tmux,
                 event_log: Box::new(event_log),
                 debug_record_start_ts: None,
@@ -598,10 +583,7 @@ fn fixture_background_app(status: WorkspaceStatus) -> GroveApp {
         AppDependencies {
             tmux_input: Box::new(BackgroundOnlyTmuxInput),
             clipboard: test_clipboard(),
-            paths: AppPaths::new(
-                unique_sidebar_ratio_path("background"),
-                unique_config_path("background"),
-            ),
+            paths: AppPaths::new(unique_config_path("background")),
             multiplexer: MultiplexerKind::Tmux,
             event_log: Box::new(NullEventLogger),
             debug_record_start_ts: None,
