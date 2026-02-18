@@ -197,6 +197,7 @@ impl GroveApp {
 
     pub(super) fn show_toast(&mut self, text: impl Into<String>, is_error: bool) {
         let message = text.into();
+        let max_width = self.viewport_width.saturating_sub(6).clamp(50, 140);
         self.event_log.log(
             LogEvent::new("toast", "toast_shown")
                 .with_data("text", Value::from(message.clone()))
@@ -208,11 +209,13 @@ impl GroveApp {
                 .title("Error")
                 .icon(ToastIcon::Error)
                 .style_variant(ToastStyle::Error)
-                .duration(Duration::from_secs(3))
+                .max_width(max_width)
+                .duration(Duration::from_secs(8))
         } else {
             Toast::new(message)
                 .icon(ToastIcon::Success)
                 .style_variant(ToastStyle::Success)
+                .max_width(max_width)
                 .duration(Duration::from_secs(3))
         };
         let priority = if is_error {

@@ -1,6 +1,32 @@
 use super::*;
 
 impl GroveApp {
+    fn summarize_merge_failure(error: &str) -> String {
+        let conflict_prefix = "CONFLICT (content): Merge conflict in ";
+        let conflict_files = error
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix(conflict_prefix))
+            .map(ToOwned::to_owned)
+            .collect::<Vec<String>>();
+        if !conflict_files.is_empty() {
+            let files = conflict_files.join(", ");
+            return format!("merge conflict, resolve in base worktree then retry (files: {files})");
+        }
+
+        if error.contains("Automatic merge failed; fix conflicts and then commit the result.") {
+            return "merge conflict, resolve in base worktree then retry".to_string();
+        }
+
+        if error.contains("base worktree has uncommitted changes") {
+            return "merge blocked, base worktree has uncommitted or untracked files".to_string();
+        }
+        if error.contains("workspace worktree has uncommitted changes") {
+            return "merge blocked, workspace has uncommitted or untracked files".to_string();
+        }
+
+        format!("workspace merge failed: {error}")
+    }
+
     pub(super) fn apply_delete_project_completion(&mut self, completion: DeleteProjectCompletion) {
         self.project_delete_in_flight = false;
         match completion.result {
@@ -151,7 +177,7 @@ impl GroveApp {
                         .with_data("error", Value::from(error.clone())),
                 );
                 self.last_tmux_error = Some(error.clone());
-                self.show_toast(format!("workspace merge failed: {error}"), true);
+                self.show_toast(Self::summarize_merge_failure(&error), true);
             }
         }
     }

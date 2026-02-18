@@ -2698,6 +2698,31 @@ fn merge_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
 }
 
 #[test]
+fn merge_completion_conflict_error_shows_compact_conflict_summary() {
+    let mut app = fixture_app();
+    app.state.selected_index = 1;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::MergeWorkspaceCompleted(MergeWorkspaceCompletion {
+            workspace_name: "feature-a".to_string(),
+            workspace_path: PathBuf::from("/repos/grove-feature-a"),
+            workspace_branch: "feature-a".to_string(),
+            base_branch: "main".to_string(),
+            result: Err(
+                "git merge --no-ff feature-a: CONFLICT (content): Merge conflict in src/a.rs\nCONFLICT (content): Merge conflict in src/b.rs\nAutomatic merge failed; fix conflicts and then commit the result."
+                    .to_string(),
+            ),
+            warnings: Vec::new(),
+        }),
+    );
+
+    let status = app.status_bar_line();
+    assert!(status.contains("merge conflict"));
+    assert!(status.contains("resolve in base worktree"));
+}
+
+#[test]
 fn update_key_opens_update_from_base_dialog_for_selected_workspace() {
     let mut app = fixture_app();
 

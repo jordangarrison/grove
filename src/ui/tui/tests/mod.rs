@@ -13,14 +13,14 @@ use super::{
     CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
     DeleteWorkspaceCompletion, EditDialogField, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW,
     HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
-    LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, Msg,
-    PREVIEW_METADATA_ROWS, PendingAutoStartWorkspace, PendingResizeVerification,
-    PreviewPollCompletion, PreviewTab, ProjectAddDialogField, ProjectDefaultsDialogField,
-    RefreshWorkspacesCompletion, SettingsDialogField, StartAgentCompletion, StartAgentConfigField,
-    StartAgentConfigState, StopAgentCompletion, TextSelectionPoint, TmuxInput, UiCommand,
-    UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceShellLaunchCompletion,
-    WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
-    ui_theme,
+    LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField,
+    MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS, PendingAutoStartWorkspace,
+    PendingResizeVerification, PreviewPollCompletion, PreviewTab, ProjectAddDialogField,
+    ProjectDefaultsDialogField, RefreshWorkspacesCompletion, SettingsDialogField,
+    StartAgentCompletion, StartAgentConfigField, StartAgentConfigState, StopAgentCompletion,
+    TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT,
+    WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, ansi_16_color,
+    ansi_line_to_styled_line, parse_cursor_metadata, ui_theme,
 };
 use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
 use crate::application::interactive::InteractiveState;

@@ -704,14 +704,22 @@ fn run_git_command(repo_root: &Path, args: &[String]) -> Result<(), String> {
     }
 
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-    if stderr.is_empty() {
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if stderr.is_empty() && stdout.is_empty() {
         return Err(format!(
             "git {}: exit status {}",
             args.join(" "),
             output.status
         ));
     }
-    Err(format!("git {}: {stderr}", args.join(" ")))
+    let details = if stderr.is_empty() {
+        stdout
+    } else if stdout.is_empty() {
+        stderr
+    } else {
+        format!("{stderr}; {stdout}")
+    };
+    Err(format!("git {}: {details}", args.join(" ")))
 }
 
 fn ensure_git_worktree_clean(worktree_path: &Path) -> Result<(), String> {
