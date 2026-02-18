@@ -5,3 +5,4 @@
 .grove/debug-snapshot.json
 .sidecar/
 .lefthook-local.yml
+*.local.*

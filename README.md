@@ -1,3 +1,5 @@
+> **Work in progress:** Grove is still cooking, things may change quickly, and I reserve the right to break your workflows :) Thanks for rolling with it.
+
 # Grove
 
 Minimal workspace manager for AI coding agents (Rust + FrankenTUI).
