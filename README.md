@@ -53,21 +53,53 @@ command -v git tmux lazygit
 
 ## Install
 
-### Option 1, direnv (auto Nix shell)
+### Option 1, Nix flake (recommended)
+
+Run directly:
+
+```bash
+nix run github:MichaelVessia/grove
+```
+
+Install to profile:
+
+```bash
+nix profile install github:MichaelVessia/grove
+```
+
+Use as an overlay in another flake:
+
+```nix
+{
+  inputs.grove.url = "github:MichaelVessia/grove";
+  # nixpkgs.overlays = [ grove.overlays.default ];
+  # then use pkgs.grove
+}
+```
+
+### Option 2, Devbox
+
+Add Grove to your `devbox.json`:
+
+```bash
+devbox add github:MichaelVessia/grove
+```
+
+### Option 3, direnv (auto Nix shell)
 
 ```bash
 direnv allow
 cargo build
 ```
 
-### Option 2, Nix dev shell
+### Option 4, Nix dev shell
 
 ```bash
 nix develop
 cargo build
 ```
 
-### Option 3, plain Cargo
+### Option 5, plain Cargo
 
 ```bash
 cargo build --release

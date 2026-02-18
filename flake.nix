@@ -1,49 +1,23 @@
 {
-  description = "Grove development shell";
+  description = "Grove - a minimal workspace manager for AI coding agents";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    flake-parts.url = "github:hercules-ci/flake-parts";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    crane.url = "github:ipetkov/crane";
   };
 
-  outputs = { self, nixpkgs }:
-    let
+  outputs = inputs@{ flake-parts, ... }:
+    flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
-      forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f system);
-    in
-    {
-      devShells = forAllSystems (system:
-        let
-          pkgs = import nixpkgs { inherit system; };
-        in
-        {
-          default = pkgs.mkShell {
-            packages = with pkgs; [
-              bash
-              cargo
-              clippy
-              coreutils
-              findutils
-              git
-              gnumake
-              gnugrep
-              gnused
-              jq
-              lefthook
-              lazygit
-              openssl
-              pkg-config
-              ripgrep
-              rustc
-              rust-analyzer
-              rustfmt
-              tmux
-            ];
-            shellHook = ''
-              if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-                git config --local core.hooksPath .githooks
-              fi
-            '';
-          };
-        });
+
+      imports = [
+        ./nix/devshell.nix
+        ./nix/package.nix
+      ];
     };
 }
