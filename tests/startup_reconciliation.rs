@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use grove::application::agent_runtime::reconcile_with_sessions;
-use grove::application::hardening::{missing_workspace_paths, orphaned_sessions};
+use grove::application::hardening::orphaned_sessions;
 use grove::domain::{AgentType, Workspace, WorkspaceStatus};
 
 fn workspace(name: &str, status: WorkspaceStatus, is_main: bool, path: PathBuf) -> Workspace {
@@ -20,6 +20,17 @@ fn workspace(name: &str, status: WorkspaceStatus, is_main: bool, path: PathBuf) 
         is_main,
     )
     .expect("workspace should be valid")
+}
+
+fn missing_workspace_paths(workspaces: &[Workspace]) -> Vec<PathBuf> {
+    let mut missing: Vec<PathBuf> = workspaces
+        .iter()
+        .filter(|workspace| !workspace.is_main && !workspace.path.exists())
+        .map(|workspace| workspace.path.clone())
+        .collect();
+    missing.sort();
+    missing.dedup();
+    missing
 }
 
 #[test]

@@ -126,8 +126,8 @@ Leftover scaffolding function with a dedicated test that adds no value.
 
 `pub` function only called from tests.
 
-- [ ] Mark `#[cfg(test)]` or move into test module in `src/application/hardening.rs:15-24`
-- [ ] Update integration test usage in `tests/startup_reconciliation.rs:81` before gating symbol
+- [x] Mark `#[cfg(test)]` or move into test module in `src/application/hardening.rs:15-24`
+- [x] Update integration test usage in `tests/startup_reconciliation.rs:81` before gating symbol
 
 ## 16. Inline `input_for_multiplexer`
 

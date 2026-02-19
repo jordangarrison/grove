@@ -12,6 +12,7 @@ pub fn recover_working_directory(current_dir: &Path, repo_root: &Path) -> PathBu
     repo_root.to_path_buf()
 }
 
+#[cfg(test)]
 pub fn missing_workspace_paths(workspaces: &[Workspace]) -> Vec<PathBuf> {
     let mut missing: Vec<PathBuf> = workspaces
         .iter()
