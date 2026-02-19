@@ -1,5 +1,7 @@
 use crate::infrastructure::adapters::BootstrapData;
-use crate::infrastructure::config::{MultiplexerKind, ProjectConfig};
+#[cfg(test)]
+use crate::infrastructure::config::MultiplexerKind;
+use crate::infrastructure::config::ProjectConfig;
 use std::env;
 use std::fs;
 #[cfg(unix)]
@@ -16,14 +18,17 @@ impl GroveApp {
     pub(super) fn new(event_log: Box<dyn EventLogger>, debug_record_start_ts: Option<u64>) -> Self {
         let (config, config_path, _config_error) = load_runtime_config();
         let bootstrap = bootstrap_data_for_projects(&config.projects);
-        Self::from_parts_with_projects(
+        Self::from_parts_with_clipboard_and_projects(
             bootstrap,
             config.projects,
-            Box::new(CommandTmuxInput),
-            config_path,
-            config.multiplexer,
-            event_log,
-            debug_record_start_ts,
+            AppDependencies {
+                tmux_input: Box::new(CommandTmuxInput),
+                clipboard: Box::new(SystemClipboardAccess::default()),
+                config_path,
+                multiplexer: config.multiplexer,
+                event_log,
+                debug_record_start_ts,
+            },
         )
     }
 
@@ -65,26 +70,6 @@ impl GroveApp {
         debug_record_start_ts: Option<u64>,
     ) -> Self {
         let projects = Self::projects_from_bootstrap(&bootstrap);
-        Self::from_parts_with_projects(
-            bootstrap,
-            projects,
-            tmux_input,
-            config_path,
-            multiplexer,
-            event_log,
-            debug_record_start_ts,
-        )
-    }
-
-    fn from_parts_with_projects(
-        bootstrap: BootstrapData,
-        projects: Vec<ProjectConfig>,
-        tmux_input: Box<dyn TmuxInput>,
-        config_path: PathBuf,
-        multiplexer: MultiplexerKind,
-        event_log: Box<dyn EventLogger>,
-        debug_record_start_ts: Option<u64>,
-    ) -> Self {
         Self::from_parts_with_clipboard_and_projects(
             bootstrap,
             projects,

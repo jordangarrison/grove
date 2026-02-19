@@ -96,8 +96,8 @@ Two pairs of near-identical functions differ only by casing (PascalCase vs snake
 
 `from_parts` -> `from_parts_with_projects` -> `from_parts_with_clipboard_and_projects` is 3 levels deep. `from_parts` is test-only.
 
-- [ ] Flatten to two constructors: one for tests, one for production
-- [ ] Update `src/ui/tui/bootstrap_app.rs:100-121`
+- [x] Flatten to two constructors: one for tests, one for production
+- [x] Update `src/ui/tui/bootstrap_app.rs:100-121`
 
 ## 12. Remove `AppPaths` single-field wrapper
 
