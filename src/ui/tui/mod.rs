@@ -86,6 +86,9 @@ mod terminal;
 use terminal::{
     ClipboardAccess, CommandTmuxInput, SystemClipboardAccess, TmuxInput, parse_cursor_metadata,
 };
+#[macro_use]
+mod shared;
+use shared::*;
 mod dialogs;
 mod dialogs_create_key;
 mod dialogs_create_setup;
@@ -118,8 +121,6 @@ mod selection;
 use selection::{TextSelectionPoint, TextSelectionState};
 mod runner;
 pub use runner::{run_with_debug_record, run_with_event_log};
-mod shared;
-use shared::*;
 mod text;
 use text::{
     ansi_line_to_plain_text, chrome_bar_line, keybind_hint_spans, line_visual_width,

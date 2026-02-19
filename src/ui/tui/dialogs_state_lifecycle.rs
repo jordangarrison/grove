@@ -116,23 +116,9 @@ pub(super) enum DeleteDialogField {
     CancelButton,
 }
 
-impl DeleteDialogField {
-    pub(super) fn next(self) -> Self {
-        match self {
-            Self::DeleteLocalBranch => Self::DeleteButton,
-            Self::DeleteButton => Self::CancelButton,
-            Self::CancelButton => Self::DeleteLocalBranch,
-        }
-    }
-
-    pub(super) fn previous(self) -> Self {
-        match self {
-            Self::DeleteLocalBranch => Self::CancelButton,
-            Self::DeleteButton => Self::DeleteLocalBranch,
-            Self::CancelButton => Self::DeleteButton,
-        }
-    }
-}
+cyclic_field_nav!(pub(super) DeleteDialogField {
+    DeleteLocalBranch, DeleteButton, CancelButton,
+});
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum MergeDialogField {
@@ -142,25 +128,9 @@ pub(super) enum MergeDialogField {
     CancelButton,
 }
 
-impl MergeDialogField {
-    pub(super) fn next(self) -> Self {
-        match self {
-            Self::CleanupWorkspace => Self::CleanupLocalBranch,
-            Self::CleanupLocalBranch => Self::MergeButton,
-            Self::MergeButton => Self::CancelButton,
-            Self::CancelButton => Self::CleanupWorkspace,
-        }
-    }
-
-    pub(super) fn previous(self) -> Self {
-        match self {
-            Self::CleanupWorkspace => Self::CancelButton,
-            Self::CleanupLocalBranch => Self::CleanupWorkspace,
-            Self::MergeButton => Self::CleanupLocalBranch,
-            Self::CancelButton => Self::MergeButton,
-        }
-    }
-}
+cyclic_field_nav!(pub(super) MergeDialogField {
+    CleanupWorkspace, CleanupLocalBranch, MergeButton, CancelButton,
+});
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum UpdateFromBaseDialogField {
@@ -168,18 +138,9 @@ pub(super) enum UpdateFromBaseDialogField {
     CancelButton,
 }
 
-impl UpdateFromBaseDialogField {
-    pub(super) fn next(self) -> Self {
-        match self {
-            Self::UpdateButton => Self::CancelButton,
-            Self::CancelButton => Self::UpdateButton,
-        }
-    }
-
-    pub(super) fn previous(self) -> Self {
-        self.next()
-    }
-}
+cyclic_field_nav!(pub(super) UpdateFromBaseDialogField {
+    UpdateButton, CancelButton,
+});
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum StartAgentConfigField {
@@ -188,23 +149,11 @@ pub(super) enum StartAgentConfigField {
     Unsafe,
 }
 
+cyclic_field_nav!(pub(super) StartAgentConfigField {
+    Prompt, PreLaunchCommand, Unsafe,
+});
+
 impl StartAgentConfigField {
-    pub(super) fn next(self) -> Self {
-        match self {
-            Self::Prompt => Self::PreLaunchCommand,
-            Self::PreLaunchCommand => Self::Unsafe,
-            Self::Unsafe => Self::Prompt,
-        }
-    }
-
-    pub(super) fn previous(self) -> Self {
-        match self {
-            Self::Prompt => Self::Unsafe,
-            Self::PreLaunchCommand => Self::Prompt,
-            Self::Unsafe => Self::PreLaunchCommand,
-        }
-    }
-
     #[cfg(test)]
     pub(super) fn label(self) -> &'static str {
         match self {

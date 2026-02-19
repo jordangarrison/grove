@@ -1,3 +1,24 @@
+/// Generates `next()` and `previous()` methods for a cyclic enum.
+/// Variants are listed in order; last wraps to first and vice versa.
+/// Requires the enum to derive `Copy` and `PartialEq`.
+macro_rules! cyclic_field_nav {
+    ($vis:vis $enum:ident { $($variant:ident),+ $(,)? }) => {
+        impl $enum {
+            const ALL: &[$enum] = &[$($enum::$variant),+];
+
+            $vis fn next(self) -> Self {
+                let index = Self::ALL.iter().position(|v| *v == self).unwrap_or(0);
+                Self::ALL[(index + 1) % Self::ALL.len()]
+            }
+
+            $vis fn previous(self) -> Self {
+                let index = Self::ALL.iter().position(|v| *v == self).unwrap_or(0);
+                Self::ALL[(index + Self::ALL.len() - 1) % Self::ALL.len()]
+            }
+        }
+    };
+}
+
 use std::time::Instant;
 
 use ftui::PackedRgba;

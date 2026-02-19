@@ -45,25 +45,9 @@ pub(super) enum EditDialogField {
     CancelButton,
 }
 
-impl EditDialogField {
-    pub(super) fn next(self) -> Self {
-        match self {
-            Self::BaseBranch => Self::Agent,
-            Self::Agent => Self::SaveButton,
-            Self::SaveButton => Self::CancelButton,
-            Self::CancelButton => Self::BaseBranch,
-        }
-    }
-
-    pub(super) fn previous(self) -> Self {
-        match self {
-            Self::BaseBranch => Self::CancelButton,
-            Self::Agent => Self::BaseBranch,
-            Self::SaveButton => Self::Agent,
-            Self::CancelButton => Self::SaveButton,
-        }
-    }
-}
+cyclic_field_nav!(pub(super) EditDialogField {
+    BaseBranch, Agent, SaveButton, CancelButton,
+});
 
 impl CreateDialogField {
     pub(super) fn next(self) -> Self {

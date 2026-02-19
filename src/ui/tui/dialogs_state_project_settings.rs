@@ -40,47 +40,13 @@ pub(super) enum ProjectDefaultsDialogField {
     CancelButton,
 }
 
-impl ProjectAddDialogField {
-    pub(super) fn next(self) -> Self {
-        match self {
-            Self::Name => Self::Path,
-            Self::Path => Self::AddButton,
-            Self::AddButton => Self::CancelButton,
-            Self::CancelButton => Self::Name,
-        }
-    }
+cyclic_field_nav!(pub(super) ProjectAddDialogField {
+    Name, Path, AddButton, CancelButton,
+});
 
-    pub(super) fn previous(self) -> Self {
-        match self {
-            Self::Name => Self::CancelButton,
-            Self::Path => Self::Name,
-            Self::AddButton => Self::Path,
-            Self::CancelButton => Self::AddButton,
-        }
-    }
-}
-
-impl ProjectDefaultsDialogField {
-    pub(super) fn next(self) -> Self {
-        match self {
-            Self::BaseBranch => Self::SetupCommands,
-            Self::SetupCommands => Self::AutoRunSetupCommands,
-            Self::AutoRunSetupCommands => Self::SaveButton,
-            Self::SaveButton => Self::CancelButton,
-            Self::CancelButton => Self::BaseBranch,
-        }
-    }
-
-    pub(super) fn previous(self) -> Self {
-        match self {
-            Self::BaseBranch => Self::CancelButton,
-            Self::SetupCommands => Self::BaseBranch,
-            Self::AutoRunSetupCommands => Self::SetupCommands,
-            Self::SaveButton => Self::AutoRunSetupCommands,
-            Self::CancelButton => Self::SaveButton,
-        }
-    }
-}
+cyclic_field_nav!(pub(super) ProjectDefaultsDialogField {
+    BaseBranch, SetupCommands, AutoRunSetupCommands, SaveButton, CancelButton,
+});
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SettingsDialogState {
@@ -93,15 +59,6 @@ pub(super) enum SettingsDialogField {
     CancelButton,
 }
 
-impl SettingsDialogField {
-    pub(super) fn next(self) -> Self {
-        match self {
-            Self::SaveButton => Self::CancelButton,
-            Self::CancelButton => Self::SaveButton,
-        }
-    }
-
-    pub(super) fn previous(self) -> Self {
-        self.next()
-    }
-}
+cyclic_field_nav!(pub(super) SettingsDialogField {
+    SaveButton, CancelButton,
+});
