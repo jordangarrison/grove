@@ -1,6 +1,4 @@
-use super::{
-    GroveConfig, MultiplexerKind, ProjectConfig, ProjectDefaults, load_from_path, save_to_path,
-};
+use super::{GroveConfig, ProjectConfig, ProjectDefaults, load_from_path, save_to_path};
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -15,13 +13,12 @@ fn unique_temp_path(label: &str) -> PathBuf {
 }
 
 #[test]
-fn missing_config_defaults_to_tmux() {
+fn missing_config_uses_defaults() {
     let path = unique_temp_path("missing");
     let config = load_from_path(&path).expect("missing path should default");
     assert_eq!(
         config,
         GroveConfig {
-            multiplexer: MultiplexerKind::Tmux,
             sidebar_width_pct: 33,
             projects: Vec::new(),
         }
@@ -32,7 +29,6 @@ fn missing_config_defaults_to_tmux() {
 fn save_and_load_round_trip() {
     let path = unique_temp_path("roundtrip");
     let config = GroveConfig {
-        multiplexer: MultiplexerKind::Tmux,
         sidebar_width_pct: 52,
         projects: vec![ProjectConfig {
             name: "grove".to_string(),

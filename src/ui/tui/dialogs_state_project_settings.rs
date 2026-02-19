@@ -1,5 +1,3 @@
-use super::*;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ProjectDialogState {
     pub(super) filter: String,
@@ -86,13 +84,11 @@ impl ProjectDefaultsDialogField {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SettingsDialogState {
-    pub(super) multiplexer: MultiplexerKind,
     pub(super) focused_field: SettingsDialogField,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsDialogField {
-    Multiplexer,
     SaveButton,
     CancelButton,
 }
@@ -100,17 +96,12 @@ pub(super) enum SettingsDialogField {
 impl SettingsDialogField {
     pub(super) fn next(self) -> Self {
         match self {
-            Self::Multiplexer => Self::SaveButton,
             Self::SaveButton => Self::CancelButton,
-            Self::CancelButton => Self::Multiplexer,
+            Self::CancelButton => Self::SaveButton,
         }
     }
 
     pub(super) fn previous(self) -> Self {
-        match self {
-            Self::Multiplexer => Self::CancelButton,
-            Self::SaveButton => Self::Multiplexer,
-            Self::CancelButton => Self::SaveButton,
-        }
+        self.next()
     }
 }

@@ -63,7 +63,7 @@ use crate::application::workspace_lifecycle::{
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
-use crate::infrastructure::config::{GroveConfig, MultiplexerKind, ProjectConfig, ProjectDefaults};
+use crate::infrastructure::config::{GroveConfig, ProjectConfig, ProjectDefaults};
 use crate::infrastructure::event_log::{Event as LogEvent, EventLogger};
 use crate::ui::mouse::{clamp_sidebar_ratio, ratio_from_drag};
 use crate::ui::state::{Action, AppState, PaneFocus, UiMode, reduce};
@@ -237,11 +237,6 @@ impl SessionTracker {
     fn remove_ready(&mut self, session_name: &str) {
         self.ready.remove(session_name);
     }
-
-    fn clear_ready_and_failed(&mut self) {
-        self.ready.clear();
-        self.failed.clear();
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -272,7 +267,6 @@ struct GroveApp {
     create_branch_all: Vec<String>,
     create_branch_filtered: Vec<String>,
     create_branch_index: usize,
-    multiplexer: MultiplexerKind,
     tmux_input: Box<dyn TmuxInput>,
     config_path: PathBuf,
     clipboard: Box<dyn ClipboardAccess>,

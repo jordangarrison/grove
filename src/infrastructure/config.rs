@@ -3,23 +3,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum MultiplexerKind {
-    #[default]
-    Tmux,
-}
-
-impl MultiplexerKind {
-    pub fn label(self) -> &'static str {
-        "tmux"
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroveConfig {
-    #[serde(default)]
-    pub multiplexer: MultiplexerKind,
     #[serde(default = "default_sidebar_width_pct")]
     pub sidebar_width_pct: u16,
     #[serde(default)]
@@ -33,7 +18,6 @@ const fn default_sidebar_width_pct() -> u16 {
 impl Default for GroveConfig {
     fn default() -> Self {
         Self {
-            multiplexer: MultiplexerKind::default(),
             sidebar_width_pct: default_sidebar_width_pct(),
             projects: Vec::new(),
         }

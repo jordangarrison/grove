@@ -50,7 +50,6 @@ fn tick_queues_async_preview_poll_with_background_io() {
         fixture_bootstrap(WorkspaceStatus::Active),
         Box::new(BackgroundOnlyTmuxInput),
         config_path,
-        MultiplexerKind::Tmux,
         Box::new(NullEventLogger),
         None,
     );
@@ -68,7 +67,6 @@ fn tick_queues_async_poll_for_background_workspace_statuses_only() {
         fixture_bootstrap(WorkspaceStatus::Idle),
         Box::new(BackgroundOnlyTmuxInput),
         config_path,
-        MultiplexerKind::Tmux,
         Box::new(NullEventLogger),
         None,
     );
@@ -2414,7 +2412,6 @@ fn fixture_background_app_with_two_feature_workspaces() -> GroveApp {
         bootstrap,
         Box::new(BackgroundOnlyTmuxInput),
         unique_config_path("delete-queue"),
-        MultiplexerKind::Tmux,
         Box::new(NullEventLogger),
         None,
     )
@@ -2784,7 +2781,7 @@ fn settings_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
 
     assert_eq!(
         app.settings_dialog().map(|dialog| dialog.focused_field),
-        Some(SettingsDialogField::Multiplexer)
+        Some(SettingsDialogField::SaveButton)
     );
     ftui::Model::update(
         &mut app,
@@ -2796,7 +2793,7 @@ fn settings_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
     );
     assert_eq!(
         app.settings_dialog().map(|dialog| dialog.focused_field),
-        Some(SettingsDialogField::SaveButton)
+        Some(SettingsDialogField::CancelButton)
     );
     ftui::Model::update(
         &mut app,
@@ -2808,7 +2805,7 @@ fn settings_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
     );
     assert_eq!(
         app.settings_dialog().map(|dialog| dialog.focused_field),
-        Some(SettingsDialogField::Multiplexer)
+        Some(SettingsDialogField::SaveButton)
     );
 }
 
@@ -5702,7 +5699,6 @@ fn shell_renders_discovery_error_state() {
             calls: Rc::new(RefCell::new(Vec::new())),
         }),
         config_path,
-        MultiplexerKind::Tmux,
         Box::new(NullEventLogger),
         None,
     );
@@ -5864,7 +5860,6 @@ fn git_tab_queues_async_lazygit_launch_when_supported() {
         fixture_bootstrap(WorkspaceStatus::Idle),
         Box::new(BackgroundLaunchTmuxInput),
         config_path,
-        MultiplexerKind::Tmux,
         Box::new(NullEventLogger),
         None,
     );
@@ -6168,7 +6163,6 @@ fn frame_debug_record_logs_every_view() {
             calls: Rc::new(RefCell::new(Vec::new())),
         }),
         config_path,
-        MultiplexerKind::Tmux,
         Box::new(event_log),
         Some(1_771_023_000_000),
     );
@@ -6215,7 +6209,6 @@ fn frame_debug_record_includes_frame_lines() {
             calls: Rc::new(RefCell::new(Vec::new())),
         }),
         config_path,
-        MultiplexerKind::Tmux,
         Box::new(event_log),
         Some(1_771_023_000_123),
     );
@@ -6282,7 +6275,6 @@ fn frame_debug_record_includes_interactive_cursor_snapshot() {
             calls: Rc::new(RefCell::new(Vec::new())),
         }),
         config_path,
-        MultiplexerKind::Tmux,
         Box::new(event_log),
         Some(1_771_023_000_124),
     );

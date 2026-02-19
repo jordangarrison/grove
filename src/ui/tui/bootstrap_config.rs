@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::infrastructure::config::{GroveConfig, MultiplexerKind, ProjectConfig};
+use crate::infrastructure::config::{GroveConfig, ProjectConfig};
 use crate::infrastructure::paths::refer_to_same_location;
 use crate::infrastructure::process::stderr_trimmed;
 use crate::ui::mouse::clamp_sidebar_ratio;
@@ -13,7 +13,6 @@ pub(super) struct AppDependencies {
     pub(super) tmux_input: Box<dyn TmuxInput>,
     pub(super) clipboard: Box<dyn ClipboardAccess>,
     pub(super) config_path: PathBuf,
-    pub(super) multiplexer: MultiplexerKind,
     pub(super) event_log: Box<dyn EventLogger>,
     pub(super) debug_record_start_ts: Option<u64>,
 }

@@ -1,6 +1,4 @@
 use crate::infrastructure::adapters::BootstrapData;
-#[cfg(test)]
-use crate::infrastructure::config::MultiplexerKind;
 use crate::infrastructure::config::ProjectConfig;
 use std::env;
 use std::fs;
@@ -25,7 +23,6 @@ impl GroveApp {
                 tmux_input: Box::new(CommandTmuxInput),
                 clipboard: Box::new(SystemClipboardAccess::default()),
                 config_path,
-                multiplexer: config.multiplexer,
                 event_log,
                 debug_record_start_ts,
             },
@@ -65,7 +62,6 @@ impl GroveApp {
         bootstrap: BootstrapData,
         tmux_input: Box<dyn TmuxInput>,
         config_path: PathBuf,
-        multiplexer: MultiplexerKind,
         event_log: Box<dyn EventLogger>,
         debug_record_start_ts: Option<u64>,
     ) -> Self {
@@ -77,7 +73,6 @@ impl GroveApp {
                 tmux_input,
                 clipboard: Box::new(SystemClipboardAccess::default()),
                 config_path,
-                multiplexer,
                 event_log,
                 debug_record_start_ts,
             },
@@ -93,7 +88,6 @@ impl GroveApp {
             tmux_input,
             clipboard,
             config_path,
-            multiplexer,
             event_log,
             debug_record_start_ts,
         } = dependencies;
@@ -126,7 +120,6 @@ impl GroveApp {
             create_branch_all: Vec::new(),
             create_branch_filtered: Vec::new(),
             create_branch_index: 0,
-            multiplexer,
             tmux_input,
             config_path,
             clipboard,

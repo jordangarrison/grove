@@ -37,7 +37,6 @@ impl GroveApp {
             KeyCode::Right | KeyCode::Char('l') => {}
             KeyCode::Char(' ') => {}
             KeyCode::Enter => match dialog.focused_field {
-                SettingsDialogField::Multiplexer => {}
                 SettingsDialogField::SaveButton => post_action = PostAction::Save,
                 SettingsDialogField::CancelButton => post_action = PostAction::Cancel,
             },
@@ -59,36 +58,16 @@ impl GroveApp {
             return;
         }
         self.set_settings_dialog(SettingsDialogState {
-            multiplexer: self.multiplexer,
-            focused_field: SettingsDialogField::Multiplexer,
+            focused_field: SettingsDialogField::SaveButton,
         });
     }
 
-    fn has_running_workspace_sessions(&self) -> bool {
-        self.state
-            .workspaces
-            .iter()
-            .any(|workspace| workspace.status.has_session())
-    }
-
     pub(super) fn apply_settings_dialog_save(&mut self) {
-        let Some(dialog) = self.settings_dialog() else {
-            return;
-        };
-
-        if dialog.multiplexer != self.multiplexer && self.has_running_workspace_sessions() {
-            self.show_toast(
-                "restart running workspaces before switching multiplexer",
-                true,
-            );
+        if self.settings_dialog().is_none() {
             return;
         }
 
-        let selected = dialog.multiplexer;
-        self.multiplexer = selected;
-        self.tmux_input = Box::new(CommandTmuxInput);
         let config = GroveConfig {
-            multiplexer: selected,
             sidebar_width_pct: self.sidebar_width_pct,
             projects: self.projects.clone(),
         };
@@ -99,10 +78,6 @@ impl GroveApp {
         }
 
         self.close_active_dialog();
-        self.interactive = None;
-        self.lazygit_sessions.clear_ready_and_failed();
-        self.refresh_workspaces(None);
-        self.poll_preview();
-        self.show_toast(format!("multiplexer set to {}", selected.label()), false);
+        self.show_toast("settings saved", false);
     }
 }

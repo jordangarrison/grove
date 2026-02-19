@@ -29,7 +29,7 @@ use crate::application::workspace_lifecycle::{
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
-use crate::infrastructure::config::{MultiplexerKind, ProjectConfig};
+use crate::infrastructure::config::ProjectConfig;
 use crate::infrastructure::event_log::{Event as LoggedEvent, EventLogger, NullEventLogger};
 use crate::ui::state::{PaneFocus, UiMode};
 use ftui::core::event::{
@@ -331,7 +331,7 @@ fn fixture_app() -> GroveApp {
             }),
             clipboard: test_clipboard(),
             config_path,
-            multiplexer: MultiplexerKind::Tmux,
+
             event_log: Box::new(NullEventLogger),
             debug_record_start_ts: None,
         },
@@ -498,7 +498,7 @@ fn fixture_app_with_tmux_and_config_path(
                 tmux_input: Box::new(tmux),
                 clipboard: test_clipboard(),
                 config_path,
-                multiplexer: MultiplexerKind::Tmux,
+
                 event_log: Box::new(NullEventLogger),
                 debug_record_start_ts: None,
             },
@@ -534,7 +534,7 @@ fn fixture_app_with_tmux_and_calls(
                 tmux_input: Box::new(tmux),
                 clipboard: test_clipboard(),
                 config_path,
-                multiplexer: MultiplexerKind::Tmux,
+
                 event_log: Box::new(NullEventLogger),
                 debug_record_start_ts: None,
             },
@@ -574,7 +574,7 @@ fn fixture_app_with_tmux_and_events(
                 tmux_input: Box::new(tmux),
                 clipboard: test_clipboard(),
                 config_path,
-                multiplexer: MultiplexerKind::Tmux,
+
                 event_log: Box::new(event_log),
                 debug_record_start_ts: None,
             },
@@ -594,7 +594,7 @@ fn fixture_background_app(status: WorkspaceStatus) -> GroveApp {
             tmux_input: Box::new(BackgroundOnlyTmuxInput),
             clipboard: test_clipboard(),
             config_path: unique_config_path("background"),
-            multiplexer: MultiplexerKind::Tmux,
+
             event_log: Box::new(NullEventLogger),
             debug_record_start_ts: None,
         },
@@ -1836,47 +1836,18 @@ fn uppercase_s_opens_settings_dialog() {
 }
 
 #[test]
-fn settings_dialog_save_persists_tmux_config() {
+fn settings_dialog_save_persists_config() {
     let mut app = fixture_app();
-    assert_eq!(app.multiplexer, MultiplexerKind::Tmux);
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
     assert!(app.settings_dialog().is_some());
 
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press));
     let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
 
     assert!(app.settings_dialog().is_none());
-    assert_eq!(app.multiplexer, MultiplexerKind::Tmux);
     let loaded = crate::infrastructure::config::load_from_path(&app.config_path)
         .expect("config should load");
-    assert_eq!(loaded.multiplexer, MultiplexerKind::Tmux);
-}
-
-#[test]
-fn settings_dialog_multiplexer_keys_keep_tmux_selection() {
-    let mut app = fixture_app();
-
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
-    assert!(app.settings_dialog().is_some());
-
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('h')).with_kind(KeyEventKind::Press));
-    assert_eq!(
-        app.settings_dialog().map(|dialog| dialog.multiplexer),
-        Some(MultiplexerKind::Tmux)
-    );
-
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('h')).with_kind(KeyEventKind::Press));
-    assert_eq!(
-        app.settings_dialog().map(|dialog| dialog.multiplexer),
-        Some(MultiplexerKind::Tmux)
-    );
-
-    let _ = app.handle_key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press));
-    assert_eq!(
-        app.settings_dialog().map(|dialog| dialog.multiplexer),
-        Some(MultiplexerKind::Tmux)
-    );
+    assert_eq!(loaded.sidebar_width_pct, 33);
 }
 
 #[test]

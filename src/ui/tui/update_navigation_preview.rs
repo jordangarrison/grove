@@ -122,10 +122,7 @@ impl GroveApp {
     ) -> bool {
         let mut completion_fields = vec![
             ("session".to_string(), Value::from(session_name.clone())),
-            (
-                "multiplexer".to_string(),
-                Value::from(self.multiplexer.label()),
-            ),
+            ("multiplexer".to_string(), Value::from("tmux")),
             ("async".to_string(), Value::from(context.async_launch)),
             ("duration_ms".to_string(), Value::from(duration_ms)),
             ("ok".to_string(), Value::from(result.is_ok())),
@@ -215,10 +212,7 @@ impl GroveApp {
         let async_launch = self.tmux_input.supports_background_launch();
         let mut started_fields = vec![
             ("session".to_string(), Value::from(session_name.clone())),
-            (
-                "multiplexer".to_string(),
-                Value::from(self.multiplexer.label()),
-            ),
+            ("multiplexer".to_string(), Value::from("tmux")),
             ("async".to_string(), Value::from(async_launch)),
             ("capture_cols".to_string(), Value::from(capture_cols)),
             ("capture_rows".to_string(), Value::from(capture_rows)),

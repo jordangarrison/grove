@@ -277,7 +277,6 @@ impl GroveApp {
 
     pub(super) fn persist_sidebar_ratio(&mut self) {
         let config = GroveConfig {
-            multiplexer: self.multiplexer,
             sidebar_width_pct: self.sidebar_width_pct,
             projects: self.projects.clone(),
         };
