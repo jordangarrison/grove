@@ -96,9 +96,7 @@ impl GroveApp {
         target_session: &str,
         trace_context: Option<InputTraceContext>,
     ) -> Cmd<Msg> {
-        let Some(command) =
-            multiplexer_send_input_command(self.multiplexer, target_session, action)
-        else {
+        let Some(command) = multiplexer_send_input_command(target_session, action) else {
             if let Some(trace_context) = trace_context {
                 self.log_input_event_with_fields(
                     "interactive_action_unmapped",

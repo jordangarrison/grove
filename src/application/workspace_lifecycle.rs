@@ -1,6 +1,5 @@
 use crate::application::agent_runtime::kill_workspace_session_command;
 use crate::domain::AgentType;
-use crate::infrastructure::config::MultiplexerKind;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -368,16 +367,10 @@ pub fn create_workspace_with_template(
     })
 }
 
-pub fn delete_workspace(
-    request: DeleteWorkspaceRequest,
-    multiplexer: MultiplexerKind,
-) -> (Result<(), String>, Vec<String>) {
+pub fn delete_workspace(request: DeleteWorkspaceRequest) -> (Result<(), String>, Vec<String>) {
     let mut warnings = Vec::new();
-    let stop_session_command = kill_workspace_session_command(
-        request.project_name.as_deref(),
-        &request.workspace_name,
-        multiplexer,
-    );
+    let stop_session_command =
+        kill_workspace_session_command(request.project_name.as_deref(), &request.workspace_name);
     let _ = run_command(&stop_session_command);
 
     let repo_root = if let Some(project_path) = request.project_path {
@@ -406,16 +399,10 @@ pub fn delete_workspace(
     (Ok(()), warnings)
 }
 
-pub fn merge_workspace(
-    request: MergeWorkspaceRequest,
-    multiplexer: MultiplexerKind,
-) -> (Result<(), String>, Vec<String>) {
+pub fn merge_workspace(request: MergeWorkspaceRequest) -> (Result<(), String>, Vec<String>) {
     let mut warnings = Vec::new();
-    let stop_session_command = kill_workspace_session_command(
-        request.project_name.as_deref(),
-        &request.workspace_name,
-        multiplexer,
-    );
+    let stop_session_command =
+        kill_workspace_session_command(request.project_name.as_deref(), &request.workspace_name);
     let _ = run_command(&stop_session_command);
 
     if request.workspace_name.trim().is_empty() {
@@ -502,14 +489,10 @@ pub fn merge_workspace(
 
 pub fn update_workspace_from_base(
     request: UpdateWorkspaceFromBaseRequest,
-    multiplexer: MultiplexerKind,
 ) -> (Result<(), String>, Vec<String>) {
     let warnings = Vec::new();
-    let stop_session_command = kill_workspace_session_command(
-        request.project_name.as_deref(),
-        &request.workspace_name,
-        multiplexer,
-    );
+    let stop_session_command =
+        kill_workspace_session_command(request.project_name.as_deref(), &request.workspace_name);
     let _ = run_command(&stop_session_command);
 
     if request.workspace_name.trim().is_empty() {

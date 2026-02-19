@@ -10,7 +10,6 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
 
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
-use crate::infrastructure::config::MultiplexerKind;
 
 pub const TMUX_SESSION_PREFIX: &str = "grove-ws-";
 const GROVE_LAUNCHER_SCRIPT_PATH: &str = ".grove/start.sh";
@@ -180,8 +179,7 @@ pub fn shell_session_name_for_workspace(workspace: &Workspace) -> String {
     format!("{}-shell", session_name_for_workspace_ref(workspace))
 }
 
-pub fn workspace_should_poll_status(workspace: &Workspace, multiplexer: MultiplexerKind) -> bool {
-    let _ = multiplexer;
+pub fn workspace_should_poll_status(workspace: &Workspace) -> bool {
     if !workspace.supported_agent {
         return false;
     }
@@ -326,10 +324,9 @@ pub fn live_preview_capture_target_for_tab(
 
 pub fn workspace_status_session_target(
     workspace: &Workspace,
-    multiplexer: MultiplexerKind,
     selected_live_session: Option<&str>,
 ) -> Option<String> {
-    if !workspace_should_poll_status(workspace, multiplexer) {
+    if !workspace_should_poll_status(workspace) {
         return None;
     }
 
@@ -343,14 +340,12 @@ pub fn workspace_status_session_target(
 
 pub fn workspace_status_targets_for_polling(
     workspaces: &[Workspace],
-    multiplexer: MultiplexerKind,
     selected_live_session: Option<&str>,
 ) -> Vec<WorkspaceStatusTarget> {
     workspaces
         .iter()
         .filter_map(|workspace| {
-            let session_name =
-                workspace_status_session_target(workspace, multiplexer, selected_live_session)?;
+            let session_name = workspace_status_session_target(workspace, selected_live_session)?;
             Some(WorkspaceStatusTarget {
                 workspace_name: workspace.name.clone(),
                 workspace_path: workspace.path.clone(),
@@ -363,12 +358,10 @@ pub fn workspace_status_targets_for_polling(
 
 pub fn workspace_status_targets_for_polling_with_live_preview(
     workspaces: &[Workspace],
-    multiplexer: MultiplexerKind,
     live_preview: Option<&LivePreviewTarget>,
 ) -> Vec<WorkspaceStatusTarget> {
     workspace_status_targets_for_polling(
         workspaces,
-        multiplexer,
         live_preview.map(|target| target.session_name.as_str()),
     )
 }
@@ -406,8 +399,7 @@ pub fn session_name_for_workspace_in_project(
     )
 }
 
-pub fn build_launch_plan(request: &LaunchRequest, multiplexer: MultiplexerKind) -> LaunchPlan {
-    let _ = multiplexer;
+pub fn build_launch_plan(request: &LaunchRequest) -> LaunchPlan {
     let session_name = session_name_for_workspace_in_project(
         request.project_name.as_deref(),
         &request.workspace_name,
@@ -427,11 +419,7 @@ pub fn build_launch_plan(request: &LaunchRequest, multiplexer: MultiplexerKind) 
     plan
 }
 
-pub fn build_shell_launch_plan(
-    request: &ShellLaunchRequest,
-    multiplexer: MultiplexerKind,
-) -> LaunchPlan {
-    let _ = multiplexer;
+pub fn build_shell_launch_plan(request: &ShellLaunchRequest) -> LaunchPlan {
     let shared = LaunchRequest {
         project_name: None,
         workspace_name: request.session_name.clone(),
@@ -554,8 +542,7 @@ fn launch_resize_window_command(
     ])
 }
 
-pub fn stop_plan(session_name: &str, multiplexer: MultiplexerKind) -> Vec<Vec<String>> {
-    let _ = multiplexer;
+pub fn stop_plan(session_name: &str) -> Vec<Vec<String>> {
     vec![
         vec![
             "tmux".to_string(),
@@ -585,12 +572,11 @@ pub enum CommandExecutionMode<'a> {
 
 pub fn execute_launch_request_with_result_for_mode(
     request: &LaunchRequest,
-    multiplexer: MultiplexerKind,
     mode: CommandExecutionMode<'_>,
 ) -> SessionExecutionResult {
     let workspace_name = request.workspace_name.clone();
     let workspace_path = request.workspace_path.clone();
-    let launch_plan = build_launch_plan(request, multiplexer);
+    let launch_plan = build_launch_plan(request);
     let session_name = launch_plan.session_name.clone();
     let result = execute_launch_plan_for_mode(&launch_plan, mode);
     SessionExecutionResult {
@@ -603,10 +589,9 @@ pub fn execute_launch_request_with_result_for_mode(
 
 pub fn execute_shell_launch_request_for_mode(
     request: &ShellLaunchRequest,
-    multiplexer: MultiplexerKind,
     mode: CommandExecutionMode<'_>,
 ) -> (String, Result<(), String>) {
-    let launch_plan = build_shell_launch_plan(request, multiplexer);
+    let launch_plan = build_shell_launch_plan(request);
     let session_name = launch_plan.session_name.clone();
     let result = execute_launch_plan_for_mode(&launch_plan, mode);
     (session_name, result)
@@ -614,13 +599,12 @@ pub fn execute_shell_launch_request_for_mode(
 
 pub fn execute_stop_workspace_with_result_for_mode(
     workspace: &Workspace,
-    multiplexer: MultiplexerKind,
     mode: CommandExecutionMode<'_>,
 ) -> SessionExecutionResult {
     let workspace_name = workspace.name.clone();
     let workspace_path = workspace.path.clone();
     let session_name = session_name_for_workspace_ref(workspace);
-    let commands = stop_plan(&session_name, multiplexer);
+    let commands = stop_plan(&session_name);
     let result = execute_commands_for_mode(&commands, mode);
     SessionExecutionResult {
         workspace_name,
@@ -807,9 +791,7 @@ fn stderr_or_status(output: &std::process::Output) -> String {
 pub fn kill_workspace_session_command(
     project_name: Option<&str>,
     workspace_name: &str,
-    multiplexer: MultiplexerKind,
 ) -> Vec<String> {
-    let _ = multiplexer;
     let session_name = session_name_for_workspace_in_project(project_name, workspace_name);
     vec![
         "tmux".to_string(),

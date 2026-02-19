@@ -77,8 +77,8 @@ mod bootstrap_discovery;
 #[cfg(test)]
 use bootstrap_config::{AppDependencies, AppPaths};
 use bootstrap_config::{
-    filter_branches, input_for_multiplexer, load_local_branches, project_display_name,
-    project_paths_equal, read_workspace_launch_prompt,
+    filter_branches, load_local_branches, project_display_name, project_paths_equal,
+    read_workspace_launch_prompt,
 };
 use bootstrap_discovery::bootstrap_data_for_projects;
 mod terminal;

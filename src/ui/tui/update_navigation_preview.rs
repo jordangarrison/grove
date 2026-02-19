@@ -54,13 +54,11 @@ impl GroveApp {
 
         if async_launch {
             self.lazygit_launch_in_flight.insert(session_name.clone());
-            let multiplexer = self.multiplexer;
             let completion_session = session_name.clone();
             self.queue_cmd(Cmd::task(move || {
                 let started_at = Instant::now();
                 let (_, result) = execute_shell_launch_request_for_mode(
                     &launch_request,
-                    multiplexer,
                     CommandExecutionMode::Process,
                 );
                 let duration_ms =
@@ -77,7 +75,6 @@ impl GroveApp {
         let launch_started_at = Instant::now();
         let (_, launch_result) = execute_shell_launch_request_for_mode(
             &launch_request,
-            self.multiplexer,
             CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
         );
         let duration_ms =
@@ -171,13 +168,11 @@ impl GroveApp {
 
         if async_launch {
             self.shell_launch_in_flight.insert(session_name.clone());
-            let multiplexer = self.multiplexer;
             let completion_session = session_name.clone();
             self.queue_cmd(Cmd::task(move || {
                 let started_at = Instant::now();
                 let (_, result) = execute_shell_launch_request_for_mode(
                     &launch_request,
-                    multiplexer,
                     CommandExecutionMode::Process,
                 );
                 let duration_ms =
@@ -194,7 +189,6 @@ impl GroveApp {
         let launch_started_at = Instant::now();
         let (_, launch_result) = execute_shell_launch_request_for_mode(
             &launch_request,
-            self.multiplexer,
             CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
         );
         let duration_ms =

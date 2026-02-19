@@ -20,7 +20,6 @@ impl GroveApp {
         if !self.tmux_input.supports_background_launch() {
             let completion = execute_stop_workspace_with_result_for_mode(
                 &workspace,
-                self.multiplexer,
                 CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
             );
             if let Some(error) = completion.result.as_ref().err() {
@@ -34,11 +33,9 @@ impl GroveApp {
         }
 
         self.stop_in_flight = true;
-        let multiplexer = self.multiplexer;
         self.queue_cmd(Cmd::task(move || {
             let completion = execute_stop_workspace_with_result_for_mode(
                 &workspace_for_task,
-                multiplexer,
                 CommandExecutionMode::Process,
             );
             Msg::StopAgentCompleted(completion.into())

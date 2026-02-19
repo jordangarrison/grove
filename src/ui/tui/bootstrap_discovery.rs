@@ -4,7 +4,7 @@ use crate::infrastructure::adapters::{
     BootstrapData, CommandGitAdapter, CommandMultiplexerAdapter, CommandSystemAdapter,
     DiscoveryState, MultiplexerAdapter, bootstrap_data,
 };
-use crate::infrastructure::config::{MultiplexerKind, ProjectConfig};
+use crate::infrastructure::config::ProjectConfig;
 
 #[derive(Debug, Clone)]
 struct StaticMultiplexerAdapter {
@@ -17,10 +17,7 @@ impl MultiplexerAdapter for StaticMultiplexerAdapter {
     }
 }
 
-pub(super) fn bootstrap_data_for_projects(
-    projects: &[ProjectConfig],
-    multiplexer: MultiplexerKind,
-) -> BootstrapData {
+pub(super) fn bootstrap_data_for_projects(projects: &[ProjectConfig]) -> BootstrapData {
     if projects.is_empty() {
         return BootstrapData {
             repo_name: "grove".to_string(),
@@ -30,7 +27,7 @@ pub(super) fn bootstrap_data_for_projects(
         };
     }
 
-    let live_multiplexer = CommandMultiplexerAdapter { multiplexer };
+    let live_multiplexer = CommandMultiplexerAdapter;
     let static_multiplexer = StaticMultiplexerAdapter {
         running_sessions: live_multiplexer.running_sessions(),
     };

@@ -14,14 +14,6 @@ impl MultiplexerKind {
     pub fn label(self) -> &'static str {
         "tmux"
     }
-
-    pub const fn next(self) -> Self {
-        self
-    }
-
-    pub const fn previous(self) -> Self {
-        self
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
