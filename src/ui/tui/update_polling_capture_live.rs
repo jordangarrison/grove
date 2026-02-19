@@ -24,13 +24,11 @@ impl GroveApp {
                 self.output_changing = update.changed_cleaned;
                 self.agent_output_changing = update.changed_cleaned && consumed_inputs.is_empty();
                 self.push_agent_activity_frame(self.agent_output_changing);
-                let selected_workspace_index =
-                    self.state.selected_workspace().and_then(|workspace| {
-                        if session_name_for_workspace_ref(workspace) != session_name {
-                            return None;
-                        }
-                        Some(self.state.selected_index)
-                    });
+                let selected_workspace_index = self
+                    .state
+                    .selected_workspace()
+                    .filter(|workspace| session_name_for_workspace_ref(workspace) == session_name)
+                    .map(|_| self.state.selected_index);
                 if let Some(index) = selected_workspace_index {
                     let supported_agent = self.state.workspaces[index].supported_agent;
                     let workspace_path = self.state.workspaces[index].path.clone();
@@ -77,8 +75,7 @@ impl GroveApp {
                         .with_data("line_count", Value::from(line_count))
                         .with_data("session", Value::from(session_name.to_string()));
                     if let Some(first_input) = consumed_inputs.first() {
-                        let last_index = consumed_inputs.len().saturating_sub(1);
-                        let last_input = &consumed_inputs[last_index];
+                        let last_input = consumed_inputs.last().unwrap_or(first_input);
                         let oldest_input_to_preview_ms = Self::duration_millis(
                             now.saturating_duration_since(first_input.received_at),
                         );
@@ -216,7 +213,7 @@ impl GroveApp {
                     self.last_tmux_error = None;
                 } else {
                     self.last_tmux_error = Some(message.clone());
-                    self.log_tmux_error(message.clone());
+                    self.log_tmux_error(message);
                     self.show_toast("preview capture failed", true);
                 }
                 self.refresh_preview_summary();

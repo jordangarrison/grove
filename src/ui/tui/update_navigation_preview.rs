@@ -134,62 +134,48 @@ impl GroveApp {
             completion_fields.push(("workspace".to_string(), Value::from(workspace_name)));
         }
 
-        match result {
-            Ok(()) => {
-                self.last_tmux_error = None;
-                self.session_tracker_mut(kind)
-                    .mark_ready(session_name.clone());
-                self.log_event_with_fields(
-                    Self::session_launch_event(kind),
-                    "completed",
-                    completion_fields,
-                );
-                if context.poll_preview_on_ready
-                    && self.selected_workspace_has_session(kind, &session_name)
-                    && self.should_poll_preview_after_launch(kind)
-                {
-                    self.poll_preview();
-                }
-                true
-            }
-            Err(error) => {
-                if tmux_launch_error_indicates_duplicate_session(&error) {
-                    completion_fields.push(("ok".to_string(), Value::from(true)));
-                    completion_fields
-                        .push(("reused_existing_session".to_string(), Value::from(true)));
-                    completion_fields.push(("error".to_string(), Value::from(error)));
-                    self.last_tmux_error = None;
-                    self.session_tracker_mut(kind)
-                        .mark_ready(session_name.clone());
-                    self.log_event_with_fields(
-                        Self::session_launch_event(kind),
-                        "completed",
-                        completion_fields,
-                    );
-                    if context.poll_preview_on_ready
-                        && self.selected_workspace_has_session(kind, &session_name)
-                        && self.should_poll_preview_after_launch(kind)
-                    {
-                        self.poll_preview();
-                    }
-                    return true;
-                }
+        let is_success = match &result {
+            Ok(()) => true,
+            Err(error) => tmux_launch_error_indicates_duplicate_session(error),
+        };
 
+        if is_success {
+            if let Err(error) = &result {
+                completion_fields.push(("ok".to_string(), Value::from(true)));
+                completion_fields.push(("reused_existing_session".to_string(), Value::from(true)));
                 completion_fields.push(("error".to_string(), Value::from(error.clone())));
-                self.log_event_with_fields(
-                    Self::session_launch_event(kind),
-                    "completed",
-                    completion_fields,
-                );
-                self.last_tmux_error = Some(error.clone());
-                if context.log_tmux_error_on_failure {
-                    self.log_tmux_error(error);
-                }
-                self.session_tracker_mut(kind).mark_failed(session_name);
-                self.show_toast(Self::session_launch_failure_toast(kind), true);
-                false
             }
+            self.last_tmux_error = None;
+            self.session_tracker_mut(kind)
+                .mark_ready(session_name.clone());
+            self.log_event_with_fields(
+                Self::session_launch_event(kind),
+                "completed",
+                completion_fields,
+            );
+            if context.poll_preview_on_ready
+                && self.selected_workspace_has_session(kind, &session_name)
+                && self.should_poll_preview_after_launch(kind)
+            {
+                self.poll_preview();
+            }
+            return true;
         }
+
+        let error = result.unwrap_err();
+        completion_fields.push(("error".to_string(), Value::from(error.clone())));
+        self.log_event_with_fields(
+            Self::session_launch_event(kind),
+            "completed",
+            completion_fields,
+        );
+        self.last_tmux_error = Some(error.clone());
+        if context.log_tmux_error_on_failure {
+            self.log_tmux_error(error);
+        }
+        self.session_tracker_mut(kind).mark_failed(session_name);
+        self.show_toast(Self::session_launch_failure_toast(kind), true);
+        false
     }
 
     fn ensure_session_for_workspace(
@@ -338,33 +324,27 @@ impl GroveApp {
         }
 
         let session_name = shell_session_name_for_workspace(workspace);
-        if self.shell_sessions.is_ready(&session_name) {
-            return Some(session_name);
-        }
-
-        None
+        self.shell_sessions
+            .is_ready(&session_name)
+            .then_some(session_name)
     }
 
     pub(super) fn selected_shell_preview_session_if_ready(&self) -> Option<String> {
         let workspace = self.state.selected_workspace()?;
-
         let session_name = shell_session_name_for_workspace(workspace);
-        if self.shell_sessions.is_ready(&session_name) {
-            return Some(session_name);
-        }
-
-        None
+        self.shell_sessions
+            .is_ready(&session_name)
+            .then_some(session_name)
     }
 
     pub(super) fn can_enter_interactive_session(&self) -> bool {
-        if self.preview_tab == PreviewTab::Git {
-            return workspace_can_enter_interactive(self.state.selected_workspace(), true);
+        match self.preview_tab {
+            PreviewTab::Git => {
+                workspace_can_enter_interactive(self.state.selected_workspace(), true)
+            }
+            PreviewTab::Shell => self.selected_shell_preview_session_if_ready().is_some(),
+            PreviewTab::Agent => self.selected_agent_preview_session_if_ready().is_some(),
         }
-        if self.preview_tab == PreviewTab::Shell {
-            return self.selected_shell_preview_session_if_ready().is_some();
-        }
-
-        self.selected_agent_preview_session_if_ready().is_some()
     }
 
     pub(super) fn ensure_agent_preview_session_for_interactive(&mut self) -> Option<String> {
@@ -384,39 +364,19 @@ impl GroveApp {
     }
 
     pub(super) fn prepare_live_preview_session(&mut self) -> Option<LivePreviewTarget> {
-        if self.preview_tab == PreviewTab::Git {
-            return self
-                .ensure_lazygit_session_for_selected_workspace()
-                .map(|session_name| LivePreviewTarget {
-                    session_name,
-                    include_escape_sequences: true,
-                });
-        }
-        if self.preview_tab == PreviewTab::Shell {
-            if let Some(session_name) = self.selected_shell_preview_session_if_ready() {
-                return Some(LivePreviewTarget {
-                    session_name,
-                    include_escape_sequences: true,
-                });
-            }
-            return self
-                .ensure_workspace_shell_session_for_selected_workspace(false, true, true)
-                .map(|session_name| LivePreviewTarget {
-                    session_name,
-                    include_escape_sequences: true,
-                });
-        }
-        if let Some(session_name) = self.selected_agent_preview_session_if_ready() {
-            return Some(LivePreviewTarget {
-                session_name,
-                include_escape_sequences: true,
-            });
-        }
-        self.ensure_workspace_shell_session_for_selected_workspace(false, false, false)
-            .map(|session_name| LivePreviewTarget {
-                session_name,
-                include_escape_sequences: true,
-            })
+        let session_name = match self.preview_tab {
+            PreviewTab::Git => self.ensure_lazygit_session_for_selected_workspace()?,
+            PreviewTab::Shell => self.selected_shell_preview_session_if_ready().or_else(|| {
+                self.ensure_workspace_shell_session_for_selected_workspace(false, true, true)
+            })?,
+            PreviewTab::Agent => self.selected_agent_preview_session_if_ready().or_else(|| {
+                self.ensure_workspace_shell_session_for_selected_workspace(false, false, false)
+            })?,
+        };
+        Some(LivePreviewTarget {
+            session_name,
+            include_escape_sequences: true,
+        })
     }
 
     pub(super) fn handle_lazygit_launch_completed(&mut self, completion: LazygitLaunchCompletion) {

@@ -80,27 +80,16 @@ impl GroveApp {
     }
 
     pub(super) fn preview_plain_line(&self, line_idx: usize) -> Option<String> {
-        if let Some(line) = self.preview.render_lines.get(line_idx) {
-            return Some(ansi_line_to_plain_text(line));
-        }
-
-        self.preview.lines.get(line_idx).cloned()
+        self.preview
+            .render_lines
+            .get(line_idx)
+            .map(|line| ansi_line_to_plain_text(line))
+            .or_else(|| self.preview.lines.get(line_idx).cloned())
     }
 
     pub(super) fn preview_plain_lines_range(&self, start: usize, end: usize) -> Vec<String> {
-        if start >= end {
-            return Vec::new();
-        }
-
-        let mut lines = Vec::with_capacity(end.saturating_sub(start));
-        for line_idx in start..end {
-            if let Some(line) = self.preview_plain_line(line_idx) {
-                lines.push(line);
-                continue;
-            }
-            break;
-        }
-
-        lines
+        (start..end)
+            .map_while(|line_idx| self.preview_plain_line(line_idx))
+            .collect()
     }
 }

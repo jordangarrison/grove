@@ -15,13 +15,12 @@ use super::{
     execute_launch_request_with_result_for_mode, execute_stop_workspace_with_result_for_mode,
     git_preview_session_if_ready, git_session_name_for_workspace, kill_workspace_session_command,
     launch_request_for_workspace, live_preview_agent_session, live_preview_capture_target_for_tab,
-    live_preview_session_for_tab, normalized_agent_command_override, poll_interval,
-    reconcile_with_sessions, sanitize_workspace_name, session_name_for_workspace,
-    session_name_for_workspace_ref, shell_launch_request_for_workspace,
+    live_preview_session_for_tab, poll_interval, reconcile_with_sessions, sanitize_workspace_name,
+    session_name_for_workspace, session_name_for_workspace_ref, shell_launch_request_for_workspace,
     shell_session_name_for_workspace, stop_plan, strip_mouse_fragments,
     tmux_capture_error_indicates_missing_session, tmux_launch_error_indicates_duplicate_session,
-    workspace_can_enter_interactive, workspace_can_start_agent, workspace_can_stop_agent,
-    workspace_session_for_preview_tab, workspace_should_poll_status,
+    trimmed_nonempty, workspace_can_enter_interactive, workspace_can_start_agent,
+    workspace_can_stop_agent, workspace_session_for_preview_tab, workspace_should_poll_status,
     workspace_status_session_target, workspace_status_targets_for_polling,
     workspace_status_targets_for_polling_with_live_preview,
 };
@@ -464,15 +463,15 @@ fn codex_launch_command_matches_prd_flags() {
 #[test]
 fn agent_command_override_normalization_trims_whitespace() {
     assert_eq!(
-        normalized_agent_command_override("  /tmp/fake-codex --flag  "),
+        trimmed_nonempty("  /tmp/fake-codex --flag  "),
         Some("/tmp/fake-codex --flag".to_string())
     );
 }
 
 #[test]
 fn agent_command_override_normalization_ignores_empty_values() {
-    assert_eq!(normalized_agent_command_override(""), None);
-    assert_eq!(normalized_agent_command_override("   "), None);
+    assert_eq!(trimmed_nonempty(""), None);
+    assert_eq!(trimmed_nonempty("   "), None);
 }
 
 #[test]

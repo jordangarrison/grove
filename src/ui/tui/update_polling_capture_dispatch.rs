@@ -4,7 +4,7 @@ impl GroveApp {
     pub(super) fn status_poll_targets_for_async_preview(
         &self,
         live_preview: Option<&LivePreviewTarget>,
-    ) -> Vec<WorkspaceStatusPollTarget> {
+    ) -> Vec<WorkspaceStatusTarget> {
         if live_preview.is_some() {
             return Vec::new();
         }
@@ -13,19 +13,17 @@ impl GroveApp {
     }
 
     pub(super) fn selected_live_preview_session_if_ready(&self) -> Option<String> {
-        if self.preview_tab == PreviewTab::Git {
-            let workspace = self.state.selected_workspace()?;
-            let session_name = git_session_name_for_workspace(workspace);
-            if self.lazygit_sessions.is_ready(&session_name) {
-                return Some(session_name);
+        match self.preview_tab {
+            PreviewTab::Git => {
+                let workspace = self.state.selected_workspace()?;
+                let session_name = git_session_name_for_workspace(workspace);
+                self.lazygit_sessions
+                    .is_ready(&session_name)
+                    .then_some(session_name)
             }
-            return None;
+            PreviewTab::Shell => self.selected_shell_preview_session_if_ready(),
+            PreviewTab::Agent => self.selected_agent_preview_session_if_ready(),
         }
-        if self.preview_tab == PreviewTab::Shell {
-            return self.selected_shell_preview_session_if_ready();
-        }
-
-        self.selected_agent_preview_session_if_ready()
     }
 
     fn selected_live_preview_session_for_completion(&self) -> Option<String> {

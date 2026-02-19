@@ -28,19 +28,9 @@ impl StartAgentConfigState {
     }
 
     pub(super) fn parse_start_options(&self) -> StartOptions {
-        let prompt = if self.prompt.trim().is_empty() {
-            None
-        } else {
-            Some(self.prompt.trim().to_string())
-        };
-        let pre_launch_command = if self.pre_launch_command.trim().is_empty() {
-            None
-        } else {
-            Some(self.pre_launch_command.trim().to_string())
-        };
         StartOptions {
-            prompt,
-            pre_launch_command,
+            prompt: trimmed_nonempty(&self.prompt),
+            pre_launch_command: trimmed_nonempty(&self.pre_launch_command),
             skip_permissions: self.skip_permissions,
         }
     }

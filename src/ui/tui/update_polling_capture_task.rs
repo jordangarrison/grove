@@ -65,7 +65,7 @@ impl GroveApp {
         generation: u64,
         live_preview: Option<LivePreviewTarget>,
         cursor_session: Option<String>,
-        status_poll_targets: Vec<WorkspaceStatusPollTarget>,
+        status_poll_targets: Vec<WorkspaceStatusTarget>,
     ) -> Cmd<Msg> {
         Cmd::task(move || {
             let live_capture = live_preview.map(|target| {

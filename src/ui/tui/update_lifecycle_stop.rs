@@ -15,7 +15,6 @@ impl GroveApp {
             self.show_toast("no workspace selected", true);
             return;
         };
-        let workspace_for_task = workspace.clone();
 
         if !self.tmux_input.supports_background_launch() {
             let completion = execute_stop_workspace_with_result_for_mode(
@@ -35,7 +34,7 @@ impl GroveApp {
         self.stop_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
             let completion = execute_stop_workspace_with_result_for_mode(
-                &workspace_for_task,
+                &workspace,
                 CommandExecutionMode::Process,
             );
             Msg::StopAgentCompleted(completion.into())

@@ -795,7 +795,7 @@ fn env_agent_command_override(agent: AgentType) -> Option<String> {
         AgentType::Codex => "GROVE_CODEX_CMD",
     };
     let override_value = std::env::var(variable).ok()?;
-    normalized_agent_command_override(&override_value)
+    trimmed_nonempty(&override_value)
 }
 
 pub(crate) fn trimmed_nonempty(value: &str) -> Option<String> {
@@ -805,10 +805,6 @@ pub(crate) fn trimmed_nonempty(value: &str) -> Option<String> {
     }
 
     Some(trimmed.to_string())
-}
-
-fn normalized_agent_command_override(value: &str) -> Option<String> {
-    trimmed_nonempty(value)
 }
 
 fn normalized_pre_launch_command(value: Option<&str>) -> Option<String> {
@@ -1154,41 +1150,23 @@ fn claude_project_dir_name(abs_path: &Path) -> String {
 }
 
 fn is_file_recently_modified(path: &Path, threshold: Duration) -> bool {
-    let modified_at = fs::metadata(path)
+    fs::metadata(path)
         .and_then(|metadata| metadata.modified())
-        .ok();
-    let Some(modified_at) = modified_at else {
-        return false;
-    };
-    let Ok(age) = modified_at.elapsed() else {
-        return false;
-    };
-    age < threshold
+        .ok()
+        .and_then(|modified_at| modified_at.elapsed().ok())
+        .is_some_and(|age| age < threshold)
 }
 
 fn any_file_recently_modified(dir: &Path, suffix: &str, threshold: Duration) -> bool {
-    let entries = match fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(_) => return false,
+    let Ok(entries) = fs::read_dir(dir) else {
+        return false;
     };
 
-    for entry in entries.flatten() {
-        let file_type = match entry.file_type() {
-            Ok(file_type) => file_type,
-            Err(_) => continue,
-        };
-        if !file_type.is_file() {
-            continue;
-        }
-        if !entry.file_name().to_string_lossy().ends_with(suffix) {
-            continue;
-        }
-        if is_file_recently_modified(&entry.path(), threshold) {
-            return true;
-        }
-    }
-
-    false
+    entries.flatten().any(|entry| {
+        entry.file_type().is_ok_and(|ft| ft.is_file())
+            && entry.file_name().to_string_lossy().ends_with(suffix)
+            && is_file_recently_modified(&entry.path(), threshold)
+    })
 }
 
 fn find_recent_jsonl_files(dir: &Path, exclude_prefix: Option<&str>) -> Option<Vec<PathBuf>> {
@@ -1230,14 +1208,10 @@ fn read_tail_lines(path: &Path, max_bytes: usize) -> Option<Vec<String>> {
 
     let max_bytes_u64 = u64::try_from(max_bytes).ok()?;
     let start = size.saturating_sub(max_bytes_u64);
-    if file.seek(SeekFrom::Start(start)).is_err() {
-        return None;
-    }
+    file.seek(SeekFrom::Start(start)).ok()?;
 
     let mut bytes = Vec::new();
-    if file.read_to_end(&mut bytes).is_err() {
-        return None;
-    }
+    file.read_to_end(&mut bytes).ok()?;
 
     let mut lines: Vec<String> = String::from_utf8_lossy(&bytes)
         .lines()

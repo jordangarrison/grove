@@ -79,10 +79,7 @@ impl GroveApp {
     }
 
     fn has_recent_agent_activity(&self) -> bool {
-        self.agent_activity_frames
-            .iter()
-            .copied()
-            .any(|changed| changed)
+        self.agent_activity_frames.contains(&true)
     }
 
     fn visual_tick_interval(&self) -> Option<Duration> {

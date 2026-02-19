@@ -183,7 +183,7 @@ impl GroveApp {
         action: &str,
         fields: impl IntoIterator<Item = (String, Value)>,
     ) {
-        let mut all_fields = vec![("kind".to_string(), Value::from(kind.to_string()))];
+        let mut all_fields = vec![("kind".to_string(), Value::from(kind))];
         all_fields.extend(fields);
         self.log_event_with_fields("dialog", action, all_fields);
     }
