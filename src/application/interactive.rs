@@ -226,21 +226,7 @@ fn key_to_action(key: InteractiveKey) -> InteractiveAction {
     }
 }
 
-pub fn tmux_send_keys_command(
-    target_session: &str,
-    action: &InteractiveAction,
-) -> Option<Vec<String>> {
-    tmux_send_keys_command_impl(target_session, action)
-}
-
 pub fn multiplexer_send_input_command(
-    target_session: &str,
-    action: &InteractiveAction,
-) -> Option<Vec<String>> {
-    tmux_send_keys_command_impl(target_session, action)
-}
-
-fn tmux_send_keys_command_impl(
     target_session: &str,
     action: &InteractiveAction,
 ) -> Option<Vec<String>> {

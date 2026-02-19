@@ -199,6 +199,43 @@ impl GroveApp {
         self.execute_ui_command(command)
     }
 
+    fn dispatch_dialog_key(&mut self, key_event: &KeyEvent) -> bool {
+        if self.create_dialog().is_some() {
+            self.handle_create_dialog_key(*key_event);
+            return true;
+        }
+        if self.edit_dialog().is_some() {
+            self.handle_edit_dialog_key(*key_event);
+            return true;
+        }
+        if self.launch_dialog().is_some() {
+            self.handle_launch_dialog_key(*key_event);
+            return true;
+        }
+        if self.delete_dialog().is_some() {
+            self.handle_delete_dialog_key(*key_event);
+            return true;
+        }
+        if self.merge_dialog().is_some() {
+            self.handle_merge_dialog_key(*key_event);
+            return true;
+        }
+        if self.update_from_base_dialog().is_some() {
+            self.handle_update_from_base_dialog_key(*key_event);
+            return true;
+        }
+        if self.project_dialog().is_some() {
+            self.handle_project_dialog_key(*key_event);
+            return true;
+        }
+        if self.settings_dialog().is_some() {
+            self.handle_settings_dialog_key(*key_event);
+            return true;
+        }
+
+        false
+    }
+
     pub(super) fn handle_key(&mut self, key_event: KeyEvent) -> (bool, Cmd<Msg>) {
         if !matches!(key_event.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
             return (false, Cmd::None);
@@ -247,39 +284,8 @@ impl GroveApp {
             return (false, self.handle_interactive_key(key_event));
         }
 
-        if Self::is_ctrl_modal_nav_key(&key_event) {
-            if self.create_dialog().is_some() {
-                self.handle_create_dialog_key(key_event);
-                return (false, Cmd::None);
-            }
-            if self.edit_dialog().is_some() {
-                self.handle_edit_dialog_key(key_event);
-                return (false, Cmd::None);
-            }
-            if self.launch_dialog().is_some() {
-                self.handle_launch_dialog_key(key_event);
-                return (false, Cmd::None);
-            }
-            if self.delete_dialog().is_some() {
-                self.handle_delete_dialog_key(key_event);
-                return (false, Cmd::None);
-            }
-            if self.merge_dialog().is_some() {
-                self.handle_merge_dialog_key(key_event);
-                return (false, Cmd::None);
-            }
-            if self.update_from_base_dialog().is_some() {
-                self.handle_update_from_base_dialog_key(key_event);
-                return (false, Cmd::None);
-            }
-            if self.project_dialog().is_some() {
-                self.handle_project_dialog_key(key_event);
-                return (false, Cmd::None);
-            }
-            if self.settings_dialog().is_some() {
-                self.handle_settings_dialog_key(key_event);
-                return (false, Cmd::None);
-            }
+        if Self::is_ctrl_modal_nav_key(&key_event) && self.dispatch_dialog_key(&key_event) {
+            return (false, Cmd::None);
         }
 
         let keybinding_state = self.keybinding_state();
@@ -294,39 +300,7 @@ impl GroveApp {
             return (false, Cmd::None);
         }
 
-        if self.create_dialog().is_some() {
-            self.handle_create_dialog_key(key_event);
-            return (false, Cmd::None);
-        }
-
-        if self.edit_dialog().is_some() {
-            self.handle_edit_dialog_key(key_event);
-            return (false, Cmd::None);
-        }
-
-        if self.launch_dialog().is_some() {
-            self.handle_launch_dialog_key(key_event);
-            return (false, Cmd::None);
-        }
-
-        if self.delete_dialog().is_some() {
-            self.handle_delete_dialog_key(key_event);
-            return (false, Cmd::None);
-        }
-        if self.merge_dialog().is_some() {
-            self.handle_merge_dialog_key(key_event);
-            return (false, Cmd::None);
-        }
-        if self.update_from_base_dialog().is_some() {
-            self.handle_update_from_base_dialog_key(key_event);
-            return (false, Cmd::None);
-        }
-        if self.project_dialog().is_some() {
-            self.handle_project_dialog_key(key_event);
-            return (false, Cmd::None);
-        }
-        if self.settings_dialog().is_some() {
-            self.handle_settings_dialog_key(key_event);
+        if self.dispatch_dialog_key(&key_event) {
             return (false, Cmd::None);
         }
         if self.keybind_help_open {

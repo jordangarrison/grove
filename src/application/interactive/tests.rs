@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use super::{
     InteractiveAction, InteractiveKey, InteractiveState, encode_paste_payload, is_paste_event,
-    render_cursor_overlay, render_cursor_overlay_ansi, tmux_send_keys_command,
+    multiplexer_send_input_command, render_cursor_overlay, render_cursor_overlay_ansi,
 };
 
 #[test]
@@ -52,7 +52,7 @@ fn ctrl_backslash_exits_immediately() {
 #[test]
 fn key_mapping_covers_named_and_literal_tmux_forms() {
     assert_eq!(
-        tmux_send_keys_command(
+        multiplexer_send_input_command(
             "grove-ws-auth",
             &InteractiveAction::SendNamed("Enter".to_string())
         ),
@@ -66,7 +66,7 @@ fn key_mapping_covers_named_and_literal_tmux_forms() {
     );
 
     assert_eq!(
-        tmux_send_keys_command(
+        multiplexer_send_input_command(
             "grove-ws-auth",
             &InteractiveAction::SendLiteral("x".to_string())
         ),
@@ -139,7 +139,7 @@ fn modified_enter_forwards_via_tmux_literal_send_keys() {
     );
 
     assert_eq!(
-        tmux_send_keys_command("grove-ws-auth", &action),
+        multiplexer_send_input_command("grove-ws-auth", &action),
         Some(vec![
             "tmux".to_string(),
             "send-keys".to_string(),

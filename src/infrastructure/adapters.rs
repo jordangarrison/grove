@@ -425,12 +425,8 @@ fn main_workspace_metadata(path: &Path) -> Result<MarkerMetadata, GitAdapterErro
             supported_agent: true,
         }),
         Err(WorkspaceMarkerError::MissingAgentMarker)
-        | Err(WorkspaceMarkerError::InvalidAgentMarker(_)) => Ok(MarkerMetadata {
-            agent: AgentType::Claude,
-            base_branch: None,
-            supported_agent: true,
-        }),
-        Err(WorkspaceMarkerError::MissingBaseMarker)
+        | Err(WorkspaceMarkerError::MissingBaseMarker)
+        | Err(WorkspaceMarkerError::InvalidAgentMarker(_))
         | Err(WorkspaceMarkerError::EmptyBaseBranch) => Ok(MarkerMetadata {
             agent: AgentType::Claude,
             base_branch: None,

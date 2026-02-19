@@ -203,7 +203,7 @@ fn resolve_lazygit_command_with(
     login_shell_path: Option<PathBuf>,
     standard_path: Option<PathBuf>,
 ) -> String {
-    if let Some(override_command) = normalized_command_override(override_value) {
+    if let Some(override_command) = override_value.as_deref().and_then(trimmed_nonempty) {
         return override_command;
     }
 
@@ -220,16 +220,6 @@ fn resolve_lazygit_command_with(
     }
 
     LAZYGIT_COMMAND.to_string()
-}
-
-fn normalized_command_override(value: Option<String>) -> Option<String> {
-    let value = value?;
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    Some(trimmed.to_string())
 }
 
 fn resolve_executable_from_path(command: &str) -> Option<PathBuf> {

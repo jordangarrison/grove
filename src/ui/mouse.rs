@@ -10,7 +10,8 @@ pub fn ratio_from_drag(total_width: u16, drag_x: u16) -> u16 {
         return SIDEBAR_RATIO_MIN_PCT;
     }
 
-    let ratio = ((drag_x as u32 * 100) / total_width as u32) as u16;
+    let ratio_u32 = u32::from(drag_x).saturating_mul(100) / u32::from(total_width);
+    let ratio = u16::try_from(ratio_u32).unwrap_or(u16::MAX);
     clamp_sidebar_ratio(ratio)
 }
 

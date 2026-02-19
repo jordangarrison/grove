@@ -5,15 +5,7 @@ impl GroveApp {
     const COMMAND_PALETTE_FRAME_OVERHEAD_ROWS: u16 = 5;
 
     fn has_non_palette_modal_open(&self) -> bool {
-        self.launch_dialog().is_some()
-            || self.create_dialog().is_some()
-            || self.edit_dialog().is_some()
-            || self.delete_dialog().is_some()
-            || self.merge_dialog().is_some()
-            || self.update_from_base_dialog().is_some()
-            || self.settings_dialog().is_some()
-            || self.project_dialog().is_some()
-            || self.keybind_help_open
+        self.active_dialog.is_some() || self.keybind_help_open
     }
 
     fn can_open_command_palette(&self) -> bool {

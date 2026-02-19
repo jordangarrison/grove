@@ -43,8 +43,8 @@ use crate::application::agent_runtime::{
     launch_request_for_workspace, poll_interval, session_name_for_workspace_ref,
     shell_launch_request_for_workspace, shell_session_name_for_workspace,
     tmux_capture_error_indicates_missing_session, tmux_launch_error_indicates_duplicate_session,
-    workspace_can_enter_interactive, workspace_can_start_agent, workspace_can_stop_agent,
-    workspace_status_targets_for_polling_with_live_preview,
+    trimmed_nonempty, workspace_can_enter_interactive, workspace_can_start_agent,
+    workspace_can_stop_agent, workspace_status_targets_for_polling_with_live_preview,
 };
 #[cfg(test)]
 use crate::application::interactive::render_cursor_overlay;

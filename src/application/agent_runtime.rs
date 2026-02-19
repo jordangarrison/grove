@@ -207,9 +207,8 @@ pub fn workspace_can_enter_interactive(
 }
 
 pub fn workspace_can_start_agent(workspace: Option<&Workspace>) -> bool {
-    let workspace = match workspace {
-        Some(workspace) => workspace,
-        None => return false,
+    let Some(workspace) = workspace else {
+        return false;
     };
     if !workspace.supported_agent {
         return false;
@@ -226,9 +225,8 @@ pub fn workspace_can_start_agent(workspace: Option<&Workspace>) -> bool {
 }
 
 pub fn workspace_can_stop_agent(workspace: Option<&Workspace>) -> bool {
-    let workspace = match workspace {
-        Some(workspace) => workspace,
-        None => return false,
+    let Some(workspace) = workspace else {
+        return false;
     };
 
     workspace.status.has_session()
@@ -800,7 +798,7 @@ fn env_agent_command_override(agent: AgentType) -> Option<String> {
     normalized_agent_command_override(&override_value)
 }
 
-fn normalized_agent_command_override(value: &str) -> Option<String> {
+pub(crate) fn trimmed_nonempty(value: &str) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return None;
@@ -809,14 +807,12 @@ fn normalized_agent_command_override(value: &str) -> Option<String> {
     Some(trimmed.to_string())
 }
 
-fn normalized_pre_launch_command(value: Option<&str>) -> Option<String> {
-    let raw = value?;
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
+fn normalized_agent_command_override(value: &str) -> Option<String> {
+    trimmed_nonempty(value)
+}
 
-    Some(trimmed.to_string())
+fn normalized_pre_launch_command(value: Option<&str>) -> Option<String> {
+    trimmed_nonempty(value?)
 }
 
 fn launch_command_with_pre_launch(agent_command: &str, pre_launch_command: Option<&str>) -> String {

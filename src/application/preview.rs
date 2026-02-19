@@ -56,7 +56,9 @@ impl PreviewState {
             ts: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or(Duration::ZERO)
-                .as_millis() as u64,
+                .as_millis()
+                .try_into()
+                .unwrap_or(u64::MAX),
             raw_output: raw_output.to_owned(),
             cleaned_output: change.cleaned_output.clone(),
             render_output: change.render_output.clone(),
@@ -126,10 +128,8 @@ impl PreviewState {
         self.last_scroll_time = Some(now);
 
         if delta < 0 {
-            let next_offset = self
-                .offset
-                .saturating_add(delta.unsigned_abs() as usize)
-                .min(max_offset);
+            let delta_abs = usize::try_from(delta.unsigned_abs()).unwrap_or(usize::MAX);
+            let next_offset = self.offset.saturating_add(delta_abs).min(max_offset);
             if next_offset == self.offset {
                 return false;
             }
@@ -140,7 +140,8 @@ impl PreviewState {
         }
 
         if delta > 0 {
-            let next_offset = self.offset.saturating_sub(delta as usize);
+            let delta_positive = usize::try_from(delta).unwrap_or(usize::MAX);
+            let next_offset = self.offset.saturating_sub(delta_positive);
             if next_offset == self.offset {
                 return false;
             }

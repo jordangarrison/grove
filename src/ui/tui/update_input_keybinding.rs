@@ -47,29 +47,11 @@ impl GroveApp {
     pub(super) fn apply_keybinding_action(&mut self, action: KeybindingAction) -> bool {
         match action {
             KeybindingAction::DismissModal => {
-                if self.create_dialog().is_some() {
-                    self.log_dialog_event("create", "dialog_cancelled");
-                    self.close_active_dialog();
-                    self.clear_create_branch_picker();
-                } else if self.edit_dialog().is_some() {
-                    self.log_dialog_event("edit", "dialog_cancelled");
-                    self.close_active_dialog();
-                } else if self.launch_dialog().is_some() {
-                    self.log_dialog_event("launch", "dialog_cancelled");
-                    self.close_active_dialog();
-                } else if self.delete_dialog().is_some() {
-                    self.log_dialog_event("delete", "dialog_cancelled");
-                    self.close_active_dialog();
-                } else if self.merge_dialog().is_some() {
-                    self.log_dialog_event("merge", "dialog_cancelled");
-                    self.close_active_dialog();
-                } else if self.update_from_base_dialog().is_some() {
-                    self.log_dialog_event("update_from_base", "dialog_cancelled");
-                    self.close_active_dialog();
-                } else if self.settings_dialog().is_some() {
-                    self.log_dialog_event("settings", "dialog_cancelled");
-                    self.close_active_dialog();
-                } else if self.project_dialog().is_some() {
+                if let Some(kind) = self.active_dialog_kind() {
+                    self.log_dialog_event(kind, "dialog_cancelled");
+                    if kind == "create" {
+                        self.clear_create_branch_picker();
+                    }
                     self.close_active_dialog();
                 } else if self.keybind_help_open {
                     self.keybind_help_open = false;
