@@ -81,6 +81,16 @@ impl GroveApp {
         }
     }
 
+    pub(super) fn log_event_with_fields(
+        &self,
+        event: &str,
+        kind: &str,
+        fields: impl IntoIterator<Item = (String, Value)>,
+    ) {
+        self.event_log
+            .log(LogEvent::new(event, kind).with_data_fields(fields));
+    }
+
     pub(super) fn capture_transition_snapshot(&self) -> TransitionSnapshot {
         TransitionSnapshot {
             selected_index: self.state.selected_index,
@@ -100,35 +110,45 @@ impl GroveApp {
                 .clone()
                 .map(Value::from)
                 .unwrap_or(Value::Null);
-            self.event_log.log(
-                LogEvent::new("state_change", "selection_changed")
-                    .with_data("index", Value::from(selection_index))
-                    .with_data("workspace", workspace_value),
+            self.log_event_with_fields(
+                "state_change",
+                "selection_changed",
+                [
+                    ("index".to_string(), Value::from(selection_index)),
+                    ("workspace".to_string(), workspace_value),
+                ],
             );
         }
         if after.focus != before.focus {
-            self.event_log.log(
-                LogEvent::new("state_change", "focus_changed")
-                    .with_data("focus", Value::from(Self::focus_name(after.focus))),
+            self.log_event_with_fields(
+                "state_change",
+                "focus_changed",
+                [(
+                    "focus".to_string(),
+                    Value::from(Self::focus_name(after.focus)),
+                )],
             );
         }
         if after.mode != before.mode {
-            self.event_log.log(
-                LogEvent::new("mode_change", "mode_changed")
-                    .with_data("mode", Value::from(Self::mode_name(after.mode))),
+            self.log_event_with_fields(
+                "mode_change",
+                "mode_changed",
+                [("mode".to_string(), Value::from(Self::mode_name(after.mode)))],
             );
         }
         match (&before.interactive_session, &after.interactive_session) {
             (None, Some(session)) => {
-                self.event_log.log(
-                    LogEvent::new("mode_change", "interactive_entered")
-                        .with_data("session", Value::from(session.clone())),
+                self.log_event_with_fields(
+                    "mode_change",
+                    "interactive_entered",
+                    [("session".to_string(), Value::from(session.clone()))],
                 );
             }
             (Some(session), None) => {
-                self.event_log.log(
-                    LogEvent::new("mode_change", "interactive_exited")
-                        .with_data("session", Value::from(session.clone())),
+                self.log_event_with_fields(
+                    "mode_change",
+                    "interactive_exited",
+                    [("session".to_string(), Value::from(session.clone()))],
                 );
                 self.interactive_poll_due_at = None;
                 self.pending_resize_verification = None;
@@ -137,16 +157,19 @@ impl GroveApp {
                 let pending_after = self.pending_interactive_inputs.len();
                 self.clear_pending_sends_for_session(session);
                 if pending_before != pending_after {
-                    self.event_log.log(
-                        LogEvent::new("input", "pending_inputs_cleared")
-                            .with_data("session", Value::from(session.clone()))
-                            .with_data(
-                                "cleared",
+                    self.log_event_with_fields(
+                        "input",
+                        "pending_inputs_cleared",
+                        [
+                            ("session".to_string(), Value::from(session.clone())),
+                            (
+                                "cleared".to_string(),
                                 Value::from(
                                     u64::try_from(pending_before.saturating_sub(pending_after))
                                         .unwrap_or(u64::MAX),
                                 ),
                             ),
+                        ],
                     );
                 }
             }
@@ -160,10 +183,9 @@ impl GroveApp {
         action: &str,
         fields: impl IntoIterator<Item = (String, Value)>,
     ) {
-        let event = LogEvent::new("dialog", action)
-            .with_data("kind", Value::from(kind.to_string()))
-            .with_data_fields(fields);
-        self.event_log.log(event);
+        let mut all_fields = vec![("kind".to_string(), Value::from(kind.to_string()))];
+        all_fields.extend(fields);
+        self.log_event_with_fields("dialog", action, all_fields);
     }
 
     pub(super) fn log_dialog_event(&self, kind: &str, action: &str) {
@@ -171,38 +193,47 @@ impl GroveApp {
     }
 
     pub(super) fn log_tmux_error(&self, message: String) {
-        self.event_log
-            .log(LogEvent::new("error", "tmux_error").with_data("message", Value::from(message)));
+        self.log_event_with_fields(
+            "error",
+            "tmux_error",
+            [("message".to_string(), Value::from(message))],
+        );
     }
 
     pub(super) fn execute_tmux_command(&mut self, command: &[String]) -> std::io::Result<()> {
         let started_at = Instant::now();
-        self.event_log.log(
-            LogEvent::new("tmux_cmd", "execute")
-                .with_data("command", Value::from(command.join(" "))),
+        let command_text = command.join(" ");
+        self.log_event_with_fields(
+            "tmux_cmd",
+            "execute",
+            [("command".to_string(), Value::from(command_text.clone()))],
         );
         let result = execute_command_with(command, |command| self.tmux_input.execute(command));
         let duration_ms =
             Self::duration_millis(Instant::now().saturating_duration_since(started_at));
-        let mut completion_event = LogEvent::new("tmux_cmd", "completed")
-            .with_data("command", Value::from(command.join(" ")))
-            .with_data("duration_ms", Value::from(duration_ms))
-            .with_data("ok", Value::from(result.is_ok()));
+        let mut completion_fields = vec![
+            ("command".to_string(), Value::from(command_text)),
+            ("duration_ms".to_string(), Value::from(duration_ms)),
+            ("ok".to_string(), Value::from(result.is_ok())),
+        ];
         if let Err(error) = &result {
-            completion_event = completion_event.with_data("error", Value::from(error.to_string()));
+            completion_fields.push(("error".to_string(), Value::from(error.to_string())));
             self.log_tmux_error(error.to_string());
         }
-        self.event_log.log(completion_event);
+        self.log_event_with_fields("tmux_cmd", "completed", completion_fields);
         result
     }
 
     pub(super) fn show_toast(&mut self, text: impl Into<String>, is_error: bool) {
         let message = text.into();
         let max_width = self.viewport_width.saturating_sub(6).clamp(50, 140);
-        self.event_log.log(
-            LogEvent::new("toast", "toast_shown")
-                .with_data("text", Value::from(message.clone()))
-                .with_data("is_error", Value::from(is_error)),
+        self.log_event_with_fields(
+            "toast",
+            "toast_shown",
+            [
+                ("text".to_string(), Value::from(message.clone())),
+                ("is_error".to_string(), Value::from(is_error)),
+            ],
         );
 
         let toast = if is_error {

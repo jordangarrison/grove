@@ -64,10 +64,10 @@ Six dialog render files follow identical structure. The final ~15 lines of each 
 
 `LogEvent::new(...).with_data(...)` builder calls span 10+ lines each. `log_frame_render` alone is 137 lines.
 
-- [ ] Create a macro or helper for common log patterns, e.g. `self.log("category", "action", &[("key", &value)])`
-- [ ] Refactor `src/ui/tui/logging_frame.rs:40-176`
-- [ ] Refactor `src/ui/tui/logging_state.rs:93-154`
-- [ ] Refactor logging calls in `src/ui/tui/update_navigation_preview.rs`
+- [x] Create a macro or helper for common log patterns, e.g. `self.log("category", "action", &[("key", &value)])`
+- [x] Refactor `src/ui/tui/logging_frame.rs:40-176`
+- [x] Refactor `src/ui/tui/logging_state.rs:93-154`
+- [x] Refactor logging calls in `src/ui/tui/update_navigation_preview.rs`
 
 ## 8. Extract `capture_dimensions()` method
 

@@ -67,73 +67,96 @@ impl GroveApp {
             .unwrap_or(0);
         let oldest_pending_input_age_ms = self.oldest_pending_input_age_ms(Instant::now());
 
-        let mut frame_event = LogEvent::new("frame", "rendered")
-            .with_data("seq", Value::from(seq_value))
-            .with_data("app_start_ts", Value::from(app_start_ts))
-            .with_data("width", Value::from(frame.buffer.width()))
-            .with_data("height", Value::from(frame.buffer.height()))
-            .with_data(
-                "line_count",
+        let mut frame_fields = vec![
+            ("seq".to_string(), Value::from(seq_value)),
+            ("app_start_ts".to_string(), Value::from(app_start_ts)),
+            ("width".to_string(), Value::from(frame.buffer.width())),
+            ("height".to_string(), Value::from(frame.buffer.height())),
+            (
+                "line_count".to_string(),
                 Value::from(u64::try_from(lines.len()).unwrap_or(u64::MAX)),
-            )
-            .with_data(
-                "non_empty_line_count",
+            ),
+            (
+                "non_empty_line_count".to_string(),
                 Value::from(u64::try_from(non_empty_line_count).unwrap_or(u64::MAX)),
-            )
-            .with_data("frame_hash", Value::from(frame_hash))
-            .with_data("degradation", Value::from(frame.degradation.as_str()))
-            .with_data("mode", Value::from(self.mode_label()))
-            .with_data("focus", Value::from(self.focus_label()))
-            .with_data("selected_workspace", Value::from(selected_workspace))
-            .with_data("interactive_session", Value::from(interactive_session))
-            .with_data("sidebar_width_pct", Value::from(self.sidebar_width_pct))
-            .with_data(
-                "preview_offset",
+            ),
+            ("frame_hash".to_string(), Value::from(frame_hash)),
+            (
+                "degradation".to_string(),
+                Value::from(frame.degradation.as_str()),
+            ),
+            ("mode".to_string(), Value::from(self.mode_label())),
+            ("focus".to_string(), Value::from(self.focus_label())),
+            (
+                "selected_workspace".to_string(),
+                Value::from(selected_workspace),
+            ),
+            (
+                "interactive_session".to_string(),
+                Value::from(interactive_session),
+            ),
+            (
+                "sidebar_width_pct".to_string(),
+                Value::from(self.sidebar_width_pct),
+            ),
+            (
+                "preview_offset".to_string(),
                 Value::from(u64::try_from(self.preview.offset).unwrap_or(u64::MAX)),
-            )
-            .with_data("preview_auto_scroll", Value::from(self.preview.auto_scroll))
-            .with_data("output_changing", Value::from(self.output_changing))
-            .with_data("pending_input_depth", Value::from(pending_input_depth))
-            .with_data(
-                "oldest_pending_input_seq",
+            ),
+            (
+                "preview_auto_scroll".to_string(),
+                Value::from(self.preview.auto_scroll),
+            ),
+            (
+                "output_changing".to_string(),
+                Value::from(self.output_changing),
+            ),
+            (
+                "pending_input_depth".to_string(),
+                Value::from(pending_input_depth),
+            ),
+            (
+                "oldest_pending_input_seq".to_string(),
                 Value::from(oldest_pending_input_seq),
-            )
-            .with_data(
-                "oldest_pending_input_age_ms",
+            ),
+            (
+                "oldest_pending_input_age_ms".to_string(),
                 Value::from(oldest_pending_input_age_ms),
-            )
-            .with_data("frame_cursor_visible", Value::from(frame.cursor_visible))
-            .with_data(
-                "frame_cursor_has_position",
+            ),
+            (
+                "frame_cursor_visible".to_string(),
+                Value::from(frame.cursor_visible),
+            ),
+            (
+                "frame_cursor_has_position".to_string(),
                 Value::from(frame.cursor_position.is_some()),
-            );
+            ),
+        ];
         if let Some((cursor_col, cursor_row)) = frame.cursor_position {
-            frame_event = frame_event
-                .with_data("frame_cursor_col", Value::from(cursor_col))
-                .with_data("frame_cursor_row", Value::from(cursor_row));
+            frame_fields.push(("frame_cursor_col".to_string(), Value::from(cursor_col)));
+            frame_fields.push(("frame_cursor_row".to_string(), Value::from(cursor_row)));
         }
         if let Some(interactive) = self.interactive.as_ref() {
-            frame_event = frame_event
-                .with_data(
-                    "interactive_cursor_visible",
-                    Value::from(interactive.cursor_visible),
-                )
-                .with_data(
-                    "interactive_cursor_row",
-                    Value::from(interactive.cursor_row),
-                )
-                .with_data(
-                    "interactive_cursor_col",
-                    Value::from(interactive.cursor_col),
-                )
-                .with_data(
-                    "interactive_pane_width",
-                    Value::from(interactive.pane_width),
-                )
-                .with_data(
-                    "interactive_pane_height",
-                    Value::from(interactive.pane_height),
-                );
+            frame_fields.push((
+                "interactive_cursor_visible".to_string(),
+                Value::from(interactive.cursor_visible),
+            ));
+            frame_fields.push((
+                "interactive_cursor_row".to_string(),
+                Value::from(interactive.cursor_row),
+            ));
+            frame_fields.push((
+                "interactive_cursor_col".to_string(),
+                Value::from(interactive.cursor_col),
+            ));
+            frame_fields.push((
+                "interactive_pane_width".to_string(),
+                Value::from(interactive.pane_width),
+            ));
+            frame_fields.push((
+                "interactive_pane_height".to_string(),
+                Value::from(interactive.pane_height),
+            ));
 
             let layout = Self::view_layout_for_size(
                 frame.buffer.width(),
@@ -148,30 +171,29 @@ impl GroveApp {
                     .max(1),
             );
             let cursor_target = self.interactive_cursor_target(preview_height);
-            frame_event = frame_event.with_data(
-                "interactive_cursor_in_viewport",
+            frame_fields.push((
+                "interactive_cursor_in_viewport".to_string(),
                 Value::from(cursor_target.is_some()),
-            );
+            ));
             if let Some((visible_index, target_col, target_visible)) = cursor_target {
-                frame_event = frame_event
-                    .with_data(
-                        "interactive_cursor_visible_index",
-                        Value::from(u64::try_from(visible_index).unwrap_or(u64::MAX)),
-                    )
-                    .with_data(
-                        "interactive_cursor_target_col",
-                        Value::from(u64::try_from(target_col).unwrap_or(u64::MAX)),
-                    )
-                    .with_data(
-                        "interactive_cursor_target_visible",
-                        Value::from(target_visible),
-                    );
+                frame_fields.push((
+                    "interactive_cursor_visible_index".to_string(),
+                    Value::from(u64::try_from(visible_index).unwrap_or(u64::MAX)),
+                ));
+                frame_fields.push((
+                    "interactive_cursor_target_col".to_string(),
+                    Value::from(u64::try_from(target_col).unwrap_or(u64::MAX)),
+                ));
+                frame_fields.push((
+                    "interactive_cursor_target_visible".to_string(),
+                    Value::from(target_visible),
+                ));
             }
         }
-        frame_event = frame_event.with_data(
-            "frame_lines",
+        frame_fields.push((
+            "frame_lines".to_string(),
             Value::Array(lines.into_iter().map(Value::from).collect()),
-        );
-        self.event_log.log(frame_event);
+        ));
+        self.log_event_with_fields("frame", "rendered", frame_fields);
     }
 }
