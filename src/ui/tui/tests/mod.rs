@@ -695,7 +695,7 @@ proptest::proptest! {
 #[test]
 fn sidebar_shows_workspace_names() {
     let app = fixture_app();
-    let layout = GroveApp::view_layout_for_size(160, 24, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(160, 24, app.sidebar_width_pct, false);
     let x_start = layout.sidebar.x.saturating_add(1);
     let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -719,7 +719,7 @@ fn workspace_age_renders_in_preview_header_not_sidebar_row() {
     let expected_age = app.relative_age_label(app.state.workspaces[0].last_activity_unix_secs);
     let expected_age_prefix = expected_age.chars().take(2).collect::<String>();
 
-    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
     let sidebar_x_start = layout.sidebar.x.saturating_add(1);
     let sidebar_x_end = layout.sidebar.right().saturating_sub(1);
     let preview_x_start = layout.preview.x.saturating_add(1);
@@ -758,7 +758,7 @@ fn selected_workspace_row_has_selection_marker() {
     let mut app = fixture_app();
     app.state.selected_index = 1;
 
-    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
     let x_start = layout.sidebar.x.saturating_add(1);
     let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -778,7 +778,7 @@ fn selected_workspace_row_has_selection_marker() {
 fn sidebar_row_omits_duplicate_workspace_and_branch_text() {
     let mut app = fixture_app();
     app.state.selected_index = 1;
-    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
     let x_start = layout.sidebar.x.saturating_add(1);
     let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -807,7 +807,7 @@ fn sidebar_row_shows_deleting_indicator_for_in_flight_delete() {
     app.delete_requested_workspaces
         .insert(app.state.workspaces[1].path.clone());
 
-    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
     let x_start = layout.sidebar.x.saturating_add(1);
     let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -876,7 +876,7 @@ fn active_workspace_without_recent_activity_uses_static_indicators() {
         true
     ));
 
-    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
     let x_start = layout.sidebar.x.saturating_add(1);
     let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -911,7 +911,7 @@ fn active_workspace_with_recent_activity_window_animates_indicators() {
         true
     ));
 
-    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
     let x_start = layout.sidebar.x.saturating_add(1);
     let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -937,7 +937,7 @@ fn active_workspace_with_recent_activity_animates_indicators() {
         true
     ));
 
-    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
     let x_start = layout.sidebar.x.saturating_add(1);
     let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -967,7 +967,7 @@ fn active_workspace_activity_window_expires_after_inactive_frames() {
         true
     ));
 
-    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
     let x_start = layout.sidebar.x.saturating_add(1);
     let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -987,7 +987,7 @@ fn waiting_workspace_row_has_no_status_badge_or_input_banner() {
     app.state.selected_index = 1;
     app.sidebar_width_pct = 70;
 
-    let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct, false);
     let x_start = layout.sidebar.x.saturating_add(1);
     let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -1051,7 +1051,7 @@ fn interactive_input_echo_does_not_trigger_activity_spinner() {
         true
     ));
 
-    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
     let x_start = layout.sidebar.x.saturating_add(1);
     let x_end = layout.sidebar.right().saturating_sub(1);
 
@@ -1328,7 +1328,7 @@ fn backslash_toggles_sidebar_visibility() {
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('\\')).with_kind(KeyEventKind::Press));
 
     assert!(app.sidebar_hidden);
-    let hidden_layout = GroveApp::view_layout_for_size_with_sidebar(120, 40, 33, true);
+    let hidden_layout = GroveApp::view_layout_for_size(120, 40, 33, true);
     assert_eq!(hidden_layout.sidebar.width, 0);
     assert_eq!(hidden_layout.divider.width, 0);
     assert_eq!(hidden_layout.preview.width, 120);
@@ -2176,7 +2176,7 @@ fn preview_pane_renders_ansi_colors() {
     app.preview.lines = vec!["Success: all tests passed".to_string()];
     app.preview.render_lines = vec!["\u{1b}[32mSuccess\u{1b}[0m: all tests passed".to_string()];
 
-    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
     let x_start = layout.preview.x.saturating_add(1);
     let x_end = layout.preview.right().saturating_sub(1);
 
@@ -2206,7 +2206,7 @@ fn codex_interactive_preview_keeps_ansi_colors() {
     app.preview.lines = vec!["Success: all tests passed".to_string()];
     app.preview.render_lines = vec!["\u{1b}[32mSuccess\u{1b}[0m: all tests passed".to_string()];
 
-    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
     let x_start = layout.preview.x.saturating_add(1);
     let x_end = layout.preview.right().saturating_sub(1);
 
@@ -2225,7 +2225,7 @@ fn codex_interactive_preview_keeps_ansi_colors() {
 #[test]
 fn view_registers_hit_regions_for_panes_and_workspace_rows() {
     let app = fixture_app();
-    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
     let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
 
     with_rendered_frame(&app, 80, 24, |frame| {
@@ -2271,7 +2271,7 @@ fn view_registers_hit_regions_for_panes_and_workspace_rows() {
 #[test]
 fn mouse_workspace_selection_uses_row_hit_data_after_render() {
     let mut app = fixture_app();
-    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
     let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
     let second_row_y = sidebar_inner
         .y

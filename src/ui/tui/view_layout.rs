@@ -5,14 +5,6 @@ impl GroveApp {
         width: u16,
         height: u16,
         sidebar_width_pct: u16,
-    ) -> ViewLayout {
-        Self::view_layout_for_size_with_sidebar(width, height, sidebar_width_pct, false)
-    }
-
-    pub(super) fn view_layout_for_size_with_sidebar(
-        width: u16,
-        height: u16,
-        sidebar_width_pct: u16,
         sidebar_hidden: bool,
     ) -> ViewLayout {
         let area = Rect::from_size(width, height);
@@ -61,12 +53,7 @@ impl GroveApp {
 
     pub(super) fn view_layout(&self) -> ViewLayout {
         let (width, height) = self.effective_viewport_size();
-        Self::view_layout_for_size_with_sidebar(
-            width,
-            height,
-            self.sidebar_width_pct,
-            self.sidebar_hidden,
-        )
+        Self::view_layout_for_size(width, height, self.sidebar_width_pct, self.sidebar_hidden)
     }
 
     pub(super) fn divider_hit_area(divider: Rect, viewport_width: u16) -> Rect {

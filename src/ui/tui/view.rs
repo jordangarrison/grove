@@ -7,7 +7,7 @@ impl GroveApp {
         frame.set_cursor_visible(false);
         frame.enable_hit_testing();
         let area = Rect::from_size(frame.buffer.width(), frame.buffer.height());
-        let layout = Self::view_layout_for_size_with_sidebar(
+        let layout = Self::view_layout_for_size(
             frame.buffer.width(),
             frame.buffer.height(),
             self.sidebar_width_pct,

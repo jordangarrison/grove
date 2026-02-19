@@ -4642,7 +4642,7 @@ fn divider_ratio_persists_across_app_instances() {
 #[test]
 fn mouse_click_on_list_selects_workspace() {
     let mut app = fixture_app();
-    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
     let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
     let second_row_y = sidebar_inner
         .y
@@ -4675,7 +4675,7 @@ fn mouse_workspace_switch_exits_interactive_mode() {
     app.state.selected_index = 1;
     assert!(app.enter_interactive(Instant::now()));
 
-    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
     let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
     let first_row_y = sidebar_inner.y.saturating_add(1);
 
@@ -4702,7 +4702,7 @@ fn mouse_workspace_switch_exits_interactive_mode() {
 }
 
 fn preview_tab_click_point(sidebar_width_pct: u16, tab: PreviewTab) -> (u16, u16) {
-    let layout = GroveApp::view_layout_for_size(100, 40, sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(100, 40, sidebar_width_pct, false);
     let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
     let tab_y = preview_inner.y.saturating_add(1);
     let mut tab_x = preview_inner.x;
@@ -4802,7 +4802,7 @@ fn mouse_click_preview_enters_interactive_mode() {
             height: 40,
         },
     );
-    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
 
     ftui::Model::update(
         &mut app,
@@ -4825,7 +4825,7 @@ fn mouse_workspace_click_exits_interactive_without_selection_change() {
     app.state.selected_index = 1;
     assert!(app.enter_interactive(Instant::now()));
 
-    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
     let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
     let second_row_y = sidebar_inner
         .y
@@ -5039,7 +5039,7 @@ fn mouse_drag_in_interactive_preview_highlights_selected_text() {
             height: 40,
         },
     );
-    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
     let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
     let select_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
 
@@ -5120,7 +5120,7 @@ fn interactive_mouse_drag_logs_click_mapping_and_selected_preview() {
     );
     clear_recorded_events(&events);
 
-    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
     let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
     let select_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
 
@@ -5227,7 +5227,7 @@ fn interactive_drag_mapping_prefers_render_line_when_clean_line_empty() {
     );
     clear_recorded_events(&events);
 
-    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
     let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
     let select_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
 
@@ -5274,7 +5274,7 @@ fn interactive_drag_mapping_uses_rendered_frame_size_without_resize_message() {
     with_rendered_frame(&app, 100, 50, |_| {});
     clear_recorded_events(&events);
 
-    let layout = GroveApp::view_layout_for_size(100, 50, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(100, 50, app.sidebar_width_pct, false);
     let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
     let select_x = preview_inner.x;
     let select_y = preview_inner
@@ -5332,7 +5332,7 @@ fn mouse_move_then_release_highlights_selected_text_without_drag_event() {
             height: 40,
         },
     );
-    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
     let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
     let select_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
 
@@ -5413,7 +5413,7 @@ fn mouse_drag_selection_overrides_existing_ansi_background_sequences() {
             height: 40,
         },
     );
-    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
     let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
     let select_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
 
@@ -5495,7 +5495,7 @@ fn preview_render_lines_align_with_plain_visible_range_when_lengths_differ() {
         },
     );
 
-    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
     let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
     let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
     let x_start = layout.preview.x.saturating_add(1);
@@ -5532,7 +5532,7 @@ fn alt_copy_then_alt_paste_uses_mouse_selected_preview_text() {
             height: 40,
         },
     );
-    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
     let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
     let select_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
 
@@ -5834,7 +5834,7 @@ fn git_tab_renders_lazygit_placeholder_and_launches_session() {
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char(']'))));
 
-    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct);
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
     let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
     let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
     let x_start = preview_inner.x;

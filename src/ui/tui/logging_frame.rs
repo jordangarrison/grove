@@ -162,6 +162,7 @@ impl GroveApp {
                 frame.buffer.width(),
                 frame.buffer.height(),
                 self.sidebar_width_pct,
+                false,
             );
             let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
             let preview_height = usize::from(
