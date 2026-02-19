@@ -16,6 +16,15 @@ impl GroveApp {
         Some((inner.width, output_height))
     }
 
+    pub(super) fn capture_dimensions(&self) -> (u16, u16) {
+        let capture_cols = self
+            .preview_output_dimensions()
+            .map_or(self.viewport_width.saturating_sub(4), |(width, _)| width)
+            .max(80);
+        let capture_rows = self.viewport_height.saturating_sub(4).max(1);
+        (capture_cols, capture_rows)
+    }
+
     fn ensure_lazygit_session_for_selected_workspace(&mut self) -> Option<String> {
         let workspace = self.state.selected_workspace()?;
         let session_name = git_session_name_for_workspace(workspace);
@@ -30,11 +39,7 @@ impl GroveApp {
             return None;
         }
 
-        let capture_cols = self
-            .preview_output_dimensions()
-            .map_or(self.viewport_width.saturating_sub(4), |(width, _)| width)
-            .max(80);
-        let capture_rows = self.viewport_height.saturating_sub(4).max(1);
+        let (capture_cols, capture_rows) = self.capture_dimensions();
         let launch_request = shell_launch_request_for_workspace(
             workspace,
             session_name.clone(),
@@ -143,11 +148,7 @@ impl GroveApp {
             return None;
         }
 
-        let capture_cols = self
-            .preview_output_dimensions()
-            .map_or(self.viewport_width.saturating_sub(4), |(width, _)| width)
-            .max(80);
-        let capture_rows = self.viewport_height.saturating_sub(4).max(1);
+        let (capture_cols, capture_rows) = self.capture_dimensions();
         let launch_request = shell_launch_request_for_workspace(
             &workspace,
             session_name.clone(),

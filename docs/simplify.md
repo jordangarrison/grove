@@ -73,17 +73,17 @@ Six dialog render files follow identical structure. The final ~15 lines of each 
 
 Identical 4-line computation repeated 3 times.
 
-- [ ] Add `fn capture_dimensions(&self) -> (u16, u16)` to `GroveApp`
-- [ ] Replace `src/ui/tui/update_lifecycle_start.rs:22-26`
-- [ ] Replace `src/ui/tui/update_navigation_preview.rs:33-37`
-- [ ] Replace `src/ui/tui/update_navigation_preview.rs:149-153`
+- [x] Add `fn capture_dimensions(&self) -> (u16, u16)` to `GroveApp`
+- [x] Replace `src/ui/tui/update_lifecycle_start.rs:22-26`
+- [x] Replace `src/ui/tui/update_navigation_preview.rs:33-37`
+- [x] Replace `src/ui/tui/update_navigation_preview.rs:149-153`
 
 ## 9. Unify `mode_label`/`mode_name` and `focus_label`/`focus_name`
 
 Two pairs of near-identical functions differ only by casing (PascalCase vs snake_case) and one extra check.
 
-- [ ] Unify into one function per concept in `src/ui/tui/logging_state.rs:13-43`
-- [ ] Update all callers
+- [x] Unify into one function per concept in `src/ui/tui/logging_state.rs:13-43`
+- [x] Update all callers
 
 ## 10. Merge duplicate constructors
 

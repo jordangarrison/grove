@@ -19,11 +19,7 @@ impl GroveApp {
             self.show_toast("no workspace selected", true);
             return;
         };
-        let capture_cols = self
-            .preview_output_dimensions()
-            .map_or(self.viewport_width.saturating_sub(4), |(width, _)| width)
-            .max(80);
-        let capture_rows = self.viewport_height.saturating_sub(4).max(1);
+        let (capture_cols, capture_rows) = self.capture_dimensions();
 
         let request = launch_request_for_workspace(
             workspace,

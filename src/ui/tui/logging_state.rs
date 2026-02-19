@@ -10,36 +10,37 @@ pub(super) struct TransitionSnapshot {
 }
 
 impl GroveApp {
+    fn focus_parts(focus: PaneFocus) -> (&'static str, &'static str) {
+        match focus {
+            PaneFocus::WorkspaceList => ("WorkspaceList", "workspace_list"),
+            PaneFocus::Preview => ("Preview", "preview"),
+        }
+    }
+
+    fn mode_parts(mode: UiMode) -> (&'static str, &'static str) {
+        match mode {
+            UiMode::List => ("List", "list"),
+            UiMode::Preview => ("Preview", "preview"),
+        }
+    }
+
     pub(super) fn mode_label(&self) -> &'static str {
         if self.interactive.is_some() {
             return "Interactive";
         }
-
-        match self.state.mode {
-            UiMode::List => "List",
-            UiMode::Preview => "Preview",
-        }
+        Self::mode_parts(self.state.mode).0
     }
 
     pub(super) fn focus_label(&self) -> &'static str {
-        match self.state.focus {
-            PaneFocus::WorkspaceList => "WorkspaceList",
-            PaneFocus::Preview => "Preview",
-        }
+        Self::focus_parts(self.state.focus).0
     }
 
     pub(super) fn focus_name(focus: PaneFocus) -> &'static str {
-        match focus {
-            PaneFocus::WorkspaceList => "workspace_list",
-            PaneFocus::Preview => "preview",
-        }
+        Self::focus_parts(focus).1
     }
 
     pub(super) fn mode_name(mode: UiMode) -> &'static str {
-        match mode {
-            UiMode::List => "list",
-            UiMode::Preview => "preview",
-        }
+        Self::mode_parts(mode).1
     }
 
     pub(super) fn hit_region_name(region: HitRegion) -> &'static str {
