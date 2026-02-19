@@ -12,7 +12,7 @@ const GROVE_DIR: &str = ".grove";
 const GROVE_AGENT_MARKER_FILE: &str = ".grove/agent";
 const GROVE_BASE_MARKER_FILE: &str = ".grove/base";
 const GROVE_SETUP_SCRIPT_FILE: &str = ".grove/setup.sh";
-const GROVE_GITIGNORE_ENTRIES: [&str; 1] = [".grove/"];
+const GROVE_GIT_EXCLUDE_ENTRIES: [&str; 1] = [".grove/"];
 const ENV_FILES_TO_COPY: [&str; 4] = [
     ".env",
     ".env.local",
@@ -328,7 +328,7 @@ pub fn create_workspace_with_template(
         request.agent,
         &request.marker_base_branch(),
     )?;
-    ensure_grove_gitignore_entries(repo_root)?;
+    ensure_grove_git_exclude_entries(repo_root)?;
     copy_env_files(repo_root, &workspace_path)?;
 
     let mut warnings = Vec::new();
@@ -749,18 +749,18 @@ fn ensure_git_worktree_clean(worktree_path: &Path) -> Result<(), String> {
     Err("commit, stash, or discard changes first".to_string())
 }
 
-pub(crate) fn ensure_grove_gitignore_entries(
+pub(crate) fn ensure_grove_git_exclude_entries(
     repo_root: &Path,
 ) -> Result<(), WorkspaceLifecycleError> {
-    let gitignore_path = repo_root.join(".gitignore");
-    let existing_content = match fs::read_to_string(&gitignore_path) {
+    let exclude_path = git_exclude_path(repo_root)?;
+    let existing_content = match fs::read_to_string(&exclude_path) {
         Ok(content) => content,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(error) => return Err(WorkspaceLifecycleError::Io(error.to_string())),
     };
 
     let mut missing_entries = Vec::new();
-    for entry in GROVE_GITIGNORE_ENTRIES {
+    for entry in GROVE_GIT_EXCLUDE_ENTRIES {
         if !existing_content.lines().any(|line| line.trim() == entry) {
             missing_entries.push(entry);
         }
@@ -770,10 +770,15 @@ pub(crate) fn ensure_grove_gitignore_entries(
         return Ok(());
     }
 
+    let parent = exclude_path
+        .parent()
+        .ok_or_else(|| WorkspaceLifecycleError::Io("exclude path parent missing".to_string()))?;
+    fs::create_dir_all(parent).map_err(|error| WorkspaceLifecycleError::Io(error.to_string()))?;
+
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
-        .open(&gitignore_path)
+        .open(&exclude_path)
         .map_err(|error| WorkspaceLifecycleError::Io(error.to_string()))?;
 
     if !existing_content.is_empty() && !existing_content.ends_with('\n') {
@@ -786,6 +791,54 @@ pub(crate) fn ensure_grove_gitignore_entries(
     }
 
     Ok(())
+}
+
+fn git_exclude_path(repo_root: &Path) -> Result<PathBuf, WorkspaceLifecycleError> {
+    let dot_git = repo_root.join(".git");
+    match fs::metadata(&dot_git) {
+        Ok(metadata) if metadata.is_dir() => Ok(dot_git.join("info").join("exclude")),
+        Ok(metadata) if metadata.is_file() => resolve_gitdir_file_exclude_path(repo_root, &dot_git),
+        Ok(_) => Err(WorkspaceLifecycleError::Io(format!(
+            "{} is neither file nor directory",
+            dot_git.display()
+        ))),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Ok(dot_git.join("info").join("exclude"))
+        }
+        Err(error) => Err(WorkspaceLifecycleError::Io(error.to_string())),
+    }
+}
+
+fn resolve_gitdir_file_exclude_path(
+    repo_root: &Path,
+    dot_git_file: &Path,
+) -> Result<PathBuf, WorkspaceLifecycleError> {
+    let dot_git_content = fs::read_to_string(dot_git_file)
+        .map_err(|error| WorkspaceLifecycleError::Io(error.to_string()))?;
+    let gitdir_value = dot_git_content
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("gitdir:").map(str::trim))
+        .ok_or_else(|| {
+            WorkspaceLifecycleError::Io(format!(
+                "{} missing gitdir pointer",
+                dot_git_file.display()
+            ))
+        })?;
+
+    if gitdir_value.is_empty() {
+        return Err(WorkspaceLifecycleError::Io(format!(
+            "{} has empty gitdir pointer",
+            dot_git_file.display()
+        )));
+    }
+
+    let gitdir_path = PathBuf::from(gitdir_value);
+    let resolved_gitdir = if gitdir_path.is_absolute() {
+        gitdir_path
+    } else {
+        repo_root.join(gitdir_path)
+    };
+    Ok(resolved_gitdir.join("info").join("exclude"))
 }
 
 pub(crate) fn copy_env_files(

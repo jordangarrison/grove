@@ -3,7 +3,7 @@ use super::{
     MergeWorkspaceRequest, SetupCommandContext, SetupCommandRunner, SetupScriptContext,
     SetupScriptRunner, UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError,
     WorkspaceMarkerError, WorkspaceSetupTemplate, copy_env_files, create_workspace,
-    create_workspace_with_template, delete_workspace, ensure_grove_gitignore_entries,
+    create_workspace_with_template, delete_workspace, ensure_grove_git_exclude_entries,
     merge_workspace, read_workspace_agent_marker, read_workspace_markers,
     update_workspace_from_base, workspace_directory_path, workspace_lifecycle_error_message,
     write_workspace_agent_marker, write_workspace_base_marker,
@@ -151,7 +151,7 @@ fn create_request_validation_distinguishes_workspace_slug_and_existing_branch() 
 }
 
 #[test]
-fn create_workspace_new_branch_sequences_git_markers_gitignore_and_env_copy() {
+fn create_workspace_new_branch_sequences_git_markers_git_exclude_and_env_copy() {
     let temp = TestDir::new("create-new");
     let repo_root = temp.path.join("grove");
     fs::create_dir_all(&repo_root).expect("repo dir should exist");
@@ -209,9 +209,9 @@ fn create_workspace_new_branch_sequences_git_markers_gitignore_and_env_copy() {
         "B=2\n"
     );
 
-    let gitignore =
-        fs::read_to_string(repo_root.join(".gitignore")).expect(".gitignore should exist");
-    assert!(gitignore.contains(".grove/"));
+    let git_exclude =
+        fs::read_to_string(repo_root.join(".git/info/exclude")).expect("git exclude should exist");
+    assert!(git_exclude.contains(".grove/"));
 }
 
 #[test]
@@ -382,19 +382,39 @@ fn create_workspace_template_command_failure_is_warning_not_failure() {
 }
 
 #[test]
-fn ensure_gitignore_entries_is_idempotent() {
-    let temp = TestDir::new("gitignore");
+fn ensure_git_exclude_entries_is_idempotent() {
+    let temp = TestDir::new("git-exclude");
     let repo_root = temp.path.join("grove");
+    fs::create_dir_all(repo_root.join(".git/info")).expect("git info dir should exist");
+    fs::write(
+        repo_root.join(".git/info/exclude"),
+        ".grove/agent\n/target/\n",
+    )
+    .expect("git exclude should be writable");
+
+    ensure_grove_git_exclude_entries(&repo_root).expect("first ensure should succeed");
+    ensure_grove_git_exclude_entries(&repo_root).expect("second ensure should succeed");
+
+    let git_exclude =
+        fs::read_to_string(repo_root.join(".git/info/exclude")).expect("git exclude should exist");
+    assert_eq!(count_line(&git_exclude, ".grove/"), 1);
+}
+
+#[test]
+fn ensure_git_exclude_entries_supports_gitdir_pointer_file() {
+    let temp = TestDir::new("gitdir-file");
+    let repo_root = temp.path.join("grove");
+    let git_dir = temp.path.join("actual-git");
     fs::create_dir_all(&repo_root).expect("repo dir should exist");
-    fs::write(repo_root.join(".gitignore"), ".grove/agent\n/target/\n")
-        .expect(".gitignore should be writable");
+    fs::create_dir_all(git_dir.join("info")).expect("git info dir should exist");
+    fs::write(repo_root.join(".git"), "gitdir: ../actual-git\n")
+        .expect(".git pointer file should be writable");
 
-    ensure_grove_gitignore_entries(&repo_root).expect("first ensure should succeed");
-    ensure_grove_gitignore_entries(&repo_root).expect("second ensure should succeed");
+    ensure_grove_git_exclude_entries(&repo_root).expect("ensure should succeed");
 
-    let gitignore =
-        fs::read_to_string(repo_root.join(".gitignore")).expect(".gitignore should exist");
-    assert_eq!(count_line(&gitignore, ".grove/"), 1);
+    let git_exclude =
+        fs::read_to_string(git_dir.join("info/exclude")).expect("git exclude should exist");
+    assert_eq!(count_line(&git_exclude, ".grove/"), 1);
 }
 
 #[test]
