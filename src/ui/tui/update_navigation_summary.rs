@@ -72,7 +72,7 @@ impl GroveApp {
             String::new(),
             "--------------------------------------------------".to_string(),
             String::new(),
-            "Press 'n' to create a workspace".to_string(),
+            "Press 'n' to create a workspace, hit 's' to open agent".to_string(),
             String::new(),
             "Each workspace has its own directory and branch.".to_string(),
             "Run agents in parallel without branch hopping.".to_string(),
