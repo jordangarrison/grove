@@ -442,15 +442,11 @@ fn preview_poll_updates_non_selected_workspace_status_from_background_capture() 
 #[test]
 fn tmux_workspace_status_poll_targets_skip_idle_workspaces() {
     let mut app = fixture_app();
-    app.multiplexer = MultiplexerKind::Tmux;
     app.state.selected_index = 0;
     app.state.workspaces[1].status = WorkspaceStatus::Idle;
 
-    let targets = workspace_status_targets_for_polling_with_live_preview(
-        &app.state.workspaces,
-        app.multiplexer,
-        None,
-    );
+    let targets =
+        workspace_status_targets_for_polling_with_live_preview(&app.state.workspaces, None);
     assert!(targets.is_empty());
 }
 

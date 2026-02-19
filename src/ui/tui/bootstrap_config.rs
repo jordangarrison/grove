@@ -110,11 +110,6 @@ pub(super) fn load_runtime_config() -> (GroveConfig, PathBuf, Option<String>) {
     (config, config_path, error)
 }
 
-pub(super) fn input_for_multiplexer(multiplexer: MultiplexerKind) -> Box<dyn TmuxInput> {
-    let _ = multiplexer;
-    Box::new(CommandTmuxInput)
-}
-
 pub(super) fn read_workspace_launch_prompt(workspace_path: &Path) -> Option<String> {
     let raw = fs::read_to_string(workspace_path.join(WORKSPACE_LAUNCH_PROMPT_FILENAME)).ok()?;
     let trimmed = raw.trim();

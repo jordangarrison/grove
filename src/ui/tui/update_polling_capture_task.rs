@@ -7,7 +7,6 @@ impl GroveApp {
         let cursor_session = self.interactive_target_session();
         let status_poll_targets = workspace_status_targets_for_polling_with_live_preview(
             &self.state.workspaces,
-            self.multiplexer,
             live_preview.as_ref(),
         );
 

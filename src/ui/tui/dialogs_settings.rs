@@ -33,25 +33,11 @@ impl GroveApp {
             KeyCode::Char(_) if ctrl_p => {
                 dialog.focused_field = dialog.focused_field.previous();
             }
-            KeyCode::Left | KeyCode::Char('h') => {
-                if dialog.focused_field == SettingsDialogField::Multiplexer {
-                    dialog.multiplexer = dialog.multiplexer.previous();
-                }
-            }
-            KeyCode::Right | KeyCode::Char('l') => {
-                if dialog.focused_field == SettingsDialogField::Multiplexer {
-                    dialog.multiplexer = dialog.multiplexer.next();
-                }
-            }
-            KeyCode::Char(' ') => {
-                if dialog.focused_field == SettingsDialogField::Multiplexer {
-                    dialog.multiplexer = dialog.multiplexer.next();
-                }
-            }
+            KeyCode::Left | KeyCode::Char('h') => {}
+            KeyCode::Right | KeyCode::Char('l') => {}
+            KeyCode::Char(' ') => {}
             KeyCode::Enter => match dialog.focused_field {
-                SettingsDialogField::Multiplexer => {
-                    dialog.multiplexer = dialog.multiplexer.next();
-                }
+                SettingsDialogField::Multiplexer => {}
                 SettingsDialogField::SaveButton => post_action = PostAction::Save,
                 SettingsDialogField::CancelButton => post_action = PostAction::Cancel,
             },
@@ -100,7 +86,7 @@ impl GroveApp {
 
         let selected = dialog.multiplexer;
         self.multiplexer = selected;
-        self.tmux_input = input_for_multiplexer(selected);
+        self.tmux_input = Box::new(CommandTmuxInput);
         let config = GroveConfig {
             multiplexer: selected,
             sidebar_width_pct: self.sidebar_width_pct,

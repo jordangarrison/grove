@@ -1,7 +1,5 @@
 use std::time::{Duration, Instant};
 
-use crate::infrastructure::config::MultiplexerKind;
-
 const DOUBLE_ESCAPE_WINDOW_MS: u64 = 150;
 const SPLIT_MOUSE_FRAGMENT_START_WINDOW_MS: u64 = 10;
 const SPLIT_MOUSE_FRAGMENT_MAX_AGE_MS: u64 = 50;
@@ -232,11 +230,10 @@ pub fn tmux_send_keys_command(
     target_session: &str,
     action: &InteractiveAction,
 ) -> Option<Vec<String>> {
-    multiplexer_send_input_command(MultiplexerKind::Tmux, target_session, action)
+    tmux_send_keys_command_impl(target_session, action)
 }
 
 pub fn multiplexer_send_input_command(
-    _multiplexer: MultiplexerKind,
     target_session: &str,
     action: &InteractiveAction,
 ) -> Option<Vec<String>> {

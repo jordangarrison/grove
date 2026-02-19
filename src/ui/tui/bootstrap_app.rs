@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 #[cfg(test)]
 use super::bootstrap_config::project_paths_equal;
 use super::bootstrap_config::{
-    AppDependencies, AppPaths, input_for_multiplexer, load_runtime_config, load_sidebar_width_pct,
+    AppDependencies, AppPaths, load_runtime_config, load_sidebar_width_pct,
 };
 use super::bootstrap_discovery::bootstrap_data_for_projects;
 use super::*;
@@ -17,14 +17,13 @@ use super::*;
 impl GroveApp {
     pub(super) fn new_with_event_logger(event_log: Box<dyn EventLogger>) -> Self {
         let (config, config_path, _config_error) = load_runtime_config();
-        let multiplexer = config.multiplexer;
-        let bootstrap = bootstrap_data_for_projects(&config.projects, multiplexer);
+        let bootstrap = bootstrap_data_for_projects(&config.projects);
         Self::from_parts_with_projects(
             bootstrap,
             config.projects,
-            input_for_multiplexer(multiplexer),
+            Box::new(CommandTmuxInput),
             AppPaths::new(config_path),
-            multiplexer,
+            config.multiplexer,
             event_log,
             None,
         )
@@ -35,14 +34,13 @@ impl GroveApp {
         app_start_ts: u64,
     ) -> Self {
         let (config, config_path, _config_error) = load_runtime_config();
-        let multiplexer = config.multiplexer;
-        let bootstrap = bootstrap_data_for_projects(&config.projects, multiplexer);
+        let bootstrap = bootstrap_data_for_projects(&config.projects);
         Self::from_parts_with_projects(
             bootstrap,
             config.projects,
-            input_for_multiplexer(multiplexer),
+            Box::new(CommandTmuxInput),
             AppPaths::new(config_path),
-            multiplexer,
+            config.multiplexer,
             event_log,
             Some(app_start_ts),
         )

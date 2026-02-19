@@ -9,11 +9,7 @@ impl GroveApp {
             return Vec::new();
         }
 
-        workspace_status_targets_for_polling_with_live_preview(
-            &self.state.workspaces,
-            self.multiplexer,
-            live_preview,
-        )
+        workspace_status_targets_for_polling_with_live_preview(&self.state.workspaces, live_preview)
     }
 
     pub(super) fn selected_live_preview_session_if_ready(&self) -> Option<String> {

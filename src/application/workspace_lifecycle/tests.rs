@@ -9,7 +9,6 @@ use super::{
     write_workspace_agent_marker, write_workspace_base_marker,
 };
 use crate::domain::AgentType;
-use crate::infrastructure::config::MultiplexerKind;
 use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -567,7 +566,7 @@ fn delete_workspace_prunes_missing_worktree() {
         delete_local_branch: false,
     };
 
-    let (result, warnings) = delete_workspace(request, MultiplexerKind::Tmux);
+    let (result, warnings) = delete_workspace(request);
     assert_eq!(result, Ok(()));
     assert!(warnings.is_empty());
 }
@@ -589,7 +588,7 @@ fn delete_workspace_records_branch_delete_failure_as_warning() {
         delete_local_branch: true,
     };
 
-    let (result, warnings) = delete_workspace(request, MultiplexerKind::Tmux);
+    let (result, warnings) = delete_workspace(request);
     assert_eq!(result, Ok(()));
     assert_eq!(warnings.len(), 1);
     assert!(
@@ -634,7 +633,7 @@ fn merge_workspace_merges_branch_and_cleans_up_when_requested() {
         cleanup_local_branch: true,
     };
 
-    let (result, warnings) = merge_workspace(request, MultiplexerKind::Tmux);
+    let (result, warnings) = merge_workspace(request);
     assert_eq!(result, Ok(()));
     assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
     assert!(
@@ -687,8 +686,7 @@ fn merge_workspace_requires_clean_base_and_workspace_worktrees() {
         cleanup_local_branch: false,
     };
 
-    let (workspace_result, workspace_warnings) =
-        merge_workspace(workspace_dirty_request, MultiplexerKind::Tmux);
+    let (workspace_result, workspace_warnings) = merge_workspace(workspace_dirty_request);
     assert!(workspace_warnings.is_empty());
     let workspace_error = workspace_result.expect_err("dirty workspace should block merge");
     assert!(
@@ -711,7 +709,7 @@ fn merge_workspace_requires_clean_base_and_workspace_worktrees() {
         cleanup_local_branch: false,
     };
 
-    let (base_result, base_warnings) = merge_workspace(base_dirty_request, MultiplexerKind::Tmux);
+    let (base_result, base_warnings) = merge_workspace(base_dirty_request);
     assert!(base_warnings.is_empty());
     let base_error = base_result.expect_err("dirty base should block merge");
     assert!(
@@ -754,7 +752,7 @@ fn update_workspace_from_base_merges_base_into_workspace_branch() {
         base_branch,
     };
 
-    let (result, warnings) = update_workspace_from_base(request, MultiplexerKind::Tmux);
+    let (result, warnings) = update_workspace_from_base(request);
     assert_eq!(result, Ok(()));
     assert!(warnings.is_empty());
     assert!(
@@ -794,7 +792,7 @@ fn update_workspace_from_base_requires_clean_workspace_worktree() {
         base_branch,
     };
 
-    let (result, warnings) = update_workspace_from_base(request, MultiplexerKind::Tmux);
+    let (result, warnings) = update_workspace_from_base(request);
     assert!(warnings.is_empty());
     let error = result.expect_err("dirty workspace should block update");
     assert!(
@@ -851,7 +849,7 @@ fn update_workspace_from_base_pulls_main_workspace_from_origin() {
         base_branch: base_branch.clone(),
     };
 
-    let (result, warnings) = update_workspace_from_base(request, MultiplexerKind::Tmux);
+    let (result, warnings) = update_workspace_from_base(request);
     assert_eq!(result, Ok(()));
     assert!(warnings.is_empty());
     assert!(
@@ -889,7 +887,7 @@ fn update_workspace_from_base_rejects_matching_branch_for_non_main_workspace() {
         base_branch: "feature-sync".to_string(),
     };
 
-    let (result, warnings) = update_workspace_from_base(request, MultiplexerKind::Tmux);
+    let (result, warnings) = update_workspace_from_base(request);
     assert!(warnings.is_empty());
     assert_eq!(
         result,

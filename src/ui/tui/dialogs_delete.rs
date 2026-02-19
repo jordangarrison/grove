@@ -34,14 +34,13 @@ impl GroveApp {
     }
 
     fn launch_delete_workspace_task(&mut self, queued_delete: QueuedDeleteWorkspace) {
-        let multiplexer = self.multiplexer;
         let request = queued_delete.request;
         let workspace_name = queued_delete.workspace_name;
         let workspace_path = queued_delete.workspace_path;
         self.delete_in_flight = true;
         self.delete_in_flight_workspace = Some(workspace_path.clone());
         self.queue_cmd(Cmd::task(move || {
-            let (result, warnings) = delete_workspace(request, multiplexer);
+            let (result, warnings) = delete_workspace(request);
             Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {
                 workspace_name,
                 workspace_path,
@@ -237,7 +236,7 @@ impl GroveApp {
             delete_local_branch: dialog.delete_local_branch,
         };
         if !self.tmux_input.supports_background_launch() {
-            let (result, warnings) = delete_workspace(request, self.multiplexer);
+            let (result, warnings) = delete_workspace(request);
             self.apply_delete_workspace_completion(DeleteWorkspaceCompletion {
                 workspace_name,
                 workspace_path,

@@ -60,11 +60,10 @@ impl GroveApp {
         }
 
         let target_path = preferred_workspace_path.or_else(|| self.selected_workspace_path());
-        let multiplexer = self.multiplexer;
         let projects = self.projects.clone();
         self.refresh_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let bootstrap = bootstrap_data_for_projects(&projects, multiplexer);
+            let bootstrap = bootstrap_data_for_projects(&projects);
             Msg::RefreshWorkspacesCompleted(RefreshWorkspacesCompletion {
                 preferred_workspace_path: target_path,
                 bootstrap,
@@ -76,7 +75,7 @@ impl GroveApp {
         let target_path = preferred_workspace_path.or_else(|| self.selected_workspace_path());
         let previous_mode = self.state.mode;
         let previous_focus = self.state.focus;
-        let bootstrap = bootstrap_data_for_projects(&self.projects, self.multiplexer);
+        let bootstrap = bootstrap_data_for_projects(&self.projects);
 
         self.repo_name = bootstrap.repo_name;
         self.discovery_state = bootstrap.discovery_state;

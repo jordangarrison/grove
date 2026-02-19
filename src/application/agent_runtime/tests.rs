@@ -26,7 +26,6 @@ use super::{
     workspace_status_targets_for_polling_with_live_preview,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
-use crate::infrastructure::config::MultiplexerKind;
 
 fn fixture_workspace(name: &str, is_main: bool) -> Workspace {
     Workspace::try_new(
@@ -186,7 +185,7 @@ fn build_shell_launch_plan_skips_send_keys_when_command_is_empty() {
         Some(120),
         Some(40),
     );
-    let plan = build_shell_launch_plan(&request, MultiplexerKind::Tmux);
+    let plan = build_shell_launch_plan(&request);
 
     assert!(plan.launch_cmd.is_empty());
 }
@@ -200,7 +199,7 @@ fn build_shell_launch_plan_with_capture_dimensions_resizes_before_send_keys() {
         Some(120),
         Some(40),
     );
-    let plan = build_shell_launch_plan(&request, MultiplexerKind::Tmux);
+    let plan = build_shell_launch_plan(&request);
 
     assert_eq!(
         plan.pre_launch_cmds.last(),
@@ -218,12 +217,9 @@ fn build_shell_launch_plan_with_capture_dimensions_resizes_before_send_keys() {
 }
 
 #[test]
-fn workspace_status_poll_policy_requires_supported_agent_for_all_multiplexers() {
+fn workspace_status_poll_policy_requires_supported_agent() {
     let workspace = fixture_workspace("feature", false).with_supported_agent(false);
-    assert!(!workspace_should_poll_status(
-        &workspace,
-        MultiplexerKind::Tmux
-    ));
+    assert!(!workspace_should_poll_status(&workspace));
 }
 
 #[test]
@@ -245,15 +241,11 @@ fn workspace_status_session_target_skips_selected_live_session() {
     workspace.status = WorkspaceStatus::Active;
 
     assert_eq!(
-        workspace_status_session_target(&workspace, MultiplexerKind::Tmux, None),
+        workspace_status_session_target(&workspace, None),
         Some("grove-ws-feature".to_string())
     );
     assert_eq!(
-        workspace_status_session_target(
-            &workspace,
-            MultiplexerKind::Tmux,
-            Some("grove-ws-feature")
-        ),
+        workspace_status_session_target(&workspace, Some("grove-ws-feature")),
         None
     );
 }
@@ -266,11 +258,7 @@ fn workspace_status_targets_for_polling_skip_selected_session() {
     other.status = WorkspaceStatus::Active;
     let workspaces = vec![selected, other];
 
-    let targets = workspace_status_targets_for_polling(
-        &workspaces,
-        MultiplexerKind::Tmux,
-        Some("grove-ws-selected"),
-    );
+    let targets = workspace_status_targets_for_polling(&workspaces, Some("grove-ws-selected"));
     assert_eq!(targets.len(), 1);
     assert_eq!(targets[0].workspace_name, "other");
     assert_eq!(targets[0].session_name, "grove-ws-other");
@@ -288,11 +276,8 @@ fn workspace_status_targets_for_polling_with_live_preview_skips_selected_session
         session_name: "grove-ws-selected".to_string(),
         include_escape_sequences: true,
     };
-    let targets = workspace_status_targets_for_polling_with_live_preview(
-        &workspaces,
-        MultiplexerKind::Tmux,
-        Some(&live_preview),
-    );
+    let targets =
+        workspace_status_targets_for_polling_with_live_preview(&workspaces, Some(&live_preview));
     assert_eq!(targets.len(), 1);
     assert_eq!(targets[0].workspace_name, "other");
 }
@@ -504,7 +489,7 @@ fn launch_plan_without_prompt_sends_agent_directly() {
         capture_rows: None,
     };
 
-    let plan = build_launch_plan(&request, MultiplexerKind::Tmux);
+    let plan = build_launch_plan(&request);
 
     assert_eq!(plan.session_name, "grove-ws-auth-flow");
     assert!(plan.launcher_script.is_none());
@@ -535,7 +520,7 @@ fn launch_plan_with_capture_dimensions_resizes_before_send_keys() {
         capture_rows: Some(44),
     };
 
-    let plan = build_launch_plan(&request, MultiplexerKind::Tmux);
+    let plan = build_launch_plan(&request);
 
     assert_eq!(
         plan.pre_launch_cmds.last(),
@@ -566,7 +551,7 @@ fn launch_plan_with_prompt_writes_launcher_script() {
         capture_rows: None,
     };
 
-    let plan = build_launch_plan(&request, MultiplexerKind::Tmux);
+    let plan = build_launch_plan(&request);
 
     let script = plan.launcher_script.expect("script should be present");
     assert!(script.contents.contains("codex"));
@@ -587,7 +572,7 @@ fn launch_plan_with_prompt_writes_launcher_script() {
 
 #[test]
 fn stop_plan_uses_ctrl_c_then_kill_session() {
-    let plan = stop_plan("grove-ws-auth-flow", MultiplexerKind::Tmux);
+    let plan = stop_plan("grove-ws-auth-flow");
     assert_eq!(plan.len(), 2);
     assert_eq!(
         plan[0],
@@ -644,7 +629,6 @@ fn execute_launch_request_with_result_for_mode_includes_workspace_context() {
     };
     let result = execute_launch_request_with_result_for_mode(
         &request,
-        MultiplexerKind::Tmux,
         CommandExecutionMode::Delegating(&mut |_command| {
             Err(std::io::Error::other("synthetic execution failure"))
         }),
@@ -668,7 +652,6 @@ fn execute_stop_workspace_with_result_for_mode_includes_workspace_context() {
     let mut commands = Vec::new();
     let result = execute_stop_workspace_with_result_for_mode(
         &workspace,
-        MultiplexerKind::Tmux,
         CommandExecutionMode::Delegating(&mut |command| {
             commands.push(command.to_vec());
             Ok(())
@@ -894,11 +877,7 @@ fn execute_launch_plan_keeps_unprefixed_script_write_errors() {
 #[test]
 fn kill_workspace_session_command_uses_project_scoped_tmux_session_name() {
     assert_eq!(
-        kill_workspace_session_command(
-            Some("project.one"),
-            "feature/auth.v2",
-            MultiplexerKind::Tmux
-        ),
+        kill_workspace_session_command(Some("project.one"), "feature/auth.v2"),
         vec![
             "tmux".to_string(),
             "kill-session".to_string(),
@@ -922,7 +901,7 @@ fn launch_plan_with_pre_launch_command_runs_before_agent() {
         capture_rows: None,
     };
 
-    let plan = build_launch_plan(&request, MultiplexerKind::Tmux);
+    let plan = build_launch_plan(&request);
     assert_eq!(
         plan.launch_cmd,
         vec![
