@@ -35,31 +35,29 @@ impl StartAgentConfigState {
         }
     }
 
-    pub(super) fn backspace(&mut self, field: StartAgentConfigField) {
+    fn text_field_mut(&mut self, field: StartAgentConfigField) -> Option<&mut String> {
         match field {
-            StartAgentConfigField::Prompt => {
-                self.prompt.pop();
-            }
-            StartAgentConfigField::PreLaunchCommand => {
-                self.pre_launch_command.pop();
-            }
-            StartAgentConfigField::Unsafe => {}
+            StartAgentConfigField::Prompt => Some(&mut self.prompt),
+            StartAgentConfigField::PreLaunchCommand => Some(&mut self.pre_launch_command),
+            StartAgentConfigField::Unsafe => None,
+        }
+    }
+
+    pub(super) fn backspace(&mut self, field: StartAgentConfigField) {
+        if let Some(text) = self.text_field_mut(field) {
+            text.pop();
         }
     }
 
     pub(super) fn clear(&mut self, field: StartAgentConfigField) {
-        match field {
-            StartAgentConfigField::Prompt => self.prompt.clear(),
-            StartAgentConfigField::PreLaunchCommand => self.pre_launch_command.clear(),
-            StartAgentConfigField::Unsafe => {}
+        if let Some(text) = self.text_field_mut(field) {
+            text.clear();
         }
     }
 
     pub(super) fn push_char(&mut self, field: StartAgentConfigField, character: char) {
-        match field {
-            StartAgentConfigField::Prompt => self.prompt.push(character),
-            StartAgentConfigField::PreLaunchCommand => self.pre_launch_command.push(character),
-            StartAgentConfigField::Unsafe => {}
+        if let Some(text) = self.text_field_mut(field) {
+            text.push(character);
         }
     }
 
