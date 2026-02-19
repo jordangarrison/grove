@@ -13,10 +13,6 @@ use crate::infrastructure::event_log::{
 
 use super::GroveApp;
 
-pub fn run() -> std::io::Result<()> {
-    run_with_event_log(None)
-}
-
 pub fn run_with_event_log(event_log_path: Option<PathBuf>) -> std::io::Result<()> {
     run_with_logger(event_log_path, None)
 }

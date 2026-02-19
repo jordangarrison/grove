@@ -117,7 +117,7 @@ mod logging_state;
 mod selection;
 use selection::{TextSelectionPoint, TextSelectionState};
 mod runner;
-pub use runner::{run, run_with_debug_record, run_with_event_log};
+pub use runner::{run_with_debug_record, run_with_event_log};
 mod shared;
 use shared::*;
 mod text;
