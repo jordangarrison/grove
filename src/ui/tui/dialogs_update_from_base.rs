@@ -9,12 +9,12 @@ impl GroveApp {
         match key_event.code {
             KeyCode::Escape => {
                 self.log_dialog_event("update_from_base", "dialog_cancelled");
-                self.update_from_base_dialog = None;
+                self.close_active_dialog();
                 return;
             }
             KeyCode::Char('q') if no_modifiers => {
                 self.log_dialog_event("update_from_base", "dialog_cancelled");
-                self.update_from_base_dialog = None;
+                self.close_active_dialog();
                 return;
             }
             KeyCode::Char('u') if no_modifiers => {
@@ -26,7 +26,7 @@ impl GroveApp {
 
         let mut confirm_update = false;
         let mut cancel_dialog = false;
-        let Some(dialog) = self.update_from_base_dialog.as_mut() else {
+        let Some(dialog) = self.update_from_base_dialog_mut() else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -79,7 +79,7 @@ impl GroveApp {
 
         if cancel_dialog {
             self.log_dialog_event("update_from_base", "dialog_cancelled");
-            self.update_from_base_dialog = None;
+            self.close_active_dialog();
             return;
         }
         if confirm_update {
@@ -95,7 +95,7 @@ impl GroveApp {
             return;
         }
 
-        let Some(workspace) = self.state.selected_workspace() else {
+        let Some(workspace) = self.state.selected_workspace().cloned() else {
             self.show_toast("no workspace selected", true);
             return;
         };
@@ -121,7 +121,7 @@ impl GroveApp {
             base_branch
         };
 
-        self.update_from_base_dialog = Some(UpdateFromBaseDialogState {
+        self.set_update_from_base_dialog(UpdateFromBaseDialogState {
             project_name: workspace.project_name.clone(),
             project_path: workspace.project_path.clone(),
             is_main_workspace: workspace.is_main,
@@ -157,7 +157,7 @@ impl GroveApp {
             return;
         }
 
-        let Some(dialog) = self.update_from_base_dialog.take() else {
+        let Some(dialog) = self.take_update_from_base_dialog() else {
             return;
         };
         self.log_dialog_event_with_fields(

@@ -2,7 +2,7 @@ use super::*;
 
 impl GroveApp {
     fn handle_project_defaults_dialog_key(&mut self, key_event: KeyEvent) {
-        let Some(project_dialog) = self.project_dialog.as_mut() else {
+        let Some(project_dialog) = self.project_dialog_mut() else {
             return;
         };
         let Some(defaults_dialog) = project_dialog.defaults_dialog.as_mut() else {
@@ -104,7 +104,7 @@ impl GroveApp {
             PostAction::None => {}
             PostAction::Save => self.save_project_defaults_from_dialog(),
             PostAction::Close => {
-                if let Some(project_dialog) = self.project_dialog.as_mut() {
+                if let Some(project_dialog) = self.project_dialog_mut() {
                     project_dialog.defaults_dialog = None;
                 }
             }
@@ -112,7 +112,7 @@ impl GroveApp {
     }
 
     pub(super) fn handle_project_add_dialog_key(&mut self, key_event: KeyEvent) {
-        let Some(project_dialog) = self.project_dialog.as_mut() else {
+        let Some(project_dialog) = self.project_dialog_mut() else {
             return;
         };
         let Some(add_dialog) = project_dialog.add_dialog.as_mut() else {
@@ -169,8 +169,7 @@ impl GroveApp {
 
     pub(super) fn handle_project_dialog_key(&mut self, key_event: KeyEvent) {
         if self
-            .project_dialog
-            .as_ref()
+            .project_dialog()
             .and_then(|dialog| dialog.add_dialog.as_ref())
             .is_some()
         {
@@ -178,8 +177,7 @@ impl GroveApp {
             return;
         }
         if self
-            .project_dialog
-            .as_ref()
+            .project_dialog()
             .and_then(|dialog| dialog.defaults_dialog.as_ref())
             .is_some()
         {
@@ -196,23 +194,23 @@ impl GroveApp {
 
         match key_event.code {
             KeyCode::Escape => {
-                if let Some(dialog) = self.project_dialog.as_mut()
+                if let Some(dialog) = self.project_dialog_mut()
                     && !dialog.filter.is_empty()
                 {
                     dialog.filter.clear();
                     self.refresh_project_dialog_filtered();
                     return;
                 }
-                self.project_dialog = None;
+                self.close_active_dialog();
             }
             KeyCode::Enter => {
                 if let Some(project_index) = self.selected_project_dialog_project_index() {
                     self.focus_project_by_index(project_index);
-                    self.project_dialog = None;
+                    self.close_active_dialog();
                 }
             }
             KeyCode::Up => {
-                if let Some(dialog) = self.project_dialog.as_mut()
+                if let Some(dialog) = self.project_dialog_mut()
                     && dialog.selected_filtered_index > 0
                 {
                     dialog.selected_filtered_index =
@@ -220,7 +218,7 @@ impl GroveApp {
                 }
             }
             KeyCode::Down => {
-                if let Some(dialog) = self.project_dialog.as_mut()
+                if let Some(dialog) = self.project_dialog_mut()
                     && dialog.selected_filtered_index.saturating_add(1)
                         < dialog.filtered_project_indices.len()
                 {
@@ -229,7 +227,7 @@ impl GroveApp {
                 }
             }
             KeyCode::Tab => {
-                if let Some(dialog) = self.project_dialog.as_mut() {
+                if let Some(dialog) = self.project_dialog_mut() {
                     let len = dialog.filtered_project_indices.len();
                     if len > 0 {
                         dialog.selected_filtered_index =
@@ -238,7 +236,7 @@ impl GroveApp {
                 }
             }
             KeyCode::BackTab => {
-                if let Some(dialog) = self.project_dialog.as_mut() {
+                if let Some(dialog) = self.project_dialog_mut() {
                     let len = dialog.filtered_project_indices.len();
                     if len > 0 {
                         dialog.selected_filtered_index = if dialog.selected_filtered_index == 0 {
@@ -250,7 +248,7 @@ impl GroveApp {
                 }
             }
             KeyCode::Char(_) if ctrl_n => {
-                if let Some(dialog) = self.project_dialog.as_mut() {
+                if let Some(dialog) = self.project_dialog_mut() {
                     let len = dialog.filtered_project_indices.len();
                     if len > 0 {
                         dialog.selected_filtered_index =
@@ -259,7 +257,7 @@ impl GroveApp {
                 }
             }
             KeyCode::Char(_) if ctrl_p => {
-                if let Some(dialog) = self.project_dialog.as_mut() {
+                if let Some(dialog) = self.project_dialog_mut() {
                     let len = dialog.filtered_project_indices.len();
                     if len > 0 {
                         dialog.selected_filtered_index = if dialog.selected_filtered_index == 0 {
@@ -271,7 +269,7 @@ impl GroveApp {
                 }
             }
             KeyCode::Backspace => {
-                if let Some(dialog) = self.project_dialog.as_mut() {
+                if let Some(dialog) = self.project_dialog_mut() {
                     dialog.filter.pop();
                 }
                 self.refresh_project_dialog_filtered();
@@ -298,7 +296,7 @@ impl GroveApp {
                 self.open_selected_project_defaults_dialog();
             }
             KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
-                if let Some(dialog) = self.project_dialog.as_mut() {
+                if let Some(dialog) = self.project_dialog_mut() {
                     dialog.filter.push(character);
                 }
                 self.refresh_project_dialog_filtered();

@@ -87,7 +87,7 @@ impl GroveApp {
     }
 
     pub(super) fn confirm_start_dialog(&mut self) {
-        let Some(dialog) = self.launch_dialog.take() else {
+        let Some(dialog) = self.take_launch_dialog() else {
             return;
         };
         let workspace_name = self.selected_workspace_name().unwrap_or_default();

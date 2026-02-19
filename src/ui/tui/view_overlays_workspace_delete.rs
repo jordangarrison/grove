@@ -2,7 +2,7 @@ use super::*;
 
 impl GroveApp {
     pub(super) fn render_delete_dialog_overlay(&self, frame: &mut Frame, area: Rect) {
-        let Some(dialog) = self.delete_dialog.as_ref() else {
+        let Some(dialog) = self.delete_dialog() else {
             return;
         };
         if area.width < 24 || area.height < 12 {

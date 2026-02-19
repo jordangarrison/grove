@@ -65,12 +65,12 @@ impl GroveApp {
         match key_event.code {
             KeyCode::Escape => {
                 self.log_dialog_event("delete", "dialog_cancelled");
-                self.delete_dialog = None;
+                self.close_active_dialog();
                 return;
             }
             KeyCode::Char('q') if no_modifiers => {
                 self.log_dialog_event("delete", "dialog_cancelled");
-                self.delete_dialog = None;
+                self.close_active_dialog();
                 return;
             }
             KeyCode::Char('D') if no_modifiers => {
@@ -82,7 +82,7 @@ impl GroveApp {
 
         let mut confirm_delete = false;
         let mut cancel_dialog = false;
-        let Some(dialog) = self.delete_dialog.as_mut() else {
+        let Some(dialog) = self.delete_dialog_mut() else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -143,7 +143,7 @@ impl GroveApp {
 
         if cancel_dialog {
             self.log_dialog_event("delete", "dialog_cancelled");
-            self.delete_dialog = None;
+            self.close_active_dialog();
             return;
         }
         if confirm_delete {
@@ -155,7 +155,7 @@ impl GroveApp {
             return;
         }
 
-        let Some(workspace) = self.state.selected_workspace() else {
+        let Some(workspace) = self.state.selected_workspace().cloned() else {
             self.show_toast("no workspace selected", true);
             return;
         };
@@ -172,7 +172,7 @@ impl GroveApp {
         }
 
         let is_missing = !workspace.path.exists();
-        self.delete_dialog = Some(DeleteDialogState {
+        self.set_delete_dialog(DeleteDialogState {
             project_name: workspace.project_name.clone(),
             project_path: workspace.project_path.clone(),
             workspace_name: workspace.name.clone(),
@@ -200,7 +200,7 @@ impl GroveApp {
         self.last_tmux_error = None;
     }
     fn confirm_delete_dialog(&mut self) {
-        let Some(dialog) = self.delete_dialog.take() else {
+        let Some(dialog) = self.take_delete_dialog() else {
             return;
         };
         self.log_dialog_event_with_fields(

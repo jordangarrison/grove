@@ -9,12 +9,12 @@ impl GroveApp {
         match key_event.code {
             KeyCode::Escape => {
                 self.log_dialog_event("merge", "dialog_cancelled");
-                self.merge_dialog = None;
+                self.close_active_dialog();
                 return;
             }
             KeyCode::Char('q') if no_modifiers => {
                 self.log_dialog_event("merge", "dialog_cancelled");
-                self.merge_dialog = None;
+                self.close_active_dialog();
                 return;
             }
             KeyCode::Char('m') if no_modifiers => {
@@ -26,7 +26,7 @@ impl GroveApp {
 
         let mut confirm_merge = false;
         let mut cancel_dialog = false;
-        let Some(dialog) = self.merge_dialog.as_mut() else {
+        let Some(dialog) = self.merge_dialog_mut() else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -94,7 +94,7 @@ impl GroveApp {
 
         if cancel_dialog {
             self.log_dialog_event("merge", "dialog_cancelled");
-            self.merge_dialog = None;
+            self.close_active_dialog();
             return;
         }
         if confirm_merge {
@@ -110,7 +110,7 @@ impl GroveApp {
             return;
         }
 
-        let Some(workspace) = self.state.selected_workspace() else {
+        let Some(workspace) = self.state.selected_workspace().cloned() else {
             self.show_toast("no workspace selected", true);
             return;
         };
@@ -135,7 +135,7 @@ impl GroveApp {
             return;
         }
 
-        self.merge_dialog = Some(MergeDialogState {
+        self.set_merge_dialog(MergeDialogState {
             project_name: workspace.project_name.clone(),
             project_path: workspace.project_path.clone(),
             workspace_name: workspace.name.clone(),
@@ -176,7 +176,7 @@ impl GroveApp {
             return;
         }
 
-        let Some(dialog) = self.merge_dialog.take() else {
+        let Some(dialog) = self.take_merge_dialog() else {
             return;
         };
         self.log_dialog_event_with_fields(

@@ -23,12 +23,12 @@ impl GroveApp {
     }
 
     pub(super) fn refresh_project_dialog_filtered(&mut self) {
-        let query = match self.project_dialog.as_ref() {
+        let query = match self.project_dialog() {
             Some(dialog) => dialog.filter.clone(),
             None => return,
         };
         let filtered = self.filtered_project_indices(&query);
-        let Some(dialog) = self.project_dialog.as_mut() else {
+        let Some(dialog) = self.project_dialog_mut() else {
             return;
         };
 
@@ -44,7 +44,7 @@ impl GroveApp {
     }
 
     pub(super) fn selected_project_dialog_project_index(&self) -> Option<usize> {
-        let dialog = self.project_dialog.as_ref()?;
+        let dialog = self.project_dialog()?;
         if dialog.filtered_project_indices.is_empty() {
             return None;
         }
@@ -103,7 +103,7 @@ impl GroveApp {
             .iter()
             .position(|index| *index == selected_project_index)
             .unwrap_or(0);
-        self.project_dialog = Some(ProjectDialogState {
+        self.set_project_dialog(ProjectDialogState {
             filter: String::new(),
             filtered_project_indices,
             selected_filtered_index,
@@ -113,7 +113,7 @@ impl GroveApp {
     }
 
     pub(super) fn open_project_add_dialog(&mut self) {
-        let Some(project_dialog) = self.project_dialog.as_mut() else {
+        let Some(project_dialog) = self.project_dialog_mut() else {
             return;
         };
         project_dialog.add_dialog = Some(ProjectAddDialogState {

@@ -243,6 +243,18 @@ impl SessionTracker {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ActiveDialog {
+    Launch(LaunchDialogState),
+    Delete(DeleteDialogState),
+    Merge(MergeDialogState),
+    UpdateFromBase(UpdateFromBaseDialogState),
+    Create(CreateDialogState),
+    Edit(EditDialogState),
+    Project(ProjectDialogState),
+    Settings(SettingsDialogState),
+}
+
 struct GroveApp {
     repo_name: String,
     projects: Vec<ProjectConfig>,
@@ -253,14 +265,7 @@ struct GroveApp {
     notifications: NotificationQueue,
     interactive: Option<InteractiveState>,
     action_mapper: ActionMapper,
-    launch_dialog: Option<LaunchDialogState>,
-    delete_dialog: Option<DeleteDialogState>,
-    merge_dialog: Option<MergeDialogState>,
-    update_from_base_dialog: Option<UpdateFromBaseDialogState>,
-    create_dialog: Option<CreateDialogState>,
-    edit_dialog: Option<EditDialogState>,
-    project_dialog: Option<ProjectDialogState>,
-    settings_dialog: Option<SettingsDialogState>,
+    active_dialog: Option<ActiveDialog>,
     keybind_help_open: bool,
     command_palette: CommandPalette,
     create_branch_all: Vec<String>,

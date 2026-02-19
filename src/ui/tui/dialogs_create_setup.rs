@@ -34,7 +34,7 @@ impl GroveApp {
     }
 
     fn create_dialog_selected_project(&self) -> Option<&ProjectConfig> {
-        let dialog = self.create_dialog.as_ref()?;
+        let dialog = self.create_dialog()?;
         self.projects.get(dialog.project_index)
     }
 
@@ -64,15 +64,14 @@ impl GroveApp {
         let base_branch = self
             .project_default_base_branch(project_index)
             .or_else(|| {
-                self.create_dialog
-                    .as_ref()
+                self.create_dialog()
                     .map(|dialog| dialog.base_branch.clone())
             })
             .unwrap_or_else(|| "main".to_string());
         let setup_commands = self.project_default_setup_commands(project_index);
         let auto_run_setup_commands = self.project_default_auto_run_setup_commands(project_index);
 
-        if let Some(dialog) = self.create_dialog.as_mut() {
+        if let Some(dialog) = self.create_dialog_mut() {
             dialog.project_index = project_index;
             dialog.base_branch = base_branch.clone();
             dialog.setup_commands = setup_commands;
@@ -117,7 +116,7 @@ impl GroveApp {
             .map_or(AgentType::Claude, |workspace| workspace.agent);
         let setup_commands = self.project_default_setup_commands(project_index);
         let auto_run_setup_commands = self.project_default_auto_run_setup_commands(project_index);
-        self.create_dialog = Some(CreateDialogState {
+        self.set_create_dialog(CreateDialogState {
             workspace_name: String::new(),
             project_index,
             agent: default_agent,
@@ -157,8 +156,7 @@ impl GroveApp {
 
     pub(super) fn refresh_create_branch_filtered(&mut self) {
         let query = self
-            .create_dialog
-            .as_ref()
+            .create_dialog()
             .map(|dialog| dialog.base_branch.clone())
             .unwrap_or_default();
         self.create_branch_filtered = filter_branches(&query, &self.create_branch_all);

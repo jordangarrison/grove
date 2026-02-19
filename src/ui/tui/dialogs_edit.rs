@@ -22,7 +22,7 @@ impl GroveApp {
     }
 
     pub(super) fn handle_edit_dialog_key(&mut self, key_event: KeyEvent) {
-        let Some(dialog) = self.edit_dialog.as_mut() else {
+        let Some(dialog) = self.edit_dialog_mut() else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -134,7 +134,7 @@ impl GroveApp {
             PostAction::Save => self.apply_edit_dialog_save(),
             PostAction::Cancel => {
                 self.log_dialog_event("edit", "dialog_cancelled");
-                self.edit_dialog = None;
+                self.close_active_dialog();
             }
         }
     }
@@ -143,7 +143,7 @@ impl GroveApp {
             return;
         }
 
-        let Some(workspace) = self.state.selected_workspace() else {
+        let Some(workspace) = self.state.selected_workspace().cloned() else {
             self.show_toast("no workspace selected", true);
             return;
         };
@@ -159,7 +159,7 @@ impl GroveApp {
                 .unwrap_or_else(|| workspace.branch.clone())
         };
 
-        self.edit_dialog = Some(EditDialogState {
+        self.set_edit_dialog(EditDialogState {
             workspace_name: workspace.name.clone(),
             workspace_path: workspace.path.clone(),
             is_main: workspace.is_main,
@@ -192,7 +192,7 @@ impl GroveApp {
     }
 
     fn apply_edit_dialog_save(&mut self) {
-        let Some(dialog) = self.edit_dialog.as_ref().cloned() else {
+        let Some(dialog) = self.edit_dialog().cloned() else {
             return;
         };
         let target_branch = dialog.base_branch.trim().to_string();
@@ -269,7 +269,7 @@ impl GroveApp {
             workspace.supported_agent = true;
         }
 
-        self.edit_dialog = None;
+        self.close_active_dialog();
         self.last_tmux_error = None;
         if dialog.is_main && dialog.was_running {
             self.show_toast(

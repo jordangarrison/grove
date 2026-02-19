@@ -289,7 +289,110 @@ impl Widget for OverlayModalContent<'_> {
     }
 }
 
+macro_rules! active_dialog_accessors {
+    ($get:ident, $get_mut:ident, $take:ident, $set:ident, $variant:ident, $ty:ty) => {
+        pub(super) fn $get(&self) -> Option<&$ty> {
+            match self.active_dialog.as_ref() {
+                Some(ActiveDialog::$variant(dialog)) => Some(dialog),
+                _ => None,
+            }
+        }
+
+        pub(super) fn $get_mut(&mut self) -> Option<&mut $ty> {
+            match self.active_dialog.as_mut() {
+                Some(ActiveDialog::$variant(dialog)) => Some(dialog),
+                _ => None,
+            }
+        }
+
+        #[allow(dead_code)]
+        pub(super) fn $take(&mut self) -> Option<$ty> {
+            let active_dialog = self.active_dialog.take()?;
+            match active_dialog {
+                ActiveDialog::$variant(dialog) => Some(dialog),
+                other => {
+                    self.active_dialog = Some(other);
+                    None
+                }
+            }
+        }
+
+        pub(super) fn $set(&mut self, dialog: $ty) {
+            self.active_dialog = Some(ActiveDialog::$variant(dialog));
+        }
+    };
+}
+
 impl GroveApp {
+    pub(super) fn close_active_dialog(&mut self) {
+        self.active_dialog = None;
+    }
+
+    active_dialog_accessors!(
+        launch_dialog,
+        launch_dialog_mut,
+        take_launch_dialog,
+        set_launch_dialog,
+        Launch,
+        LaunchDialogState
+    );
+    active_dialog_accessors!(
+        delete_dialog,
+        delete_dialog_mut,
+        take_delete_dialog,
+        set_delete_dialog,
+        Delete,
+        DeleteDialogState
+    );
+    active_dialog_accessors!(
+        merge_dialog,
+        merge_dialog_mut,
+        take_merge_dialog,
+        set_merge_dialog,
+        Merge,
+        MergeDialogState
+    );
+    active_dialog_accessors!(
+        update_from_base_dialog,
+        update_from_base_dialog_mut,
+        take_update_from_base_dialog,
+        set_update_from_base_dialog,
+        UpdateFromBase,
+        UpdateFromBaseDialogState
+    );
+    active_dialog_accessors!(
+        create_dialog,
+        create_dialog_mut,
+        take_create_dialog,
+        set_create_dialog,
+        Create,
+        CreateDialogState
+    );
+    active_dialog_accessors!(
+        edit_dialog,
+        edit_dialog_mut,
+        take_edit_dialog,
+        set_edit_dialog,
+        Edit,
+        EditDialogState
+    );
+    active_dialog_accessors!(
+        project_dialog,
+        project_dialog_mut,
+        take_project_dialog,
+        set_project_dialog,
+        Project,
+        ProjectDialogState
+    );
+    active_dialog_accessors!(
+        settings_dialog,
+        settings_dialog_mut,
+        take_settings_dialog,
+        set_settings_dialog,
+        Settings,
+        SettingsDialogState
+    );
+
     pub(super) fn allows_text_input_modifiers(modifiers: Modifiers) -> bool {
         modifiers.is_empty() || modifiers == Modifiers::SHIFT
     }

@@ -635,11 +635,11 @@ proptest::proptest! {
         for msg in msgs {
             let _ = ftui::Model::update(&mut app, msg);
             let active_modals = [
-                app.launch_dialog.is_some(),
-                app.create_dialog.is_some(),
-                app.delete_dialog.is_some(),
-                app.merge_dialog.is_some(),
-                app.update_from_base_dialog.is_some(),
+                app.launch_dialog().is_some(),
+                app.create_dialog().is_some(),
+                app.delete_dialog().is_some(),
+                app.merge_dialog().is_some(),
+                app.update_from_base_dialog().is_some(),
                 app.keybind_help_open,
                 app.command_palette.is_visible(),
                 app.interactive.is_some(),
@@ -1079,7 +1079,7 @@ fn interactive_input_echo_does_not_trigger_activity_spinner() {
 #[test]
 fn modal_dialog_renders_over_sidebar() {
     let mut app = fixture_app();
-    app.launch_dialog = Some(LaunchDialogState {
+    app.set_launch_dialog(LaunchDialogState {
         start_config: StartAgentConfigState::new(String::new(), String::new(), false),
         focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
     });
@@ -1092,7 +1092,7 @@ fn modal_dialog_renders_over_sidebar() {
 #[test]
 fn launch_dialog_uses_opaque_background_fill() {
     let mut app = fixture_app();
-    app.launch_dialog = Some(LaunchDialogState {
+    app.set_launch_dialog(LaunchDialogState {
         start_config: StartAgentConfigState::new(String::new(), String::new(), false),
         focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
     });
@@ -1398,7 +1398,7 @@ fn ctrl_k_opens_command_palette() {
 fn ctrl_k_is_blocked_while_modal_is_open() {
     let mut app = fixture_app();
     app.open_create_dialog();
-    assert!(app.create_dialog.is_some());
+    assert!(app.create_dialog().is_some());
 
     let _ = app.handle_key(
         KeyEvent::new(KeyCode::Char('k'))
@@ -1406,7 +1406,7 @@ fn ctrl_k_is_blocked_while_modal_is_open() {
             .with_kind(KeyEventKind::Press),
     );
 
-    assert!(app.create_dialog.is_some());
+    assert!(app.create_dialog().is_some());
     assert!(!app.command_palette.is_visible());
 }
 
@@ -1467,7 +1467,7 @@ fn command_palette_enter_executes_selected_action() {
     let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
 
     assert!(!app.command_palette.is_visible());
-    assert!(app.create_dialog.is_some());
+    assert!(app.create_dialog().is_some());
 }
 
 #[test]
@@ -1833,7 +1833,7 @@ fn uppercase_s_opens_settings_dialog() {
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
 
-    assert!(app.settings_dialog.is_some());
+    assert!(app.settings_dialog().is_some());
 }
 
 #[test]
@@ -1842,12 +1842,12 @@ fn settings_dialog_save_persists_tmux_config() {
     assert_eq!(app.multiplexer, MultiplexerKind::Tmux);
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
-    assert!(app.settings_dialog.is_some());
+    assert!(app.settings_dialog().is_some());
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press));
     let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
 
-    assert!(app.settings_dialog.is_none());
+    assert!(app.settings_dialog().is_none());
     assert_eq!(app.multiplexer, MultiplexerKind::Tmux);
     let loaded = crate::infrastructure::config::load_from_path(&app.config_path)
         .expect("config should load");
@@ -1859,29 +1859,23 @@ fn settings_dialog_multiplexer_keys_keep_tmux_selection() {
     let mut app = fixture_app();
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
-    assert!(app.settings_dialog.is_some());
+    assert!(app.settings_dialog().is_some());
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('h')).with_kind(KeyEventKind::Press));
     assert_eq!(
-        app.settings_dialog
-            .as_ref()
-            .map(|dialog| dialog.multiplexer),
+        app.settings_dialog().map(|dialog| dialog.multiplexer),
         Some(MultiplexerKind::Tmux)
     );
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('h')).with_kind(KeyEventKind::Press));
     assert_eq!(
-        app.settings_dialog
-            .as_ref()
-            .map(|dialog| dialog.multiplexer),
+        app.settings_dialog().map(|dialog| dialog.multiplexer),
         Some(MultiplexerKind::Tmux)
     );
 
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press));
     assert_eq!(
-        app.settings_dialog
-            .as_ref()
-            .map(|dialog| dialog.multiplexer),
+        app.settings_dialog().map(|dialog| dialog.multiplexer),
         Some(MultiplexerKind::Tmux)
     );
 }
@@ -2021,7 +2015,7 @@ fn project_dialog_footer_hints_wrap_instead_of_truncating() {
 #[test]
 fn launch_dialog_footer_hints_wrap_instead_of_truncating() {
     let mut app = fixture_app();
-    app.launch_dialog = Some(LaunchDialogState {
+    app.set_launch_dialog(LaunchDialogState {
         start_config: StartAgentConfigState::new(String::new(), String::new(), false),
         focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
     });
@@ -2142,7 +2136,7 @@ fn status_row_shows_edit_dialog_keybind_hints_when_modal_open() {
 #[test]
 fn status_row_shows_launch_dialog_keybind_hints_when_modal_open() {
     let mut app = fixture_app();
-    app.launch_dialog = Some(LaunchDialogState {
+    app.set_launch_dialog(LaunchDialogState {
         start_config: StartAgentConfigState::new(String::new(), String::new(), false),
         focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
     });

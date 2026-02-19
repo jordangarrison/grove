@@ -43,10 +43,10 @@ Two identical functions with different names: `paths_refer_to_same_location` and
 
 The app struct carries 8 `Option<XDialogState>` fields but only one can be open at a time.
 
-- [ ] Create `enum ActiveDialog { Launch(..), Delete(..), Merge(..), UpdateFromBase(..), Create(..), Edit(..), Project(..), Settings(..) }`
-- [ ] Replace the 8 `Option` fields with `active_dialog: Option<ActiveDialog>`
-- [ ] Update all dialog open/close/render/input sites
-- [ ] Update `src/ui/tui/bootstrap_app.rs:160-168`
+- [x] Create `enum ActiveDialog { Launch(..), Delete(..), Merge(..), UpdateFromBase(..), Create(..), Edit(..), Project(..), Settings(..) }`
+- [x] Replace the 8 `Option` fields with `active_dialog: Option<ActiveDialog>`
+- [x] Update all dialog open/close/render/input sites
+- [x] Update `src/ui/tui/bootstrap_app.rs:160-168`
 
 ## 6. Modal render boilerplate (~100 lines)
 

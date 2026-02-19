@@ -23,7 +23,7 @@ impl GroveApp {
             DiscoveryState::Error(message) => format!("Status: discovery error ({message})"),
             DiscoveryState::Empty => "Status: no worktrees found".to_string(),
             DiscoveryState::Ready => {
-                if let Some(dialog) = &self.create_dialog {
+                if let Some(dialog) = self.create_dialog() {
                     return format!(
                         "Status: new workspace, field={}, agent={}, base_branch=\"{}\", setup_auto_run={}, unsafe={}, setup_commands=\"{}\", name=\"{}\", prompt=\"{}\", pre=\"{}\"",
                         dialog.focused_field.label(),
@@ -45,7 +45,7 @@ impl GroveApp {
                         dialog.start_config.pre_launch_command.replace('\n', "\\n"),
                     );
                 }
-                if let Some(dialog) = &self.launch_dialog {
+                if let Some(dialog) = self.launch_dialog() {
                     return format!(
                         "Status: start agent, field={}, unsafe={}, prompt=\"{}\", pre=\"{}\"",
                         dialog.focused_field.label(),
@@ -101,15 +101,12 @@ impl GroveApp {
         if self.keybind_help_open {
             return "Esc/? close help".to_string();
         }
-        if self.create_dialog.is_some() {
+        if self.create_dialog().is_some() {
             return "Tab/S-Tab or C-n/C-p field, j/k adjust controls, ';' separates workspace setup cmds, Space toggles auto-run or unsafe, h/l buttons, Enter select/create, Esc cancel"
                 .to_string();
         }
-        if self.edit_dialog.is_some() {
-            let edits_main_workspace = self
-                .edit_dialog
-                .as_ref()
-                .is_some_and(|dialog| dialog.is_main);
+        if self.edit_dialog().is_some() {
+            let edits_main_workspace = self.edit_dialog().is_some_and(|dialog| dialog.is_main);
             if edits_main_workspace {
                 return "Tab/S-Tab or C-n/C-p field, type/backspace branch, h/l buttons, Space toggle agent, Enter save/select, Esc cancel"
                     .to_string();
@@ -117,30 +114,29 @@ impl GroveApp {
             return "Tab/S-Tab or C-n/C-p field, type/backspace base branch, h/l buttons, Space toggle agent, Enter save/select, Esc cancel"
                 .to_string();
         }
-        if self.launch_dialog.is_some() {
+        if self.launch_dialog().is_some() {
             return "Tab/S-Tab or C-n/C-p field, h/l buttons, Space toggles unsafe, Enter select/start, Esc cancel"
                 .to_string();
         }
-        if self.delete_dialog.is_some() {
+        if self.delete_dialog().is_some() {
             return "Tab/S-Tab or C-n/C-p field, j/k move, Space toggle branch delete, Enter select/delete, D confirm, Esc cancel"
                 .to_string();
         }
-        if self.merge_dialog.is_some() {
+        if self.merge_dialog().is_some() {
             return "Tab/S-Tab or C-n/C-p field, j/k move, Space toggle cleanup, Enter select/merge, m confirm, Esc cancel"
                 .to_string();
         }
-        if self.update_from_base_dialog.is_some() {
+        if self.update_from_base_dialog().is_some() {
             return "Tab/S-Tab or C-n/C-p field, h/l buttons, Enter select/update, u confirm, Esc cancel"
                 .to_string();
         }
-        if self.settings_dialog.is_some() {
+        if self.settings_dialog().is_some() {
             return "Tab/S-Tab or C-n/C-p field, j/k or h/l change, Enter save/select, Esc cancel"
                 .to_string();
         }
-        if self.project_dialog.is_some() {
+        if self.project_dialog().is_some() {
             if self
-                .project_dialog
-                .as_ref()
+                .project_dialog()
                 .and_then(|dialog| dialog.defaults_dialog.as_ref())
                 .is_some()
             {

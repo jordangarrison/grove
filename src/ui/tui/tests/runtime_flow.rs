@@ -645,8 +645,7 @@ fn project_add_dialog_accepts_shift_modified_uppercase_path_characters() {
     );
 
     assert_eq!(
-        app.project_dialog
-            .as_ref()
+        app.project_dialog()
             .and_then(|dialog| dialog.add_dialog.as_ref())
             .map(|dialog| dialog.path.clone()),
         Some("/US".to_string())
@@ -671,9 +670,7 @@ fn project_dialog_filter_accepts_shift_modified_characters() {
     );
 
     assert_eq!(
-        app.project_dialog
-            .as_ref()
-            .map(|dialog| dialog.filter.clone()),
+        app.project_dialog().map(|dialog| dialog.filter.clone()),
         Some("G".to_string())
     );
 }
@@ -696,9 +693,7 @@ fn project_dialog_j_and_k_are_treated_as_filter_input() {
     );
 
     assert_eq!(
-        app.project_dialog
-            .as_ref()
-            .map(|dialog| dialog.filter.clone()),
+        app.project_dialog().map(|dialog| dialog.filter.clone()),
         Some("jk".to_string())
     );
 }
@@ -718,8 +713,7 @@ fn project_dialog_tab_and_shift_tab_navigate_selection() {
     );
 
     assert_eq!(
-        app.project_dialog
-            .as_ref()
+        app.project_dialog()
             .map(|dialog| dialog.selected_filtered_index),
         Some(0)
     );
@@ -729,8 +723,7 @@ fn project_dialog_tab_and_shift_tab_navigate_selection() {
         Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
     );
     assert_eq!(
-        app.project_dialog
-            .as_ref()
+        app.project_dialog()
             .map(|dialog| dialog.selected_filtered_index),
         Some(1)
     );
@@ -740,8 +733,7 @@ fn project_dialog_tab_and_shift_tab_navigate_selection() {
         Msg::Key(KeyEvent::new(KeyCode::BackTab).with_kind(KeyEventKind::Press)),
     );
     assert_eq!(
-        app.project_dialog
-            .as_ref()
+        app.project_dialog()
             .map(|dialog| dialog.selected_filtered_index),
         Some(0)
     );
@@ -770,8 +762,7 @@ fn project_dialog_ctrl_n_and_ctrl_p_match_tab_navigation() {
         ),
     );
     assert_eq!(
-        app.project_dialog
-            .as_ref()
+        app.project_dialog()
             .map(|dialog| dialog.selected_filtered_index),
         Some(1)
     );
@@ -785,8 +776,7 @@ fn project_dialog_ctrl_n_and_ctrl_p_match_tab_navigation() {
         ),
     );
     assert_eq!(
-        app.project_dialog
-            .as_ref()
+        app.project_dialog()
             .map(|dialog| dialog.selected_filtered_index),
         Some(0)
     );
@@ -810,8 +800,7 @@ fn project_add_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
     );
 
     assert_eq!(
-        app.project_dialog
-            .as_ref()
+        app.project_dialog()
             .and_then(|dialog| dialog.add_dialog.as_ref())
             .map(|dialog| dialog.focused_field),
         Some(ProjectAddDialogField::Name)
@@ -825,8 +814,7 @@ fn project_add_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         ),
     );
     assert_eq!(
-        app.project_dialog
-            .as_ref()
+        app.project_dialog()
             .and_then(|dialog| dialog.add_dialog.as_ref())
             .map(|dialog| dialog.focused_field),
         Some(ProjectAddDialogField::Path)
@@ -840,8 +828,7 @@ fn project_add_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         ),
     );
     assert_eq!(
-        app.project_dialog
-            .as_ref()
+        app.project_dialog()
             .and_then(|dialog| dialog.add_dialog.as_ref())
             .map(|dialog| dialog.focused_field),
         Some(ProjectAddDialogField::Name)
@@ -954,14 +941,12 @@ fn project_dialog_ctrl_e_opens_project_defaults_dialog() {
     );
 
     assert!(
-        app.project_dialog
-            .as_ref()
+        app.project_dialog()
             .and_then(|dialog| dialog.defaults_dialog.as_ref())
             .is_some()
     );
     assert_eq!(
-        app.project_dialog
-            .as_ref()
+        app.project_dialog()
             .and_then(|dialog| dialog.defaults_dialog.as_ref())
             .map(|dialog| dialog.auto_run_setup_commands),
         Some(true)
@@ -986,8 +971,7 @@ fn project_defaults_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
     );
 
     assert_eq!(
-        app.project_dialog
-            .as_ref()
+        app.project_dialog()
             .and_then(|dialog| dialog.defaults_dialog.as_ref())
             .map(|dialog| dialog.focused_field),
         Some(ProjectDefaultsDialogField::BaseBranch)
@@ -1001,8 +985,7 @@ fn project_defaults_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         ),
     );
     assert_eq!(
-        app.project_dialog
-            .as_ref()
+        app.project_dialog()
             .and_then(|dialog| dialog.defaults_dialog.as_ref())
             .map(|dialog| dialog.focused_field),
         Some(ProjectDefaultsDialogField::SetupCommands)
@@ -1016,8 +999,7 @@ fn project_defaults_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         ),
     );
     assert_eq!(
-        app.project_dialog
-            .as_ref()
+        app.project_dialog()
             .and_then(|dialog| dialog.defaults_dialog.as_ref())
             .map(|dialog| dialog.focused_field),
         Some(ProjectDefaultsDialogField::BaseBranch)
@@ -1099,20 +1081,16 @@ fn new_workspace_dialog_prefills_from_project_defaults() {
     );
 
     assert_eq!(
-        app.create_dialog
-            .as_ref()
-            .map(|dialog| dialog.base_branch.clone()),
+        app.create_dialog().map(|dialog| dialog.base_branch.clone()),
         Some("develop".to_string())
     );
     assert_eq!(
-        app.create_dialog
-            .as_ref()
+        app.create_dialog()
             .map(|dialog| dialog.setup_commands.clone()),
         Some("direnv allow".to_string())
     );
     assert_eq!(
-        app.create_dialog
-            .as_ref()
+        app.create_dialog()
             .map(|dialog| dialog.auto_run_setup_commands),
         Some(true)
     );
@@ -1390,7 +1368,7 @@ fn ctrl_c_dismisses_modal_via_action_mapper() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
     );
-    assert!(app.launch_dialog.is_some());
+    assert!(app.launch_dialog().is_some());
 
     ftui::Model::update(
         &mut app,
@@ -1401,7 +1379,7 @@ fn ctrl_c_dismisses_modal_via_action_mapper() {
         ),
     );
 
-    assert!(app.launch_dialog.is_none());
+    assert!(app.launch_dialog().is_none());
 }
 
 #[test]
@@ -1413,7 +1391,7 @@ fn ctrl_c_dismisses_delete_modal_via_action_mapper() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
     );
-    assert!(app.delete_dialog.is_some());
+    assert!(app.delete_dialog().is_some());
 
     ftui::Model::update(
         &mut app,
@@ -1424,7 +1402,7 @@ fn ctrl_c_dismisses_delete_modal_via_action_mapper() {
         ),
     );
 
-    assert!(app.delete_dialog.is_none());
+    assert!(app.delete_dialog().is_none());
 }
 
 #[test]
@@ -1475,7 +1453,7 @@ fn start_key_launches_selected_workspace_agent() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
     );
-    assert!(app.launch_dialog.is_some());
+    assert!(app.launch_dialog().is_some());
     assert!(commands.borrow().is_empty());
     ftui::Model::update(
         &mut app,
@@ -1905,17 +1883,14 @@ fn start_dialog_field_navigation_can_toggle_unsafe_for_launch() {
         Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
     );
     assert_eq!(
-        app.launch_dialog
-            .as_ref()
-            .map(|dialog| dialog.focused_field),
+        app.launch_dialog().map(|dialog| dialog.focused_field),
         Some(LaunchDialogField::StartConfig(
             StartAgentConfigField::Unsafe
         ))
     );
     app.handle_launch_dialog_key(KeyEvent::new(KeyCode::Char(' ')).with_kind(KeyEventKind::Press));
     assert_eq!(
-        app.launch_dialog
-            .as_ref()
+        app.launch_dialog()
             .map(|dialog| dialog.start_config.skip_permissions),
         Some(true)
     );
@@ -1957,8 +1932,7 @@ fn start_dialog_blocks_background_navigation_and_escape_cancels() {
 
     assert_eq!(app.state.selected_index, 1);
     assert_eq!(
-        app.launch_dialog
-            .as_ref()
+        app.launch_dialog()
             .map(|dialog| dialog.start_config.prompt.clone()),
         Some("k".to_string())
     );
@@ -1968,7 +1942,7 @@ fn start_dialog_blocks_background_navigation_and_escape_cancels() {
         Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
     );
 
-    assert!(app.launch_dialog.is_none());
+    assert!(app.launch_dialog().is_none());
     assert!(commands.borrow().is_empty());
 }
 
@@ -1979,9 +1953,7 @@ fn start_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
     app.open_start_dialog();
 
     assert_eq!(
-        app.launch_dialog
-            .as_ref()
-            .map(|dialog| dialog.focused_field),
+        app.launch_dialog().map(|dialog| dialog.focused_field),
         Some(LaunchDialogField::StartConfig(
             StartAgentConfigField::Prompt
         ))
@@ -1996,9 +1968,7 @@ fn start_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         ),
     );
     assert_eq!(
-        app.launch_dialog
-            .as_ref()
-            .map(|dialog| dialog.focused_field),
+        app.launch_dialog().map(|dialog| dialog.focused_field),
         Some(LaunchDialogField::StartConfig(
             StartAgentConfigField::PreLaunchCommand
         ))
@@ -2013,9 +1983,7 @@ fn start_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         ),
     );
     assert_eq!(
-        app.launch_dialog
-            .as_ref()
-            .map(|dialog| dialog.focused_field),
+        app.launch_dialog().map(|dialog| dialog.focused_field),
         Some(LaunchDialogField::StartConfig(
             StartAgentConfigField::Prompt
         ))
@@ -2032,13 +2000,11 @@ fn new_workspace_key_opens_create_dialog() {
     );
 
     assert_eq!(
-        app.create_dialog.as_ref().map(|dialog| dialog.agent),
+        app.create_dialog().map(|dialog| dialog.agent),
         Some(AgentType::Claude)
     );
     assert_eq!(
-        app.create_dialog
-            .as_ref()
-            .map(|dialog| dialog.base_branch.clone()),
+        app.create_dialog().map(|dialog| dialog.base_branch.clone()),
         Some("main".to_string())
     );
 }
@@ -2052,7 +2018,7 @@ fn edit_workspace_key_opens_edit_dialog() {
         Msg::Key(KeyEvent::new(KeyCode::Char('e')).with_kind(KeyEventKind::Press)),
     );
 
-    let Some(dialog) = app.edit_dialog.as_ref() else {
+    let Some(dialog) = app.edit_dialog() else {
         panic!("edit dialog should be open");
     };
     assert_eq!(dialog.workspace_name, "grove");
@@ -2114,7 +2080,7 @@ fn edit_dialog_save_updates_workspace_agent_base_branch_and_markers() {
         Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
     );
 
-    assert!(app.edit_dialog.is_none());
+    assert!(app.edit_dialog().is_none());
     assert_eq!(app.state.workspaces[1].agent, AgentType::Claude);
     assert_eq!(
         app.state.workspaces[1].base_branch.as_deref(),
@@ -2297,7 +2263,7 @@ fn edit_dialog_save_rejects_empty_base_branch() {
         Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
     );
 
-    assert!(app.edit_dialog.is_some());
+    assert!(app.edit_dialog().is_some());
     assert!(app.status_bar_line().contains("base branch is required"));
 }
 
@@ -2307,7 +2273,7 @@ fn edit_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
     app.open_edit_dialog();
 
     assert_eq!(
-        app.edit_dialog.as_ref().map(|dialog| dialog.focused_field),
+        app.edit_dialog().map(|dialog| dialog.focused_field),
         Some(EditDialogField::BaseBranch)
     );
     ftui::Model::update(
@@ -2319,7 +2285,7 @@ fn edit_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         ),
     );
     assert_eq!(
-        app.edit_dialog.as_ref().map(|dialog| dialog.focused_field),
+        app.edit_dialog().map(|dialog| dialog.focused_field),
         Some(EditDialogField::Agent)
     );
     ftui::Model::update(
@@ -2331,7 +2297,7 @@ fn edit_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         ),
     );
     assert_eq!(
-        app.edit_dialog.as_ref().map(|dialog| dialog.focused_field),
+        app.edit_dialog().map(|dialog| dialog.focused_field),
         Some(EditDialogField::BaseBranch)
     );
 }
@@ -2349,7 +2315,7 @@ fn delete_key_opens_delete_dialog_for_selected_workspace() {
         Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
     );
 
-    let Some(dialog) = app.delete_dialog.as_ref() else {
+    let Some(dialog) = app.delete_dialog() else {
         panic!("delete dialog should be open");
     };
     assert_eq!(dialog.workspace_name, "feature-a");
@@ -2366,7 +2332,7 @@ fn delete_key_on_main_workspace_shows_guard_toast() {
         Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
     );
 
-    assert!(app.delete_dialog.is_none());
+    assert!(app.delete_dialog().is_none());
     assert!(
         app.status_bar_line()
             .contains("cannot delete base workspace")
@@ -2385,9 +2351,7 @@ fn delete_dialog_blocks_navigation_and_escape_cancels() {
     );
     assert_eq!(app.state.selected_index, 1);
     assert_eq!(
-        app.delete_dialog
-            .as_ref()
-            .map(|dialog| dialog.focused_field),
+        app.delete_dialog().map(|dialog| dialog.focused_field),
         Some(DeleteDialogField::DeleteButton)
     );
 
@@ -2395,7 +2359,7 @@ fn delete_dialog_blocks_navigation_and_escape_cancels() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
     );
-    assert!(app.delete_dialog.is_none());
+    assert!(app.delete_dialog().is_none());
 }
 
 #[test]
@@ -2413,9 +2377,7 @@ fn delete_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         ),
     );
     assert_eq!(
-        app.delete_dialog
-            .as_ref()
-            .map(|dialog| dialog.focused_field),
+        app.delete_dialog().map(|dialog| dialog.focused_field),
         Some(DeleteDialogField::DeleteButton)
     );
     ftui::Model::update(
@@ -2427,9 +2389,7 @@ fn delete_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         ),
     );
     assert_eq!(
-        app.delete_dialog
-            .as_ref()
-            .map(|dialog| dialog.focused_field),
+        app.delete_dialog().map(|dialog| dialog.focused_field),
         Some(DeleteDialogField::DeleteLocalBranch)
     );
 }
@@ -2476,7 +2436,7 @@ fn delete_dialog_confirm_queues_background_task() {
     );
 
     assert!(cmd_contains_task(&cmd));
-    assert!(app.delete_dialog.is_none());
+    assert!(app.delete_dialog().is_none());
     assert!(app.delete_in_flight);
     assert_eq!(app.delete_in_flight_workspace, Some(deleting_path));
     assert!(
@@ -2618,7 +2578,7 @@ fn merge_key_opens_merge_dialog_for_selected_workspace() {
         Msg::Key(KeyEvent::new(KeyCode::Char('m')).with_kind(KeyEventKind::Press)),
     );
 
-    let Some(dialog) = app.merge_dialog.as_ref() else {
+    let Some(dialog) = app.merge_dialog() else {
         panic!("merge dialog should be open");
     };
     assert_eq!(dialog.workspace_name, "feature-a");
@@ -2638,7 +2598,7 @@ fn merge_key_on_main_workspace_shows_guard_toast() {
         Msg::Key(KeyEvent::new(KeyCode::Char('m')).with_kind(KeyEventKind::Press)),
     );
 
-    assert!(app.merge_dialog.is_none());
+    assert!(app.merge_dialog().is_none());
     assert!(
         app.status_bar_line()
             .contains("cannot merge base workspace")
@@ -2660,7 +2620,7 @@ fn merge_dialog_confirm_queues_background_task() {
     );
 
     assert!(cmd_contains_task(&cmd));
-    assert!(app.merge_dialog.is_none());
+    assert!(app.merge_dialog().is_none());
     assert!(app.merge_in_flight);
 }
 
@@ -2679,7 +2639,7 @@ fn merge_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         ),
     );
     assert_eq!(
-        app.merge_dialog.as_ref().map(|dialog| dialog.focused_field),
+        app.merge_dialog().map(|dialog| dialog.focused_field),
         Some(MergeDialogField::CleanupLocalBranch)
     );
     ftui::Model::update(
@@ -2691,7 +2651,7 @@ fn merge_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         ),
     );
     assert_eq!(
-        app.merge_dialog.as_ref().map(|dialog| dialog.focused_field),
+        app.merge_dialog().map(|dialog| dialog.focused_field),
         Some(MergeDialogField::CleanupWorkspace)
     );
 }
@@ -2734,7 +2694,7 @@ fn update_key_opens_update_from_base_dialog_for_selected_workspace() {
         Msg::Key(KeyEvent::new(KeyCode::Char('u')).with_kind(KeyEventKind::Press)),
     );
 
-    let Some(dialog) = app.update_from_base_dialog.as_ref() else {
+    let Some(dialog) = app.update_from_base_dialog() else {
         panic!("update dialog should be open");
     };
     assert_eq!(dialog.workspace_name, "feature-a");
@@ -2755,7 +2715,7 @@ fn update_key_on_main_workspace_opens_upstream_update_dialog() {
         Msg::Key(KeyEvent::new(KeyCode::Char('u')).with_kind(KeyEventKind::Press)),
     );
 
-    let Some(dialog) = app.update_from_base_dialog.as_ref() else {
+    let Some(dialog) = app.update_from_base_dialog() else {
         panic!("update dialog should be open");
     };
     assert_eq!(dialog.workspace_name, "grove");
@@ -2779,7 +2739,7 @@ fn update_dialog_confirm_queues_background_task() {
     );
 
     assert!(cmd_contains_task(&cmd));
-    assert!(app.update_from_base_dialog.is_none());
+    assert!(app.update_from_base_dialog().is_none());
     assert!(app.update_from_base_in_flight);
 }
 
@@ -2798,8 +2758,7 @@ fn update_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         ),
     );
     assert_eq!(
-        app.update_from_base_dialog
-            .as_ref()
+        app.update_from_base_dialog()
             .map(|dialog| dialog.focused_field),
         Some(UpdateFromBaseDialogField::CancelButton)
     );
@@ -2812,8 +2771,7 @@ fn update_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         ),
     );
     assert_eq!(
-        app.update_from_base_dialog
-            .as_ref()
+        app.update_from_base_dialog()
             .map(|dialog| dialog.focused_field),
         Some(UpdateFromBaseDialogField::UpdateButton)
     );
@@ -2825,9 +2783,7 @@ fn settings_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
     app.open_settings_dialog();
 
     assert_eq!(
-        app.settings_dialog
-            .as_ref()
-            .map(|dialog| dialog.focused_field),
+        app.settings_dialog().map(|dialog| dialog.focused_field),
         Some(SettingsDialogField::Multiplexer)
     );
     ftui::Model::update(
@@ -2839,9 +2795,7 @@ fn settings_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         ),
     );
     assert_eq!(
-        app.settings_dialog
-            .as_ref()
-            .map(|dialog| dialog.focused_field),
+        app.settings_dialog().map(|dialog| dialog.focused_field),
         Some(SettingsDialogField::SaveButton)
     );
     ftui::Model::update(
@@ -2853,9 +2807,7 @@ fn settings_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         ),
     );
     assert_eq!(
-        app.settings_dialog
-            .as_ref()
-            .map(|dialog| dialog.focused_field),
+        app.settings_dialog().map(|dialog| dialog.focused_field),
         Some(SettingsDialogField::Multiplexer)
     );
 }
@@ -2873,9 +2825,7 @@ fn create_dialog_tab_cycles_focus_field() {
     );
 
     assert_eq!(
-        app.create_dialog
-            .as_ref()
-            .map(|dialog| dialog.focused_field),
+        app.create_dialog().map(|dialog| dialog.focused_field),
         Some(CreateDialogField::Project)
     );
 }
@@ -2913,7 +2863,7 @@ fn create_dialog_j_and_k_on_agent_field_toggle_agent() {
     );
 
     assert_eq!(
-        app.create_dialog.as_ref().map(|dialog| dialog.agent),
+        app.create_dialog().map(|dialog| dialog.agent),
         Some(AgentType::Codex)
     );
     ftui::Model::update(
@@ -2921,7 +2871,7 @@ fn create_dialog_j_and_k_on_agent_field_toggle_agent() {
         Msg::Key(KeyEvent::new(KeyCode::Char('k')).with_kind(KeyEventKind::Press)),
     );
     assert_eq!(
-        app.create_dialog.as_ref().map(|dialog| dialog.agent),
+        app.create_dialog().map(|dialog| dialog.agent),
         Some(AgentType::Claude)
     );
 }
@@ -2956,9 +2906,7 @@ fn create_dialog_branch_field_edits_base_branch_in_new_mode() {
     }
 
     assert_eq!(
-        app.create_dialog
-            .as_ref()
-            .map(|dialog| dialog.base_branch.clone()),
+        app.create_dialog().map(|dialog| dialog.base_branch.clone()),
         Some("dev".to_string())
     );
 }
@@ -2985,9 +2933,7 @@ fn create_dialog_ctrl_n_and_ctrl_p_follow_tab_navigation() {
         ),
     );
     assert_eq!(
-        app.create_dialog
-            .as_ref()
-            .map(|dialog| dialog.focused_field),
+        app.create_dialog().map(|dialog| dialog.focused_field),
         Some(CreateDialogField::StartConfig(
             StartAgentConfigField::Prompt
         ))
@@ -3001,9 +2947,7 @@ fn create_dialog_ctrl_n_and_ctrl_p_follow_tab_navigation() {
         ),
     );
     assert_eq!(
-        app.create_dialog
-            .as_ref()
-            .map(|dialog| dialog.focused_field),
+        app.create_dialog().map(|dialog| dialog.focused_field),
         Some(CreateDialogField::Agent)
     );
 }
@@ -3020,7 +2964,7 @@ fn create_dialog_ctrl_n_and_ctrl_p_move_focus_from_base_branch() {
         "develop".to_string(),
         "release".to_string(),
     ];
-    if let Some(dialog) = app.create_dialog.as_mut() {
+    if let Some(dialog) = app.create_dialog_mut() {
         dialog.base_branch.clear();
     }
     app.refresh_create_branch_filtered();
@@ -3040,9 +2984,7 @@ fn create_dialog_ctrl_n_and_ctrl_p_move_focus_from_base_branch() {
         ),
     );
     assert_eq!(
-        app.create_dialog
-            .as_ref()
-            .map(|dialog| dialog.focused_field),
+        app.create_dialog().map(|dialog| dialog.focused_field),
         Some(CreateDialogField::SetupCommands)
     );
     ftui::Model::update(
@@ -3054,9 +2996,7 @@ fn create_dialog_ctrl_n_and_ctrl_p_move_focus_from_base_branch() {
         ),
     );
     assert_eq!(
-        app.create_dialog
-            .as_ref()
-            .map(|dialog| dialog.focused_field),
+        app.create_dialog().map(|dialog| dialog.focused_field),
         Some(CreateDialogField::BaseBranch)
     );
 }
@@ -3102,15 +3042,11 @@ fn create_dialog_base_branch_dropdown_selects_with_enter() {
     );
 
     assert_eq!(
-        app.create_dialog
-            .as_ref()
-            .map(|dialog| dialog.base_branch.clone()),
+        app.create_dialog().map(|dialog| dialog.base_branch.clone()),
         Some("develop".to_string())
     );
     assert_eq!(
-        app.create_dialog
-            .as_ref()
-            .map(|dialog| dialog.focused_field),
+        app.create_dialog().map(|dialog| dialog.focused_field),
         Some(CreateDialogField::SetupCommands)
     );
 }
@@ -3130,8 +3066,7 @@ fn create_dialog_blocks_navigation_and_escape_cancels() {
 
     assert_eq!(app.state.selected_index, 0);
     assert_eq!(
-        app.create_dialog
-            .as_ref()
+        app.create_dialog()
             .map(|dialog| dialog.workspace_name.clone()),
         Some("j".to_string())
     );
@@ -3140,7 +3075,7 @@ fn create_dialog_blocks_navigation_and_escape_cancels() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
     );
-    assert!(app.create_dialog.is_none());
+    assert!(app.create_dialog().is_none());
 }
 
 #[test]
@@ -3162,7 +3097,7 @@ fn create_dialog_enter_without_name_shows_validation_toast() {
         Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
     );
 
-    assert!(app.create_dialog.is_some());
+    assert!(app.create_dialog().is_some());
     assert!(app.status_bar_line().contains("workspace name is required"));
 }
 
@@ -3185,7 +3120,7 @@ fn create_dialog_enter_on_cancel_closes_modal() {
         Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
     );
 
-    assert!(app.create_dialog.is_none());
+    assert!(app.create_dialog().is_none());
 }
 
 #[test]
@@ -3309,7 +3244,7 @@ fn start_key_opens_dialog_for_main_workspace() {
     );
 
     assert!(commands.borrow().is_empty());
-    assert!(app.launch_dialog.is_some());
+    assert!(app.launch_dialog().is_some());
     assert_eq!(
         app.state
             .selected_workspace()
@@ -3329,7 +3264,7 @@ fn start_key_on_running_workspace_shows_toast_and_no_dialog() {
         Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
     );
 
-    assert!(app.launch_dialog.is_none());
+    assert!(app.launch_dialog().is_none());
     assert!(commands.borrow().is_empty());
     assert!(app.status_bar_line().contains("agent already running"));
 }
@@ -3345,7 +3280,7 @@ fn start_key_noop_when_agent_tab_not_focused() {
         Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
     );
 
-    assert!(app.launch_dialog.is_none());
+    assert!(app.launch_dialog().is_none());
     assert!(commands.borrow().is_empty());
 }
 

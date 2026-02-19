@@ -46,7 +46,7 @@ impl GroveApp {
             }
         }
 
-        if let Some(dialog) = &self.launch_dialog {
+        if let Some(dialog) = self.launch_dialog() {
             lines.push(String::new());
             lines.push("Start Agent Dialog".to_string());
             lines.push(format!("Field: {}", dialog.focused_field.label()));
@@ -75,7 +75,7 @@ impl GroveApp {
                 }
             ));
         }
-        if let Some(dialog) = &self.delete_dialog {
+        if let Some(dialog) = self.delete_dialog() {
             lines.push(String::new());
             lines.push("Delete Workspace Dialog".to_string());
             lines.push(format!("Workspace: {}", dialog.workspace_name));
@@ -89,7 +89,7 @@ impl GroveApp {
                 }
             ));
         }
-        if let Some(dialog) = &self.merge_dialog {
+        if let Some(dialog) = self.merge_dialog() {
             lines.push(String::new());
             lines.push("Merge Workspace Dialog".to_string());
             lines.push(format!("Workspace: {}", dialog.workspace_name));
@@ -112,7 +112,7 @@ impl GroveApp {
                 }
             ));
         }
-        if let Some(dialog) = &self.update_from_base_dialog {
+        if let Some(dialog) = self.update_from_base_dialog() {
             lines.push(String::new());
             lines.push("Update From Base Dialog".to_string());
             lines.push(format!("Workspace: {}", dialog.workspace_name));

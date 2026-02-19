@@ -6,7 +6,7 @@ impl GroveApp {
             return;
         }
 
-        let Some(dialog) = self.create_dialog.as_ref().cloned() else {
+        let Some(dialog) = self.create_dialog().cloned() else {
             return;
         };
         self.log_dialog_event_with_fields(
@@ -125,7 +125,7 @@ impl GroveApp {
         let workspace_name = completion.request.workspace_name;
         match completion.result {
             Ok(result) => {
-                self.create_dialog = None;
+                self.close_active_dialog();
                 self.clear_create_branch_picker();
                 self.pending_auto_start_workspace = Some(PendingAutoStartWorkspace {
                     workspace_path: result.workspace_path.clone(),

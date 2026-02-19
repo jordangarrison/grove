@@ -12,12 +12,12 @@ impl GroveApp {
         match key_event.code {
             KeyCode::Escape => {
                 self.log_dialog_event("create", "dialog_cancelled");
-                self.create_dialog = None;
+                self.close_active_dialog();
                 self.clear_create_branch_picker();
             }
             KeyCode::Enter => {
                 if self.select_create_base_branch_from_dropdown() {
-                    if let Some(dialog) = self.create_dialog.as_mut() {
+                    if let Some(dialog) = self.create_dialog_mut() {
                         dialog.focused_field = dialog.focused_field.next();
                     }
                     self.refresh_create_branch_filtered();
@@ -32,8 +32,7 @@ impl GroveApp {
                 }
 
                 let action = self
-                    .create_dialog
-                    .as_ref()
+                    .create_dialog()
                     .map(|dialog| match dialog.focused_field {
                         CreateDialogField::CreateButton => EnterAction::ConfirmCreate,
                         CreateDialogField::CancelButton => EnterAction::CancelDialog,
@@ -52,16 +51,16 @@ impl GroveApp {
                     Some(EnterAction::ConfirmCreate) => self.confirm_create_dialog(),
                     Some(EnterAction::CancelDialog) => {
                         self.log_dialog_event("create", "dialog_cancelled");
-                        self.create_dialog = None;
+                        self.close_active_dialog();
                         self.clear_create_branch_picker();
                     }
                     Some(EnterAction::AdvanceField) => {
-                        if let Some(dialog) = self.create_dialog.as_mut() {
+                        if let Some(dialog) = self.create_dialog_mut() {
                             dialog.focused_field = dialog.focused_field.next();
                         }
                     }
                     Some(EnterAction::ToggleAutoRunAndAdvance) => {
-                        if let Some(dialog) = self.create_dialog.as_mut() {
+                        if let Some(dialog) = self.create_dialog_mut() {
                             dialog.auto_run_setup_commands = !dialog.auto_run_setup_commands;
                             dialog.focused_field = dialog.focused_field.next();
                         }
@@ -70,12 +69,12 @@ impl GroveApp {
                 }
             }
             KeyCode::Tab => {
-                if let Some(dialog) = self.create_dialog.as_mut() {
+                if let Some(dialog) = self.create_dialog_mut() {
                     dialog.focused_field = dialog.focused_field.next();
                 }
             }
             KeyCode::BackTab => {
-                if let Some(dialog) = self.create_dialog.as_mut() {
+                if let Some(dialog) = self.create_dialog_mut() {
                     dialog.focused_field = dialog.focused_field.previous();
                 }
             }
@@ -86,24 +85,23 @@ impl GroveApp {
                     return;
                 }
                 if self
-                    .create_dialog
-                    .as_ref()
+                    .create_dialog()
                     .is_some_and(|dialog| dialog.focused_field == CreateDialogField::Project)
                 {
                     self.shift_create_dialog_project(-1);
                     return;
                 }
-                if let Some(dialog) = self.create_dialog.as_mut()
+                if let Some(dialog) = self.create_dialog_mut()
                     && dialog.focused_field == CreateDialogField::Agent
                 {
                     Self::toggle_create_dialog_agent(dialog);
                 }
-                if let Some(dialog) = self.create_dialog.as_mut()
+                if let Some(dialog) = self.create_dialog_mut()
                     && dialog.focused_field == CreateDialogField::AutoRunSetupCommands
                 {
                     dialog.auto_run_setup_commands = !dialog.auto_run_setup_commands;
                 }
-                if let Some(dialog) = self.create_dialog.as_mut()
+                if let Some(dialog) = self.create_dialog_mut()
                     && dialog.focused_field
                         == CreateDialogField::StartConfig(StartAgentConfigField::Unsafe)
                 {
@@ -119,24 +117,23 @@ impl GroveApp {
                     return;
                 }
                 if self
-                    .create_dialog
-                    .as_ref()
+                    .create_dialog()
                     .is_some_and(|dialog| dialog.focused_field == CreateDialogField::Project)
                 {
                     self.shift_create_dialog_project(1);
                     return;
                 }
-                if let Some(dialog) = self.create_dialog.as_mut()
+                if let Some(dialog) = self.create_dialog_mut()
                     && dialog.focused_field == CreateDialogField::Agent
                 {
                     Self::toggle_create_dialog_agent(dialog);
                 }
-                if let Some(dialog) = self.create_dialog.as_mut()
+                if let Some(dialog) = self.create_dialog_mut()
                     && dialog.focused_field == CreateDialogField::AutoRunSetupCommands
                 {
                     dialog.auto_run_setup_commands = !dialog.auto_run_setup_commands;
                 }
-                if let Some(dialog) = self.create_dialog.as_mut()
+                if let Some(dialog) = self.create_dialog_mut()
                     && dialog.focused_field
                         == CreateDialogField::StartConfig(StartAgentConfigField::Unsafe)
                 {
@@ -144,7 +141,7 @@ impl GroveApp {
                 }
             }
             KeyCode::Char(_) if ctrl_n || ctrl_p => {
-                if let Some(dialog) = self.create_dialog.as_mut() {
+                if let Some(dialog) = self.create_dialog_mut() {
                     dialog.focused_field = if ctrl_n {
                         dialog.focused_field.next()
                     } else {
@@ -154,7 +151,7 @@ impl GroveApp {
             }
             KeyCode::Backspace => {
                 let mut refresh_base_branch = false;
-                if let Some(dialog) = self.create_dialog.as_mut() {
+                if let Some(dialog) = self.create_dialog_mut() {
                     match dialog.focused_field {
                         CreateDialogField::WorkspaceName => {
                             dialog.workspace_name.pop();
@@ -181,9 +178,9 @@ impl GroveApp {
                 }
             }
             KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
+                let focused_field = self.create_dialog().map(|dialog| dialog.focused_field);
                 if self
-                    .create_dialog
-                    .as_ref()
+                    .create_dialog()
                     .is_some_and(|dialog| dialog.focused_field == CreateDialogField::Project)
                 {
                     if character == 'j' {
@@ -195,8 +192,21 @@ impl GroveApp {
                         return;
                     }
                 }
+                if focused_field == Some(CreateDialogField::BaseBranch) {
+                    if character == 'j'
+                        && self.create_branch_index.saturating_add(1)
+                            < self.create_branch_filtered.len()
+                    {
+                        self.create_branch_index = self.create_branch_index.saturating_add(1);
+                        return;
+                    }
+                    if character == 'k' && self.create_branch_index > 0 {
+                        self.create_branch_index = self.create_branch_index.saturating_sub(1);
+                        return;
+                    }
+                }
                 let mut refresh_base_branch = false;
-                if let Some(dialog) = self.create_dialog.as_mut() {
+                if let Some(dialog) = self.create_dialog_mut() {
                     if dialog.focused_field == CreateDialogField::Agent
                         && (character == 'j' || character == 'k' || character == ' ')
                     {
@@ -239,19 +249,6 @@ impl GroveApp {
                         }
                         CreateDialogField::Project => {}
                         CreateDialogField::BaseBranch => {
-                            if character == 'j'
-                                && self.create_branch_index.saturating_add(1)
-                                    < self.create_branch_filtered.len()
-                            {
-                                self.create_branch_index =
-                                    self.create_branch_index.saturating_add(1);
-                                return;
-                            }
-                            if character == 'k' && self.create_branch_index > 0 {
-                                self.create_branch_index =
-                                    self.create_branch_index.saturating_sub(1);
-                                return;
-                            }
                             if !character.is_control() {
                                 dialog.base_branch.push(character);
                                 refresh_base_branch = true;
@@ -287,11 +284,7 @@ impl GroveApp {
         dialog.agent = Self::toggle_agent(dialog.agent);
     }
     fn shift_create_dialog_project(&mut self, delta: isize) {
-        let Some(current_index) = self
-            .create_dialog
-            .as_ref()
-            .map(|dialog| dialog.project_index)
-        else {
+        let Some(current_index) = self.create_dialog().map(|dialog| dialog.project_index) else {
             return;
         };
         if self.projects.is_empty() {
@@ -315,7 +308,7 @@ impl GroveApp {
     }
 
     fn create_base_branch_dropdown_visible(&self) -> bool {
-        self.create_dialog.as_ref().is_some_and(|dialog| {
+        self.create_dialog().is_some_and(|dialog| {
             dialog.focused_field == CreateDialogField::BaseBranch
                 && !self.create_branch_filtered.is_empty()
         })
@@ -332,7 +325,7 @@ impl GroveApp {
         else {
             return false;
         };
-        if let Some(dialog) = self.create_dialog.as_mut() {
+        if let Some(dialog) = self.create_dialog_mut() {
             dialog.base_branch = selected_branch;
             return true;
         }

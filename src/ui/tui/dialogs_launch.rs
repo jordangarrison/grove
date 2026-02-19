@@ -13,7 +13,7 @@ impl GroveApp {
         match key_event.code {
             KeyCode::Escape => {
                 self.log_dialog_event("launch", "dialog_cancelled");
-                self.launch_dialog = None;
+                self.close_active_dialog();
             }
             KeyCode::Enter => {
                 enum EnterAction {
@@ -22,8 +22,7 @@ impl GroveApp {
                 }
 
                 let action = self
-                    .launch_dialog
-                    .as_ref()
+                    .launch_dialog()
                     .map(|dialog| match dialog.focused_field {
                         LaunchDialogField::StartButton => EnterAction::ConfirmStart,
                         LaunchDialogField::CancelButton => EnterAction::CancelDialog,
@@ -34,33 +33,33 @@ impl GroveApp {
                     Some(EnterAction::ConfirmStart) => self.confirm_start_dialog(),
                     Some(EnterAction::CancelDialog) => {
                         self.log_dialog_event("launch", "dialog_cancelled");
-                        self.launch_dialog = None;
+                        self.close_active_dialog();
                     }
                     None => {}
                 }
             }
             KeyCode::Tab => {
-                if let Some(dialog) = self.launch_dialog.as_mut() {
+                if let Some(dialog) = self.launch_dialog_mut() {
                     dialog.focused_field = dialog.focused_field.next();
                 }
             }
             KeyCode::BackTab => {
-                if let Some(dialog) = self.launch_dialog.as_mut() {
+                if let Some(dialog) = self.launch_dialog_mut() {
                     dialog.focused_field = dialog.focused_field.previous();
                 }
             }
             KeyCode::Char(_) if ctrl_n => {
-                if let Some(dialog) = self.launch_dialog.as_mut() {
+                if let Some(dialog) = self.launch_dialog_mut() {
                     dialog.focused_field = dialog.focused_field.next();
                 }
             }
             KeyCode::Char(_) if ctrl_p => {
-                if let Some(dialog) = self.launch_dialog.as_mut() {
+                if let Some(dialog) = self.launch_dialog_mut() {
                     dialog.focused_field = dialog.focused_field.previous();
                 }
             }
             KeyCode::Backspace => {
-                if let Some(dialog) = self.launch_dialog.as_mut()
+                if let Some(dialog) = self.launch_dialog_mut()
                     && let LaunchDialogField::StartConfig(field) = dialog.focused_field
                 {
                     dialog.start_config.backspace(field);
@@ -68,7 +67,7 @@ impl GroveApp {
             }
             KeyCode::Left | KeyCode::Right => {}
             KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
-                if let Some(dialog) = self.launch_dialog.as_mut() {
+                if let Some(dialog) = self.launch_dialog_mut() {
                     if (dialog.focused_field == LaunchDialogField::StartButton
                         || dialog.focused_field == LaunchDialogField::CancelButton)
                         && (character == 'h' || character == 'l')
@@ -109,7 +108,7 @@ impl GroveApp {
             return;
         }
 
-        let Some(workspace) = self.state.selected_workspace() else {
+        let Some(workspace) = self.state.selected_workspace().cloned() else {
             self.show_toast("no workspace selected", true);
             return;
         };
@@ -121,14 +120,14 @@ impl GroveApp {
             self.show_toast("agent already running", true);
             return;
         }
-        if !workspace_can_start_agent(Some(workspace)) {
+        if !workspace_can_start_agent(Some(&workspace)) {
             self.show_toast("workspace cannot be started", true);
             return;
         }
 
         let prompt = read_workspace_launch_prompt(&workspace.path).unwrap_or_default();
         let skip_permissions = self.launch_skip_permissions;
-        self.launch_dialog = Some(LaunchDialogState {
+        self.set_launch_dialog(LaunchDialogState {
             start_config: StartAgentConfigState::new(
                 prompt.clone(),
                 String::new(),

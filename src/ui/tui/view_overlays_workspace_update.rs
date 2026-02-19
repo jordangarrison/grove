@@ -2,7 +2,7 @@ use super::*;
 
 impl GroveApp {
     pub(super) fn render_update_from_base_dialog_overlay(&self, frame: &mut Frame, area: Rect) {
-        let Some(dialog) = self.update_from_base_dialog.as_ref() else {
+        let Some(dialog) = self.update_from_base_dialog() else {
             return;
         };
         if area.width < 28 || area.height < 12 {

@@ -2,7 +2,7 @@ use super::*;
 
 impl GroveApp {
     pub(super) fn handle_settings_dialog_key(&mut self, key_event: KeyEvent) {
-        let Some(dialog) = self.settings_dialog.as_mut() else {
+        let Some(dialog) = self.settings_dialog_mut() else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -49,7 +49,7 @@ impl GroveApp {
             PostAction::Save => self.apply_settings_dialog_save(),
             PostAction::Cancel => {
                 self.log_dialog_event("settings", "dialog_cancelled");
-                self.settings_dialog = None;
+                self.close_active_dialog();
             }
         }
     }
@@ -58,7 +58,7 @@ impl GroveApp {
         if self.modal_open() {
             return;
         }
-        self.settings_dialog = Some(SettingsDialogState {
+        self.set_settings_dialog(SettingsDialogState {
             multiplexer: self.multiplexer,
             focused_field: SettingsDialogField::Multiplexer,
         });
@@ -72,7 +72,7 @@ impl GroveApp {
     }
 
     pub(super) fn apply_settings_dialog_save(&mut self) {
-        let Some(dialog) = self.settings_dialog.as_ref() else {
+        let Some(dialog) = self.settings_dialog() else {
             return;
         };
 
@@ -98,7 +98,7 @@ impl GroveApp {
             return;
         }
 
-        self.settings_dialog = None;
+        self.close_active_dialog();
         self.interactive = None;
         self.lazygit_sessions.clear_ready_and_failed();
         self.refresh_workspaces(None);

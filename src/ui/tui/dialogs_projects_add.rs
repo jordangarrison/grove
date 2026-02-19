@@ -126,7 +126,7 @@ impl GroveApp {
     }
 
     pub(super) fn add_project_from_dialog(&mut self) {
-        let Some(project_dialog) = self.project_dialog.as_ref() else {
+        let Some(project_dialog) = self.project_dialog() else {
             return;
         };
         let Some(add_dialog) = project_dialog.add_dialog.as_ref() else {
@@ -197,7 +197,7 @@ impl GroveApp {
             return;
         }
 
-        if let Some(dialog) = self.project_dialog.as_mut() {
+        if let Some(dialog) = self.project_dialog_mut() {
             dialog.add_dialog = None;
         }
         self.refresh_project_dialog_filtered();
@@ -214,13 +214,16 @@ impl GroveApp {
             self.show_toast("project not found", true);
             return;
         };
+        let base_branch = project.defaults.base_branch.clone();
+        let setup_commands = format_setup_commands(&project.defaults.setup_commands);
+        let auto_run_setup_commands = project.defaults.auto_run_setup_commands;
 
-        if let Some(project_dialog) = self.project_dialog.as_mut() {
+        if let Some(project_dialog) = self.project_dialog_mut() {
             project_dialog.defaults_dialog = Some(ProjectDefaultsDialogState {
                 project_index,
-                base_branch: project.defaults.base_branch.clone(),
-                setup_commands: format_setup_commands(&project.defaults.setup_commands),
-                auto_run_setup_commands: project.defaults.auto_run_setup_commands,
+                base_branch,
+                setup_commands,
+                auto_run_setup_commands,
                 focused_field: ProjectDefaultsDialogField::BaseBranch,
             });
         }
@@ -228,8 +231,7 @@ impl GroveApp {
 
     pub(super) fn save_project_defaults_from_dialog(&mut self) {
         let Some(dialog_state) = self
-            .project_dialog
-            .as_ref()
+            .project_dialog()
             .and_then(|dialog| dialog.defaults_dialog.clone())
         else {
             return;
@@ -253,7 +255,7 @@ impl GroveApp {
             return;
         }
 
-        if let Some(project_dialog) = self.project_dialog.as_mut() {
+        if let Some(project_dialog) = self.project_dialog_mut() {
             project_dialog.defaults_dialog = None;
         }
         self.show_toast(format!("project '{}' defaults saved", project_name), false);
