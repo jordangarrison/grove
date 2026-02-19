@@ -44,11 +44,7 @@ fn run_with_logger(
         );
     }
 
-    let app = if let Some(app_start_ts) = debug_record_start_ts {
-        GroveApp::new_with_debug_recorder(event_log, app_start_ts)
-    } else {
-        GroveApp::new_with_event_logger(event_log)
-    };
+    let app = GroveApp::new(event_log, debug_record_start_ts);
 
     let config = program_config();
     Program::with_config(app, config)?.run()

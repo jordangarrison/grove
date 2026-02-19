@@ -8,41 +8,22 @@ use std::path::{Path, PathBuf};
 
 #[cfg(test)]
 use super::bootstrap_config::project_paths_equal;
-use super::bootstrap_config::{
-    AppDependencies, AppPaths, load_runtime_config, load_sidebar_width_pct,
-};
+use super::bootstrap_config::{AppDependencies, load_runtime_config, load_sidebar_width_pct};
 use super::bootstrap_discovery::bootstrap_data_for_projects;
 use super::*;
 
 impl GroveApp {
-    pub(super) fn new_with_event_logger(event_log: Box<dyn EventLogger>) -> Self {
+    pub(super) fn new(event_log: Box<dyn EventLogger>, debug_record_start_ts: Option<u64>) -> Self {
         let (config, config_path, _config_error) = load_runtime_config();
         let bootstrap = bootstrap_data_for_projects(&config.projects);
         Self::from_parts_with_projects(
             bootstrap,
             config.projects,
             Box::new(CommandTmuxInput),
-            AppPaths::new(config_path),
+            config_path,
             config.multiplexer,
             event_log,
-            None,
-        )
-    }
-
-    pub(super) fn new_with_debug_recorder(
-        event_log: Box<dyn EventLogger>,
-        app_start_ts: u64,
-    ) -> Self {
-        let (config, config_path, _config_error) = load_runtime_config();
-        let bootstrap = bootstrap_data_for_projects(&config.projects);
-        Self::from_parts_with_projects(
-            bootstrap,
-            config.projects,
-            Box::new(CommandTmuxInput),
-            AppPaths::new(config_path),
-            config.multiplexer,
-            event_log,
-            Some(app_start_ts),
+            debug_record_start_ts,
         )
     }
 
@@ -78,7 +59,7 @@ impl GroveApp {
     pub(super) fn from_parts(
         bootstrap: BootstrapData,
         tmux_input: Box<dyn TmuxInput>,
-        paths: AppPaths,
+        config_path: PathBuf,
         multiplexer: MultiplexerKind,
         event_log: Box<dyn EventLogger>,
         debug_record_start_ts: Option<u64>,
@@ -88,7 +69,7 @@ impl GroveApp {
             bootstrap,
             projects,
             tmux_input,
-            paths,
+            config_path,
             multiplexer,
             event_log,
             debug_record_start_ts,
@@ -99,7 +80,7 @@ impl GroveApp {
         bootstrap: BootstrapData,
         projects: Vec<ProjectConfig>,
         tmux_input: Box<dyn TmuxInput>,
-        paths: AppPaths,
+        config_path: PathBuf,
         multiplexer: MultiplexerKind,
         event_log: Box<dyn EventLogger>,
         debug_record_start_ts: Option<u64>,
@@ -110,7 +91,7 @@ impl GroveApp {
             AppDependencies {
                 tmux_input,
                 clipboard: Box::new(SystemClipboardAccess::default()),
-                paths,
+                config_path,
                 multiplexer,
                 event_log,
                 debug_record_start_ts,
@@ -126,12 +107,11 @@ impl GroveApp {
         let AppDependencies {
             tmux_input,
             clipboard,
-            paths,
+            config_path,
             multiplexer,
             event_log,
             debug_record_start_ts,
         } = dependencies;
-        let AppPaths { config_path } = paths;
         let sidebar_width_pct = load_sidebar_width_pct(&config_path);
         let mapper_config = KeybindingConfig::from_env().with_sequence_config(
             KeySequenceConfig::from_env()

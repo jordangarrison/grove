@@ -75,7 +75,7 @@ mod bootstrap_app;
 mod bootstrap_config;
 mod bootstrap_discovery;
 #[cfg(test)]
-use bootstrap_config::{AppDependencies, AppPaths};
+use bootstrap_config::AppDependencies;
 use bootstrap_config::{
     filter_branches, load_local_branches, project_display_name, project_paths_equal,
     read_workspace_launch_prompt,

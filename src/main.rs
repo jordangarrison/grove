@@ -119,10 +119,10 @@ fn main() -> std::io::Result<()> {
     if cli.debug_record
         && let Some(path) = event_log_path
     {
-        return grove::run_tui_with_debug_record(path, app_start_ts);
+        return grove::ui::tui::run_with_debug_record(path, app_start_ts);
     }
 
-    grove::run_tui_with_event_log(event_log_path)
+    grove::ui::tui::run_with_event_log(event_log_path)
 }
 
 #[cfg(test)]

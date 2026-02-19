@@ -6,10 +6,10 @@ Ordered by impact/effort ratio. Each item is a self-contained change that should
 
 `MultiplexerKind` is a single-variant enum (`Tmux`). Every function that accepts it immediately discards it with `let _ = multiplexer;`. The `next()`/`previous()` methods on it are no-ops that return `self`.
 
-- [ ] Remove `multiplexer` param from all functions in `src/application/agent_runtime.rs` (lines 184, 410, 434, 558, 812)
-- [ ] Remove `multiplexer` param from `input_for_multiplexer` in `src/ui/tui/bootstrap_config.rs:113-116`, inline `Box::new(CommandTmuxInput)` at call site
-- [ ] Remove `next()`/`previous()` no-op methods on `MultiplexerKind`
-- [ ] Update all callers
+- [x] Remove `multiplexer` param from all functions in `src/application/agent_runtime.rs` (lines 184, 410, 434, 558, 812)
+- [x] Remove `multiplexer` param from `input_for_multiplexer` in `src/ui/tui/bootstrap_config.rs:113-116`, inline `Box::new(CommandTmuxInput)` at call site
+- [x] Remove `next()`/`previous()` no-op methods on `MultiplexerKind`
+- [x] Update all callers
 
 ## 2. Unify 3 `execute_command` / `stderr_or_status` copies
 
@@ -89,8 +89,8 @@ Two pairs of near-identical functions differ only by casing (PascalCase vs snake
 
 `new_with_event_logger` and `new_with_debug_recorder` differ by a single `Some(ts)` vs `None` argument.
 
-- [ ] Replace both with a single `new(event_log_path, debug_record_start_ts: Option<u64>)` in `src/ui/tui/bootstrap_app.rs:18-49`
-- [ ] Update callers in `runner.rs`
+- [x] Replace both with a single `new(event_log, debug_record_start_ts: Option<u64>)` in `src/ui/tui/bootstrap_app.rs:18-49`
+- [x] Update callers in `runner.rs`
 
 ## 11. Flatten constructor chain
 
@@ -103,16 +103,16 @@ Two pairs of near-identical functions differ only by casing (PascalCase vs snake
 
 Wraps a single `PathBuf`, only destructured at `bootstrap_app.rs:136`.
 
-- [ ] Replace `AppPaths` with `PathBuf` directly in `src/ui/tui/bootstrap_config.rs:10-19`
-- [ ] Update call sites
+- [x] Replace `AppPaths` with `PathBuf` directly in `src/ui/tui/bootstrap_config.rs:10-19`
+- [x] Update call sites
 
 ## 13. Named struct for `parse_start_options`
 
 Returns an unnamed 3-tuple `(Option<String>, Option<String>, bool)`.
 
-- [ ] Create `StartOptions { prompt, pre_launch_command, skip_permissions }` struct
-- [ ] Update `src/ui/tui/dialogs_state_lifecycle.rs:23-35`
-- [ ] Update caller in `update_lifecycle_start.rs:126-127`
+- [x] Create `StartOptions { prompt, pre_launch_command, skip_permissions }` struct
+- [x] Update `src/ui/tui/dialogs_state_lifecycle.rs:23-35`
+- [x] Update caller in `update_lifecycle_start.rs:126-127`
 
 ## 14. Remove `hello_message` scaffolding
 
@@ -133,11 +133,11 @@ Leftover scaffolding function with a dedicated test that adds no value.
 
 Always returns `Box::new(CommandTmuxInput)` regardless of input. Covered partly by item 1 but worth noting as a standalone cleanup if item 1 is split.
 
-- [ ] Inline at call site in `src/ui/tui/bootstrap_config.rs:113-116`
+- [x] Inline at call site in `src/ui/tui/bootstrap_config.rs:113-116`
 
 ## 17. Remove `run_tui_with_*` thin wrappers
 
 `lib.rs` has `run_tui_with_event_log` and `run_tui_with_debug_record` that just forward to `ui::tui::run_with_*`. After item 10 merges the constructors, these can collapse too.
 
-- [ ] Merge into a single `run_tui` entry point or have `main.rs` call `ui::tui` directly
-- [ ] Update `src/lib.rs:10-19`
+- [x] Merge into a single `run_tui` entry point or have `main.rs` call `ui::tui` directly
+- [x] Update `src/lib.rs:10-19`

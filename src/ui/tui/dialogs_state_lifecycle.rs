@@ -7,6 +7,13 @@ pub(super) struct StartAgentConfigState {
     pub(super) skip_permissions: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct StartOptions {
+    pub(super) prompt: Option<String>,
+    pub(super) pre_launch_command: Option<String>,
+    pub(super) skip_permissions: bool,
+}
+
 impl StartAgentConfigState {
     pub(super) fn new(prompt: String, pre_launch_command: String, skip_permissions: bool) -> Self {
         Self {
@@ -20,7 +27,7 @@ impl StartAgentConfigState {
         !self.prompt.is_empty() || !self.pre_launch_command.is_empty()
     }
 
-    pub(super) fn parse_start_options(&self) -> (Option<String>, Option<String>, bool) {
+    pub(super) fn parse_start_options(&self) -> StartOptions {
         let prompt = if self.prompt.trim().is_empty() {
             None
         } else {
@@ -31,7 +38,11 @@ impl StartAgentConfigState {
         } else {
             Some(self.pre_launch_command.trim().to_string())
         };
-        (prompt, pre_launch_command, self.skip_permissions)
+        StartOptions {
+            prompt,
+            pre_launch_command,
+            skip_permissions: self.skip_permissions,
+        }
     }
 
     pub(super) fn backspace(&mut self, field: StartAgentConfigField) {

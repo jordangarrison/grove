@@ -8,21 +8,10 @@ use crate::ui::mouse::clamp_sidebar_ratio;
 
 use super::*;
 
-#[derive(Debug)]
-pub(super) struct AppPaths {
-    pub(super) config_path: PathBuf,
-}
-
-impl AppPaths {
-    pub(super) fn new(config_path: PathBuf) -> Self {
-        Self { config_path }
-    }
-}
-
 pub(super) struct AppDependencies {
     pub(super) tmux_input: Box<dyn TmuxInput>,
     pub(super) clipboard: Box<dyn ClipboardAccess>,
-    pub(super) paths: AppPaths,
+    pub(super) config_path: PathBuf,
     pub(super) multiplexer: MultiplexerKind,
     pub(super) event_log: Box<dyn EventLogger>,
     pub(super) debug_record_start_ts: Option<u64>,

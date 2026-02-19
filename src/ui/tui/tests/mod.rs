@@ -9,7 +9,7 @@ use self::render_support::{
     assert_row_bg, assert_row_fg, find_cell_with_char, find_row_containing, row_text,
 };
 use super::{
-    AppDependencies, AppPaths, ClipboardAccess, CommandTmuxInput, CreateDialogField,
+    AppDependencies, ClipboardAccess, CommandTmuxInput, CreateDialogField,
     CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
     DeleteWorkspaceCompletion, EditDialogField, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW,
     HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
@@ -331,7 +331,7 @@ fn fixture_app() -> GroveApp {
                 calls: Rc::new(RefCell::new(Vec::new())),
             }),
             clipboard: test_clipboard(),
-            paths: AppPaths::new(config_path),
+            config_path,
             multiplexer: MultiplexerKind::Tmux,
             event_log: Box::new(NullEventLogger),
             debug_record_start_ts: None,
@@ -498,7 +498,7 @@ fn fixture_app_with_tmux_and_config_path(
             AppDependencies {
                 tmux_input: Box::new(tmux),
                 clipboard: test_clipboard(),
-                paths: AppPaths::new(config_path),
+                config_path,
                 multiplexer: MultiplexerKind::Tmux,
                 event_log: Box::new(NullEventLogger),
                 debug_record_start_ts: None,
@@ -534,7 +534,7 @@ fn fixture_app_with_tmux_and_calls(
             AppDependencies {
                 tmux_input: Box::new(tmux),
                 clipboard: test_clipboard(),
-                paths: AppPaths::new(config_path),
+                config_path,
                 multiplexer: MultiplexerKind::Tmux,
                 event_log: Box::new(NullEventLogger),
                 debug_record_start_ts: None,
@@ -574,7 +574,7 @@ fn fixture_app_with_tmux_and_events(
             AppDependencies {
                 tmux_input: Box::new(tmux),
                 clipboard: test_clipboard(),
-                paths: AppPaths::new(config_path),
+                config_path,
                 multiplexer: MultiplexerKind::Tmux,
                 event_log: Box::new(event_log),
                 debug_record_start_ts: None,
@@ -594,7 +594,7 @@ fn fixture_background_app(status: WorkspaceStatus) -> GroveApp {
         AppDependencies {
             tmux_input: Box::new(BackgroundOnlyTmuxInput),
             clipboard: test_clipboard(),
-            paths: AppPaths::new(unique_config_path("background")),
+            config_path: unique_config_path("background"),
             multiplexer: MultiplexerKind::Tmux,
             event_log: Box::new(NullEventLogger),
             debug_record_start_ts: None,
