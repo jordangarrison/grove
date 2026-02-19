@@ -88,6 +88,14 @@ impl GroveApp {
                     "off"
                 }
             ));
+            lines.push(format!(
+                "Kill tmux sessions: {}",
+                if dialog.kill_tmux_sessions {
+                    "on"
+                } else {
+                    "off"
+                }
+            ));
         }
         if let Some(dialog) = self.merge_dialog() {
             lines.push(String::new());

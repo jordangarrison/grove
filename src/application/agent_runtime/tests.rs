@@ -14,9 +14,10 @@ use super::{
     execute_launch_plan_with, execute_launch_plan_with_executor,
     execute_launch_request_with_result_for_mode, execute_stop_workspace_with_result_for_mode,
     git_preview_session_if_ready, git_session_name_for_workspace, kill_workspace_session_command,
-    launch_request_for_workspace, live_preview_agent_session, live_preview_capture_target_for_tab,
-    live_preview_session_for_tab, poll_interval, reconcile_with_sessions, sanitize_workspace_name,
-    session_name_for_workspace, session_name_for_workspace_ref, shell_launch_request_for_workspace,
+    kill_workspace_session_commands, launch_request_for_workspace, live_preview_agent_session,
+    live_preview_capture_target_for_tab, live_preview_session_for_tab, poll_interval,
+    reconcile_with_sessions, sanitize_workspace_name, session_name_for_workspace,
+    session_name_for_workspace_ref, shell_launch_request_for_workspace,
     shell_session_name_for_workspace, stop_plan, strip_mouse_fragments,
     tmux_capture_error_indicates_missing_session, tmux_launch_error_indicates_duplicate_session,
     trimmed_nonempty, workspace_can_enter_interactive, workspace_can_start_agent,
@@ -882,6 +883,33 @@ fn kill_workspace_session_command_uses_project_scoped_tmux_session_name() {
             "kill-session".to_string(),
             "-t".to_string(),
             "grove-ws-project-one-feature-auth-v2".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn kill_workspace_session_commands_include_agent_git_and_shell_sessions() {
+    assert_eq!(
+        kill_workspace_session_commands(Some("project.one"), "feature/auth.v2"),
+        vec![
+            vec![
+                "tmux".to_string(),
+                "kill-session".to_string(),
+                "-t".to_string(),
+                "grove-ws-project-one-feature-auth-v2".to_string(),
+            ],
+            vec![
+                "tmux".to_string(),
+                "kill-session".to_string(),
+                "-t".to_string(),
+                "grove-ws-project-one-feature-auth-v2-git".to_string(),
+            ],
+            vec![
+                "tmux".to_string(),
+                "kill-session".to_string(),
+                "-t".to_string(),
+                "grove-ws-project-one-feature-auth-v2-shell".to_string(),
+            ],
         ]
     );
 }

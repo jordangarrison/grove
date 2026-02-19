@@ -10,7 +10,7 @@ impl GroveApp {
         }
 
         let dialog_width = area.width.saturating_sub(8).min(96);
-        let dialog_height = 16u16;
+        let dialog_height = 17u16;
         let theme = ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
         let focused = |field| dialog.focused_field == field;
@@ -30,6 +30,12 @@ impl GroveApp {
             format!("enabled, remove '{}' branch locally", dialog.branch)
         } else {
             "disabled, keep local branch".to_string()
+        };
+        let kill_sessions_focused = focused(DeleteDialogField::KillTmuxSessions);
+        let kill_sessions_state = if dialog.kill_tmux_sessions {
+            "enabled, kill Grove tmux sessions".to_string()
+        } else {
+            "disabled, keep tmux sessions running".to_string()
         };
         let delete_focused = focused(DeleteDialogField::DeleteButton);
         let cancel_focused = focused(DeleteDialogField::CancelButton);
@@ -90,6 +96,19 @@ impl GroveApp {
                     theme.text
                 },
             ),
+            modal_focus_badged_row(
+                content_width,
+                theme,
+                "SessionCleanup",
+                kill_sessions_state.as_str(),
+                kill_sessions_focused,
+                theme.peach,
+                if dialog.kill_tmux_sessions {
+                    theme.red
+                } else {
+                    theme.text
+                },
+            ),
             FtLine::raw(""),
             modal_actions_row(
                 content_width,
@@ -103,7 +122,7 @@ impl GroveApp {
         lines.extend(modal_wrapped_hint_rows(
             content_width,
             theme,
-            "Tab/C-n next, S-Tab/C-p prev, Space toggle branch cleanup, Enter or D delete, Esc cancel",
+            "Tab/C-n next, S-Tab/C-p prev, Space toggle option, Enter or D delete, Esc cancel",
         ));
         let body = FtText::from_lines(lines);
         render_modal_dialog(

@@ -564,6 +564,7 @@ fn delete_workspace_prunes_missing_worktree() {
         workspace_path: temp.path.join("grove-feature-x"),
         is_missing: true,
         delete_local_branch: false,
+        kill_tmux_sessions: false,
     };
 
     let (result, warnings) = delete_workspace(request);
@@ -586,6 +587,7 @@ fn delete_workspace_records_branch_delete_failure_as_warning() {
         workspace_path: temp.path.join("grove-feature-y"),
         is_missing: true,
         delete_local_branch: true,
+        kill_tmux_sessions: false,
     };
 
     let (result, warnings) = delete_workspace(request);

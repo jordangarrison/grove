@@ -81,6 +81,7 @@ pub(super) struct DeleteDialogState {
     pub(super) path: PathBuf,
     pub(super) is_missing: bool,
     pub(super) delete_local_branch: bool,
+    pub(super) kill_tmux_sessions: bool,
     pub(super) focused_field: DeleteDialogField,
 }
 
@@ -112,12 +113,13 @@ pub(super) struct UpdateFromBaseDialogState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum DeleteDialogField {
     DeleteLocalBranch,
+    KillTmuxSessions,
     DeleteButton,
     CancelButton,
 }
 
 cyclic_field_nav!(pub(super) DeleteDialogField {
-    DeleteLocalBranch, DeleteButton, CancelButton,
+    DeleteLocalBranch, KillTmuxSessions, DeleteButton, CancelButton,
 });
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

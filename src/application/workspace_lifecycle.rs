@@ -1,4 +1,4 @@
-use crate::application::agent_runtime::kill_workspace_session_command;
+use crate::application::agent_runtime::kill_workspace_session_commands;
 use crate::domain::AgentType;
 use crate::infrastructure::paths::refer_to_same_location;
 use crate::infrastructure::process::{execute_command, stderr_trimmed};
@@ -129,6 +129,7 @@ pub struct DeleteWorkspaceRequest {
     pub workspace_path: PathBuf,
     pub is_missing: bool,
     pub delete_local_branch: bool,
+    pub kill_tmux_sessions: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -371,9 +372,12 @@ pub fn create_workspace_with_template(
 
 pub fn delete_workspace(request: DeleteWorkspaceRequest) -> (Result<(), String>, Vec<String>) {
     let mut warnings = Vec::new();
-    let stop_session_command =
-        kill_workspace_session_command(request.project_name.as_deref(), &request.workspace_name);
-    let _ = run_command(&stop_session_command);
+    if request.kill_tmux_sessions {
+        stop_workspace_sessions(
+            request.project_name.as_deref(),
+            request.workspace_name.as_str(),
+        );
+    }
 
     let repo_root = if let Some(project_path) = request.project_path {
         project_path
@@ -403,9 +407,10 @@ pub fn delete_workspace(request: DeleteWorkspaceRequest) -> (Result<(), String>,
 
 pub fn merge_workspace(request: MergeWorkspaceRequest) -> (Result<(), String>, Vec<String>) {
     let mut warnings = Vec::new();
-    let stop_session_command =
-        kill_workspace_session_command(request.project_name.as_deref(), &request.workspace_name);
-    let _ = run_command(&stop_session_command);
+    stop_workspace_sessions(
+        request.project_name.as_deref(),
+        request.workspace_name.as_str(),
+    );
 
     if request.workspace_name.trim().is_empty() {
         return (Err("workspace name is required".to_string()), warnings);
@@ -493,9 +498,10 @@ pub fn update_workspace_from_base(
     request: UpdateWorkspaceFromBaseRequest,
 ) -> (Result<(), String>, Vec<String>) {
     let warnings = Vec::new();
-    let stop_session_command =
-        kill_workspace_session_command(request.project_name.as_deref(), &request.workspace_name);
-    let _ = run_command(&stop_session_command);
+    stop_workspace_sessions(
+        request.project_name.as_deref(),
+        request.workspace_name.as_str(),
+    );
 
     if request.workspace_name.trim().is_empty() {
         return (Err("workspace name is required".to_string()), warnings);
@@ -638,6 +644,12 @@ fn run_command(args: &[String]) -> Result<(), String> {
         return Err("command is empty".to_string());
     }
     execute_command(args).map_err(|error| error.to_string())
+}
+
+fn stop_workspace_sessions(project_name: Option<&str>, workspace_name: &str) {
+    for command in kill_workspace_session_commands(project_name, workspace_name) {
+        let _ = run_command(&command);
+    }
 }
 
 fn run_delete_worktree_git(

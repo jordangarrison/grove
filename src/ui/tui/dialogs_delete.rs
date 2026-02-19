@@ -95,6 +95,9 @@ impl GroveApp {
                 DeleteDialogField::DeleteLocalBranch => {
                     dialog.delete_local_branch = !dialog.delete_local_branch;
                 }
+                DeleteDialogField::KillTmuxSessions => {
+                    dialog.kill_tmux_sessions = !dialog.kill_tmux_sessions;
+                }
                 DeleteDialogField::DeleteButton => {
                     confirm_delete = true;
                 }
@@ -123,6 +126,8 @@ impl GroveApp {
             KeyCode::Char(' ') if no_modifiers => {
                 if dialog.focused_field == DeleteDialogField::DeleteLocalBranch {
                     dialog.delete_local_branch = !dialog.delete_local_branch;
+                } else if dialog.focused_field == DeleteDialogField::KillTmuxSessions {
+                    dialog.kill_tmux_sessions = !dialog.kill_tmux_sessions;
                 }
             }
             KeyCode::Char(character) if no_modifiers => {
@@ -180,6 +185,7 @@ impl GroveApp {
             path: workspace.path.clone(),
             is_missing,
             delete_local_branch: is_missing,
+            kill_tmux_sessions: true,
             focused_field: DeleteDialogField::DeleteLocalBranch,
         });
         self.log_dialog_event_with_fields(
@@ -220,6 +226,10 @@ impl GroveApp {
                     "delete_local_branch".to_string(),
                     Value::from(dialog.delete_local_branch),
                 ),
+                (
+                    "kill_tmux_sessions".to_string(),
+                    Value::from(dialog.kill_tmux_sessions),
+                ),
                 ("is_missing".to_string(), Value::from(dialog.is_missing)),
             ],
         );
@@ -234,6 +244,7 @@ impl GroveApp {
             workspace_path: dialog.path,
             is_missing: dialog.is_missing,
             delete_local_branch: dialog.delete_local_branch,
+            kill_tmux_sessions: dialog.kill_tmux_sessions,
         };
         if !self.tmux_input.supports_background_launch() {
             let (result, warnings) = delete_workspace(request);

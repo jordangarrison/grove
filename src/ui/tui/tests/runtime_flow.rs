@@ -2319,6 +2319,7 @@ fn delete_key_opens_delete_dialog_for_selected_workspace() {
     assert_eq!(dialog.workspace_name, "feature-a");
     assert_eq!(dialog.branch, "feature-a");
     assert_eq!(dialog.focused_field, DeleteDialogField::DeleteLocalBranch);
+    assert!(dialog.kill_tmux_sessions);
 }
 
 #[test]
@@ -2350,7 +2351,7 @@ fn delete_dialog_blocks_navigation_and_escape_cancels() {
     assert_eq!(app.state.selected_index, 1);
     assert_eq!(
         app.delete_dialog().map(|dialog| dialog.focused_field),
-        Some(DeleteDialogField::DeleteButton)
+        Some(DeleteDialogField::KillTmuxSessions)
     );
 
     ftui::Model::update(
@@ -2376,7 +2377,7 @@ fn delete_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
     );
     assert_eq!(
         app.delete_dialog().map(|dialog| dialog.focused_field),
-        Some(DeleteDialogField::DeleteButton)
+        Some(DeleteDialogField::KillTmuxSessions)
     );
     ftui::Model::update(
         &mut app,
@@ -2389,6 +2390,35 @@ fn delete_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
     assert_eq!(
         app.delete_dialog().map(|dialog| dialog.focused_field),
         Some(DeleteDialogField::DeleteLocalBranch)
+    );
+}
+
+#[test]
+fn delete_dialog_space_toggles_kill_tmux_sessions() {
+    let mut app = fixture_app();
+    app.state.selected_index = 1;
+    app.open_delete_dialog();
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+    );
+    assert_eq!(
+        app.delete_dialog().map(|dialog| dialog.focused_field),
+        Some(DeleteDialogField::KillTmuxSessions)
+    );
+    assert!(
+        app.delete_dialog()
+            .is_some_and(|dialog| dialog.kill_tmux_sessions)
+    );
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char(' ')).with_kind(KeyEventKind::Press)),
+    );
+    assert!(
+        app.delete_dialog()
+            .is_some_and(|dialog| !dialog.kill_tmux_sessions)
     );
 }
 

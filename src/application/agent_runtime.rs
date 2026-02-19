@@ -767,11 +767,27 @@ pub fn kill_workspace_session_command(
     workspace_name: &str,
 ) -> Vec<String> {
     let session_name = session_name_for_workspace_in_project(project_name, workspace_name);
+    kill_tmux_session_command(&session_name)
+}
+
+pub fn kill_workspace_session_commands(
+    project_name: Option<&str>,
+    workspace_name: &str,
+) -> Vec<Vec<String>> {
+    let session_name = session_name_for_workspace_in_project(project_name, workspace_name);
+    vec![
+        kill_tmux_session_command(&session_name),
+        kill_tmux_session_command(&format!("{session_name}-git")),
+        kill_tmux_session_command(&format!("{session_name}-shell")),
+    ]
+}
+
+fn kill_tmux_session_command(session_name: &str) -> Vec<String> {
     vec![
         "tmux".to_string(),
         "kill-session".to_string(),
         "-t".to_string(),
-        session_name,
+        session_name.to_string(),
     ]
 }
 
