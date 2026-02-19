@@ -521,12 +521,6 @@ pub fn update_workspace_from_base(
     if request.base_branch.trim().is_empty() {
         return (Err("base branch is required".to_string()), warnings);
     }
-    if request.workspace_branch == request.base_branch {
-        return (
-            Err("workspace branch matches base branch".to_string()),
-            warnings,
-        );
-    }
     if !request.workspace_path.exists() {
         return (
             Err("workspace path does not exist on disk".to_string()),
@@ -544,6 +538,16 @@ pub fn update_workspace_from_base(
             warnings,
         );
     };
+
+    let is_base_workspace_update = request.workspace_branch == request.base_branch
+        && paths_refer_to_same_location(&request.workspace_path, &repo_root);
+
+    if request.workspace_branch == request.base_branch && !is_base_workspace_update {
+        return (
+            Err("workspace branch matches base branch".to_string()),
+            warnings,
+        );
+    }
 
     if let Err(error) = run_git_command(
         &repo_root,
@@ -576,6 +580,21 @@ pub fn update_workspace_from_base(
         &["switch".to_string(), request.workspace_branch.clone()],
     ) {
         return (Err(format!("git switch failed: {error}")), warnings);
+    }
+
+    if is_base_workspace_update {
+        if let Err(error) = run_git_command(
+            &request.workspace_path,
+            &[
+                "pull".to_string(),
+                "--ff-only".to_string(),
+                "origin".to_string(),
+                request.base_branch.clone(),
+            ],
+        ) {
+            return (Err(format!("git pull failed: {error}")), warnings);
+        }
+        return (Ok(()), warnings);
     }
 
     if let Err(error) = run_git_command(
@@ -627,6 +646,13 @@ fn stable_repo_path_hash(repo_root: &Path) -> String {
     }
 
     format!("{hash:016x}")
+}
+
+fn paths_refer_to_same_location(left: &Path, right: &Path) -> bool {
+    match (left.canonicalize().ok(), right.canonicalize().ok()) {
+        (Some(left_canonical), Some(right_canonical)) => left_canonical == right_canonical,
+        _ => left == right,
+    }
 }
 
 fn run_command(args: &[String]) -> Result<(), String> {

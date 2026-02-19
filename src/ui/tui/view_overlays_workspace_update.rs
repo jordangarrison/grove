@@ -17,6 +17,21 @@ impl GroveApp {
         let update_focused = focused(UpdateFromBaseDialogField::UpdateButton);
         let cancel_focused = focused(UpdateFromBaseDialogField::CancelButton);
         let path = dialog.workspace_path.display().to_string();
+        let (title, strategy, base_label, base_value) = if dialog.is_main_workspace {
+            (
+                "Update From Upstream?",
+                "  Strategy: git pull --ff-only origin <branch> in base workspace",
+                "Upstream",
+                format!("origin/{}", dialog.base_branch),
+            )
+        } else {
+            (
+                "Update From Base?",
+                "  Strategy: git merge --no-ff <base> into workspace branch",
+                "Base",
+                dialog.base_branch.clone(),
+            )
+        };
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width("Update plan", content_width),
@@ -42,8 +57,8 @@ impl GroveApp {
             modal_static_badged_row(
                 content_width,
                 theme,
-                "Base",
-                dialog.base_branch.as_str(),
+                base_label,
+                base_value.as_str(),
                 theme.blue,
                 theme.text,
             ),
@@ -58,7 +73,7 @@ impl GroveApp {
         ];
         lines.extend(modal_wrapped_rows(
             content_width,
-            "  Strategy: git merge --no-ff <base> into workspace branch",
+            strategy,
             Style::new().fg(theme.subtext0).bg(theme.base),
         ));
         lines.push(FtLine::raw(""));
@@ -78,7 +93,7 @@ impl GroveApp {
         let body = FtText::from_lines(lines);
 
         let content = OverlayModalContent {
-            title: "Update From Base?",
+            title,
             body,
             theme,
             border_color: theme.teal,

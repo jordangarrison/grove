@@ -803,6 +803,100 @@ fn update_workspace_from_base_requires_clean_workspace_worktree() {
     );
 }
 
+#[test]
+fn update_workspace_from_base_pulls_main_workspace_from_origin() {
+    let temp = TestDir::new("update-base-from-origin");
+    let repo_root = temp.path.join("grove");
+    fs::create_dir_all(&repo_root).expect("repo dir should exist");
+    init_git_repo(&repo_root);
+
+    let base_branch = current_branch(&repo_root);
+    let origin = temp.path.join("origin.git");
+    let origin_arg = origin.to_string_lossy().to_string();
+    run_git(&temp.path, &["init", "--bare", origin_arg.as_str()]);
+    run_git(
+        &repo_root,
+        &["remote", "add", "origin", origin_arg.as_str()],
+    );
+    run_git(&repo_root, &["push", "-u", "origin", base_branch.as_str()]);
+
+    let upstream_clone = temp.path.join("upstream");
+    let upstream_clone_arg = upstream_clone.to_string_lossy().to_string();
+    run_git(
+        &temp.path,
+        &["clone", origin_arg.as_str(), upstream_clone_arg.as_str()],
+    );
+    run_git(
+        &upstream_clone,
+        &["config", "user.email", "grove-tests@example.com"],
+    );
+    run_git(&upstream_clone, &["config", "user.name", "Grove Tests"]);
+
+    fs::write(upstream_clone.join("from-upstream.txt"), "upstream\n")
+        .expect("upstream file should be writable");
+    run_git(&upstream_clone, &["add", "from-upstream.txt"]);
+    run_git(&upstream_clone, &["commit", "-m", "upstream change"]);
+    run_git(&upstream_clone, &["push", "origin", base_branch.as_str()]);
+    assert!(
+        !repo_root.join("from-upstream.txt").exists(),
+        "base workspace should not have upstream file before pull"
+    );
+
+    let request = UpdateWorkspaceFromBaseRequest {
+        project_name: None,
+        project_path: Some(repo_root.clone()),
+        workspace_name: "grove".to_string(),
+        workspace_branch: base_branch.clone(),
+        workspace_path: repo_root.clone(),
+        base_branch: base_branch.clone(),
+    };
+
+    let (result, warnings) = update_workspace_from_base(request, MultiplexerKind::Tmux);
+    assert_eq!(result, Ok(()));
+    assert!(warnings.is_empty());
+    assert!(
+        repo_root.join("from-upstream.txt").exists(),
+        "base workspace should receive upstream changes"
+    );
+}
+
+#[test]
+fn update_workspace_from_base_rejects_matching_branch_for_non_main_workspace() {
+    let temp = TestDir::new("update-from-base-matching-branch");
+    let repo_root = temp.path.join("grove");
+    fs::create_dir_all(&repo_root).expect("repo dir should exist");
+    init_git_repo(&repo_root);
+
+    let workspace_path = temp.path.join("grove-feature-sync");
+    run_git(
+        &repo_root,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "feature-sync",
+            workspace_path.to_string_lossy().as_ref(),
+            "HEAD",
+        ],
+    );
+
+    let request = UpdateWorkspaceFromBaseRequest {
+        project_name: None,
+        project_path: Some(repo_root),
+        workspace_name: "feature-sync".to_string(),
+        workspace_branch: "feature-sync".to_string(),
+        workspace_path,
+        base_branch: "feature-sync".to_string(),
+    };
+
+    let (result, warnings) = update_workspace_from_base(request, MultiplexerKind::Tmux);
+    assert!(warnings.is_empty());
+    assert_eq!(
+        result,
+        Err("workspace branch matches base branch".to_string())
+    );
+}
+
 fn init_git_repo(repo_root: &Path) {
     run_git(repo_root, &["init"]);
     run_git(

@@ -192,7 +192,7 @@ impl UiCommand {
             Self::UpdateFromBase => Some(PaletteCommandSpec {
                 id: "palette:update_from_base",
                 title: "Update From Base",
-                description: "Merge base branch into selected workspace (u)",
+                description: "Update selected workspace (feature: merge base, base: pull origin) (u)",
                 tags: &["update", "sync", "base", "workspace", "u"],
                 category: "Workspace",
             }),

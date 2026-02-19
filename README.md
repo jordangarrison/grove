@@ -133,7 +133,7 @@ Inside Grove:
 - `Enter` open preview / interactive attach (context dependent)
 - `x` stop agent
 - `m` merge workspace branch into base
-- `u` update workspace from base
+- `u` update selected workspace (feature merges from base, base pulls from origin)
 - `D` delete workspace
 - `p` open project switcher
 - `S` settings

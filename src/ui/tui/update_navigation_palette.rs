@@ -149,11 +149,7 @@ impl GroveApp {
                         .is_some_and(|workspace| !workspace.is_main)
             }
             UiCommand::UpdateFromBase => {
-                !self.update_from_base_in_flight
-                    && self
-                        .state
-                        .selected_workspace()
-                        .is_some_and(|workspace| !workspace.is_main)
+                !self.update_from_base_in_flight && self.state.selected_workspace().is_some()
             }
             UiCommand::FocusPreview | UiCommand::OpenCommandPalette => false,
         }

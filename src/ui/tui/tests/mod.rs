@@ -1795,6 +1795,22 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
 }
 
 #[test]
+fn command_palette_exposes_update_action_for_main_workspace() {
+    let mut app = fixture_app();
+    app.state.selected_index = 0;
+    let list_ids: Vec<String> = app
+        .build_command_palette_actions()
+        .into_iter()
+        .map(|action| action.id)
+        .collect();
+    let update_id = UiCommand::UpdateFromBase
+        .palette_spec()
+        .map(|spec| spec.id)
+        .expect("command should be palette discoverable");
+    assert!(list_ids.iter().any(|id| id == update_id));
+}
+
+#[test]
 fn ui_command_palette_ids_are_unique_and_roundtrip() {
     let mut ids = std::collections::HashSet::new();
     for command in UiCommand::all() {

@@ -102,6 +102,7 @@ pub(super) struct MergeDialogState {
 pub(super) struct UpdateFromBaseDialogState {
     pub(super) project_name: Option<String>,
     pub(super) project_path: Option<PathBuf>,
+    pub(super) is_main_workspace: bool,
     pub(super) workspace_name: String,
     pub(super) workspace_branch: String,
     pub(super) workspace_path: PathBuf,

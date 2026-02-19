@@ -99,34 +99,36 @@ impl GroveApp {
             self.show_toast("no workspace selected", true);
             return;
         };
-        if workspace.is_main {
-            self.show_toast("cannot update base workspace from itself", true);
-            return;
-        }
-        if workspace
-            .base_branch
-            .as_ref()
-            .is_none_or(|value| value.trim().is_empty())
-        {
-            self.show_toast("workspace base branch marker is missing", true);
-            return;
-        }
-        let Some(base_branch) = workspace.base_branch.clone() else {
-            self.show_toast("workspace base branch marker is missing", true);
-            return;
+        let base_branch = if workspace.is_main {
+            workspace.branch.clone()
+        } else {
+            if workspace
+                .base_branch
+                .as_ref()
+                .is_none_or(|value| value.trim().is_empty())
+            {
+                self.show_toast("workspace base branch marker is missing", true);
+                return;
+            }
+            let Some(base_branch) = workspace.base_branch.clone() else {
+                self.show_toast("workspace base branch marker is missing", true);
+                return;
+            };
+            if base_branch == workspace.branch {
+                self.show_toast("workspace branch already matches base branch", true);
+                return;
+            }
+            base_branch
         };
-        if base_branch == workspace.branch {
-            self.show_toast("workspace branch already matches base branch", true);
-            return;
-        }
 
         self.update_from_base_dialog = Some(UpdateFromBaseDialogState {
             project_name: workspace.project_name.clone(),
             project_path: workspace.project_path.clone(),
+            is_main_workspace: workspace.is_main,
             workspace_name: workspace.name.clone(),
             workspace_branch: workspace.branch.clone(),
             workspace_path: workspace.path.clone(),
-            base_branch,
+            base_branch: base_branch.clone(),
             focused_field: UpdateFromBaseDialogField::UpdateButton,
         });
         self.log_dialog_event_with_fields(
@@ -139,14 +141,10 @@ impl GroveApp {
                     "path".to_string(),
                     Value::from(workspace.path.display().to_string()),
                 ),
+                ("base_branch".to_string(), Value::from(base_branch)),
                 (
-                    "base_branch".to_string(),
-                    Value::from(
-                        workspace
-                            .base_branch
-                            .as_ref()
-                            .map_or(String::new(), ToOwned::to_owned),
-                    ),
+                    "is_main_workspace".to_string(),
+                    Value::from(workspace.is_main),
                 ),
             ],
         );
@@ -181,6 +179,10 @@ impl GroveApp {
                 (
                     "base_branch".to_string(),
                     Value::from(dialog.base_branch.clone()),
+                ),
+                (
+                    "is_main_workspace".to_string(),
+                    Value::from(dialog.is_main_workspace),
                 ),
             ],
         );

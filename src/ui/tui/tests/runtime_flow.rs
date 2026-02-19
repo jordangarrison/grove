@@ -2748,7 +2748,7 @@ fn update_key_opens_update_from_base_dialog_for_selected_workspace() {
 }
 
 #[test]
-fn update_key_on_main_workspace_shows_guard_toast() {
+fn update_key_on_main_workspace_opens_upstream_update_dialog() {
     let mut app = fixture_app();
 
     ftui::Model::update(
@@ -2756,11 +2756,13 @@ fn update_key_on_main_workspace_shows_guard_toast() {
         Msg::Key(KeyEvent::new(KeyCode::Char('u')).with_kind(KeyEventKind::Press)),
     );
 
-    assert!(app.update_from_base_dialog.is_none());
-    assert!(
-        app.status_bar_line()
-            .contains("cannot update base workspace from itself")
-    );
+    let Some(dialog) = app.update_from_base_dialog.as_ref() else {
+        panic!("update dialog should be open");
+    };
+    assert_eq!(dialog.workspace_name, "grove");
+    assert_eq!(dialog.workspace_branch, "main");
+    assert_eq!(dialog.base_branch, "main");
+    assert!(dialog.is_main_workspace);
 }
 
 #[test]
