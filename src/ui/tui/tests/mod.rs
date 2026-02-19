@@ -1721,7 +1721,8 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
             .any(|id| id == &palette_id(UiCommand::EnterInteractive))
     );
 
-    app.shell_ready_sessions
+    app.shell_sessions
+        .ready
         .insert("grove-ws-feature-a-shell".to_string());
     let preview_ids_with_shell: Vec<String> = app
         .build_command_palette_actions()

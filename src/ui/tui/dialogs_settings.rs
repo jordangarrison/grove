@@ -100,8 +100,7 @@ impl GroveApp {
 
         self.settings_dialog = None;
         self.interactive = None;
-        self.lazygit_ready_sessions.clear();
-        self.lazygit_failed_sessions.clear();
+        self.lazygit_sessions.clear_ready_and_failed();
         self.refresh_workspaces(None);
         self.poll_preview();
         self.show_toast(format!("multiplexer set to {}", selected.label()), false);

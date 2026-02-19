@@ -36,7 +36,7 @@ use ftui_extras::text_effects::{ColorGradient, StyledText, TextEffect};
 use serde_json::Value;
 
 use crate::application::agent_runtime::{
-    CommandExecutionMode, LivePreviewTarget, OutputDigest, SessionActivity,
+    CommandExecutionMode, LivePreviewTarget, OutputDigest, SessionActivity, ShellLaunchRequest,
     detect_status_with_session_override, evaluate_capture_change, execute_command_with,
     execute_launch_request_with_result_for_mode, execute_shell_launch_request_for_mode,
     execute_stop_workspace_with_result_for_mode, git_session_name_for_workspace,
@@ -187,6 +187,62 @@ struct PendingAutoStartWorkspace {
     start_config: StartAgentConfigState,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SessionKind {
+    Lazygit,
+    WorkspaceShell,
+}
+
+#[derive(Debug, Default)]
+struct SessionTracker {
+    ready: HashSet<String>,
+    failed: HashSet<String>,
+    in_flight: HashSet<String>,
+}
+
+impl SessionTracker {
+    fn is_ready(&self, session_name: &str) -> bool {
+        self.ready.contains(session_name)
+    }
+
+    fn is_failed(&self, session_name: &str) -> bool {
+        self.failed.contains(session_name)
+    }
+
+    fn is_in_flight(&self, session_name: &str) -> bool {
+        self.in_flight.contains(session_name)
+    }
+
+    fn retry_failed(&mut self, session_name: &str) {
+        self.failed.remove(session_name);
+    }
+
+    fn mark_in_flight(&mut self, session_name: String) {
+        self.in_flight.insert(session_name);
+    }
+
+    fn mark_ready(&mut self, session_name: String) {
+        self.in_flight.remove(&session_name);
+        self.failed.remove(&session_name);
+        self.ready.insert(session_name);
+    }
+
+    fn mark_failed(&mut self, session_name: String) {
+        self.in_flight.remove(&session_name);
+        self.ready.remove(&session_name);
+        self.failed.insert(session_name);
+    }
+
+    fn remove_ready(&mut self, session_name: &str) {
+        self.ready.remove(session_name);
+    }
+
+    fn clear_ready_and_failed(&mut self) {
+        self.ready.clear();
+        self.failed.clear();
+    }
+}
+
 struct GroveApp {
     repo_name: String,
     projects: Vec<ProjectConfig>,
@@ -220,12 +276,8 @@ struct GroveApp {
     agent_activity_frames: VecDeque<bool>,
     workspace_status_digests: HashMap<String, OutputDigest>,
     workspace_output_changing: HashMap<String, bool>,
-    lazygit_ready_sessions: HashSet<String>,
-    lazygit_failed_sessions: HashSet<String>,
-    lazygit_launch_in_flight: HashSet<String>,
-    shell_ready_sessions: HashSet<String>,
-    shell_failed_sessions: HashSet<String>,
-    shell_launch_in_flight: HashSet<String>,
+    lazygit_sessions: SessionTracker,
+    shell_sessions: SessionTracker,
     lazygit_command: String,
     viewport_width: u16,
     viewport_height: u16,

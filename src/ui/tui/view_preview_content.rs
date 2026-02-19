@@ -178,9 +178,9 @@ impl GroveApp {
     fn preview_git_fallback_line(&self, selected_workspace: Option<&Workspace>) -> FtLine {
         let fallback = if let Some(workspace) = selected_workspace {
             let session_name = git_session_name_for_workspace(workspace);
-            if self.lazygit_failed_sessions.contains(&session_name) {
+            if self.lazygit_sessions.is_failed(&session_name) {
                 "(lazygit launch failed)"
-            } else if self.lazygit_ready_sessions.contains(&session_name) {
+            } else if self.lazygit_sessions.is_ready(&session_name) {
                 "(no lazygit output yet)"
             } else {
                 "(launching lazygit...)"
@@ -194,9 +194,9 @@ impl GroveApp {
     fn preview_shell_fallback_line(&self, selected_workspace: Option<&Workspace>) -> FtLine {
         let fallback = if let Some(workspace) = selected_workspace {
             let session_name = shell_session_name_for_workspace(workspace);
-            if self.shell_failed_sessions.contains(&session_name) {
+            if self.shell_sessions.is_failed(&session_name) {
                 "(shell launch failed)"
-            } else if self.shell_ready_sessions.contains(&session_name) {
+            } else if self.shell_sessions.is_ready(&session_name) {
                 "(no shell output yet)"
             } else {
                 "(launching shell...)"

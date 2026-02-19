@@ -33,11 +33,11 @@ Two identical functions with different names: `paths_refer_to_same_location` and
 
 `ensure_lazygit_session_*` and `ensure_workspace_shell_session_*` follow identical patterns. Same for their completion handlers. Six `HashSet` fields on `GroveApp` form two identical triplets.
 
-- [ ] Create a `SessionTracker` struct encapsulating `ready`, `failed`, `in_flight` HashSets
-- [ ] Replace the six fields (`lazygit_ready_sessions`, `lazygit_failed_sessions`, `lazygit_launch_in_flight`, `shell_ready_sessions`, `shell_failed_sessions`, `shell_launch_in_flight`) with two `SessionTracker` instances
-- [ ] Extract a generic session launch function parameterized by session kind
-- [ ] Extract a generic completion handler
-- [ ] Update `src/ui/tui/update_navigation_preview.rs:19-119, 121-238, 346-406, 408-475`
+- [x] Create a `SessionTracker` struct encapsulating `ready`, `failed`, `in_flight` HashSets
+- [x] Replace the six fields (`lazygit_ready_sessions`, `lazygit_failed_sessions`, `lazygit_launch_in_flight`, `shell_ready_sessions`, `shell_failed_sessions`, `shell_launch_in_flight`) with two `SessionTracker` instances
+- [x] Extract a generic session launch function parameterized by session kind
+- [x] Extract a generic completion handler
+- [x] Update `src/ui/tui/update_navigation_preview.rs:19-119, 121-238, 346-406, 408-475`
 
 ## 5. Dialog enum (enforce one-dialog-at-a-time at type level)
 

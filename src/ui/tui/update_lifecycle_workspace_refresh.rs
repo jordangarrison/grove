@@ -21,7 +21,7 @@ impl GroveApp {
         let launched = self
             .ensure_workspace_shell_session_for_workspace(workspace, false, true, true)
             .is_some();
-        launched || self.shell_launch_in_flight.contains(&session_name)
+        launched || self.shell_sessions.is_in_flight(&session_name)
     }
 
     pub(super) fn auto_start_pending_workspace_agent(&mut self) -> bool {

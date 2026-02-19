@@ -16,7 +16,7 @@ impl GroveApp {
         if self.preview_tab == PreviewTab::Git {
             let workspace = self.state.selected_workspace()?;
             let session_name = git_session_name_for_workspace(workspace);
-            if self.lazygit_ready_sessions.contains(&session_name) {
+            if self.lazygit_sessions.is_ready(&session_name) {
                 return Some(session_name);
             }
             return None;

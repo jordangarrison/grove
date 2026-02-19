@@ -180,8 +180,8 @@ impl GroveApp {
                 let capture_error_indicates_missing_session =
                     tmux_capture_error_indicates_missing_session(&message);
                 if capture_error_indicates_missing_session {
-                    self.lazygit_ready_sessions.remove(session_name);
-                    self.shell_ready_sessions.remove(session_name);
+                    self.lazygit_sessions.remove_ready(session_name);
+                    self.shell_sessions.remove_ready(session_name);
                     if let Some(workspace) = self.state.selected_workspace_mut()
                         && session_name_for_workspace_ref(workspace) == session_name
                     {

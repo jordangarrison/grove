@@ -1,5 +1,12 @@
 use super::*;
 
+struct SessionLaunchCompletionContext {
+    async_launch: bool,
+    workspace_name: Option<String>,
+    log_tmux_error_on_failure: bool,
+    poll_preview_on_ready: bool,
+}
+
 impl GroveApp {
     pub(super) fn preview_output_dimensions(&self) -> Option<(u16, u16)> {
         let layout = self.view_layout();
@@ -25,17 +32,189 @@ impl GroveApp {
         (capture_cols, capture_rows)
     }
 
-    fn ensure_lazygit_session_for_selected_workspace(&mut self) -> Option<String> {
-        let workspace = self.state.selected_workspace()?;
-        let session_name = git_session_name_for_workspace(workspace);
+    fn session_tracker(&self, kind: SessionKind) -> &SessionTracker {
+        match kind {
+            SessionKind::Lazygit => &self.lazygit_sessions,
+            SessionKind::WorkspaceShell => &self.shell_sessions,
+        }
+    }
 
-        if self.lazygit_ready_sessions.contains(&session_name) {
+    fn session_tracker_mut(&mut self, kind: SessionKind) -> &mut SessionTracker {
+        match kind {
+            SessionKind::Lazygit => &mut self.lazygit_sessions,
+            SessionKind::WorkspaceShell => &mut self.shell_sessions,
+        }
+    }
+
+    fn session_launch_event(kind: SessionKind) -> &'static str {
+        match kind {
+            SessionKind::Lazygit => "lazygit_launch",
+            SessionKind::WorkspaceShell => "workspace_shell_launch",
+        }
+    }
+
+    fn session_launch_failure_toast(kind: SessionKind) -> &'static str {
+        match kind {
+            SessionKind::Lazygit => "lazygit launch failed",
+            SessionKind::WorkspaceShell => "workspace shell launch failed",
+        }
+    }
+
+    fn selected_workspace_has_session(&self, kind: SessionKind, session_name: &str) -> bool {
+        self.state
+            .selected_workspace()
+            .is_some_and(|workspace| match kind {
+                SessionKind::Lazygit => git_session_name_for_workspace(workspace) == session_name,
+                SessionKind::WorkspaceShell => {
+                    shell_session_name_for_workspace(workspace) == session_name
+                }
+            })
+    }
+
+    fn should_poll_preview_after_launch(&self, kind: SessionKind) -> bool {
+        match kind {
+            SessionKind::Lazygit => self.preview_tab == PreviewTab::Git,
+            SessionKind::WorkspaceShell => {
+                matches!(self.preview_tab, PreviewTab::Agent | PreviewTab::Shell)
+            }
+        }
+    }
+
+    fn queue_session_launch_task(
+        &mut self,
+        kind: SessionKind,
+        session_name: String,
+        launch_request: ShellLaunchRequest,
+    ) {
+        let completion_session = session_name.clone();
+        self.queue_cmd(Cmd::task(move || {
+            let started_at = Instant::now();
+            let (_, result) = execute_shell_launch_request_for_mode(
+                &launch_request,
+                CommandExecutionMode::Process,
+            );
+            let duration_ms =
+                GroveApp::duration_millis(Instant::now().saturating_duration_since(started_at));
+            match kind {
+                SessionKind::Lazygit => Msg::LazygitLaunchCompleted(LazygitLaunchCompletion {
+                    session_name: completion_session,
+                    duration_ms,
+                    result,
+                }),
+                SessionKind::WorkspaceShell => {
+                    Msg::WorkspaceShellLaunchCompleted(WorkspaceShellLaunchCompletion {
+                        session_name: completion_session,
+                        duration_ms,
+                        result,
+                    })
+                }
+            }
+        }));
+    }
+
+    fn complete_session_launch(
+        &mut self,
+        kind: SessionKind,
+        session_name: String,
+        duration_ms: u64,
+        result: Result<(), String>,
+        context: SessionLaunchCompletionContext,
+    ) -> bool {
+        let mut completion_fields = vec![
+            ("session".to_string(), Value::from(session_name.clone())),
+            (
+                "multiplexer".to_string(),
+                Value::from(self.multiplexer.label()),
+            ),
+            ("async".to_string(), Value::from(context.async_launch)),
+            ("duration_ms".to_string(), Value::from(duration_ms)),
+            ("ok".to_string(), Value::from(result.is_ok())),
+        ];
+        if let Some(workspace_name) = context.workspace_name {
+            completion_fields.push(("workspace".to_string(), Value::from(workspace_name)));
+        }
+
+        match result {
+            Ok(()) => {
+                self.last_tmux_error = None;
+                self.session_tracker_mut(kind)
+                    .mark_ready(session_name.clone());
+                self.log_event_with_fields(
+                    Self::session_launch_event(kind),
+                    "completed",
+                    completion_fields,
+                );
+                if context.poll_preview_on_ready
+                    && self.selected_workspace_has_session(kind, &session_name)
+                    && self.should_poll_preview_after_launch(kind)
+                {
+                    self.poll_preview();
+                }
+                true
+            }
+            Err(error) => {
+                if tmux_launch_error_indicates_duplicate_session(&error) {
+                    completion_fields.push(("ok".to_string(), Value::from(true)));
+                    completion_fields
+                        .push(("reused_existing_session".to_string(), Value::from(true)));
+                    completion_fields.push(("error".to_string(), Value::from(error)));
+                    self.last_tmux_error = None;
+                    self.session_tracker_mut(kind)
+                        .mark_ready(session_name.clone());
+                    self.log_event_with_fields(
+                        Self::session_launch_event(kind),
+                        "completed",
+                        completion_fields,
+                    );
+                    if context.poll_preview_on_ready
+                        && self.selected_workspace_has_session(kind, &session_name)
+                        && self.should_poll_preview_after_launch(kind)
+                    {
+                        self.poll_preview();
+                    }
+                    return true;
+                }
+
+                completion_fields.push(("error".to_string(), Value::from(error.clone())));
+                self.log_event_with_fields(
+                    Self::session_launch_event(kind),
+                    "completed",
+                    completion_fields,
+                );
+                self.last_tmux_error = Some(error.clone());
+                if context.log_tmux_error_on_failure {
+                    self.log_tmux_error(error);
+                }
+                self.session_tracker_mut(kind).mark_failed(session_name);
+                self.show_toast(Self::session_launch_failure_toast(kind), true);
+                false
+            }
+        }
+    }
+
+    fn ensure_session_for_workspace(
+        &mut self,
+        kind: SessionKind,
+        workspace: &Workspace,
+        command: String,
+        retry_failed: bool,
+        log_tmux_error_on_sync_failure: bool,
+    ) -> Option<String> {
+        let session_name = match kind {
+            SessionKind::Lazygit => git_session_name_for_workspace(workspace),
+            SessionKind::WorkspaceShell => shell_session_name_for_workspace(workspace),
+        };
+
+        if self.session_tracker(kind).is_ready(&session_name) {
             return Some(session_name);
         }
-        if self.lazygit_failed_sessions.contains(&session_name) {
-            return None;
+        if self.session_tracker(kind).is_failed(&session_name) {
+            if !retry_failed {
+                return None;
+            }
+            self.session_tracker_mut(kind).retry_failed(&session_name);
         }
-        if self.lazygit_launch_in_flight.contains(&session_name) {
+        if self.session_tracker(kind).is_in_flight(&session_name) {
             return None;
         }
 
@@ -43,43 +222,30 @@ impl GroveApp {
         let launch_request = shell_launch_request_for_workspace(
             workspace,
             session_name.clone(),
-            self.lazygit_command.clone(),
+            command,
             Some(capture_cols),
             Some(capture_rows),
         );
         let async_launch = self.tmux_input.supports_background_launch();
-        self.log_event_with_fields(
-            "lazygit_launch",
-            "started",
-            [
-                ("session".to_string(), Value::from(session_name.clone())),
-                (
-                    "multiplexer".to_string(),
-                    Value::from(self.multiplexer.label()),
-                ),
-                ("async".to_string(), Value::from(async_launch)),
-                ("capture_cols".to_string(), Value::from(capture_cols)),
-                ("capture_rows".to_string(), Value::from(capture_rows)),
-            ],
-        );
+        let mut started_fields = vec![
+            ("session".to_string(), Value::from(session_name.clone())),
+            (
+                "multiplexer".to_string(),
+                Value::from(self.multiplexer.label()),
+            ),
+            ("async".to_string(), Value::from(async_launch)),
+            ("capture_cols".to_string(), Value::from(capture_cols)),
+            ("capture_rows".to_string(), Value::from(capture_rows)),
+        ];
+        if kind == SessionKind::WorkspaceShell {
+            started_fields.push(("workspace".to_string(), Value::from(workspace.name.clone())));
+        }
+        self.log_event_with_fields(Self::session_launch_event(kind), "started", started_fields);
 
         if async_launch {
-            self.lazygit_launch_in_flight.insert(session_name.clone());
-            let completion_session = session_name.clone();
-            self.queue_cmd(Cmd::task(move || {
-                let started_at = Instant::now();
-                let (_, result) = execute_shell_launch_request_for_mode(
-                    &launch_request,
-                    CommandExecutionMode::Process,
-                );
-                let duration_ms =
-                    GroveApp::duration_millis(Instant::now().saturating_duration_since(started_at));
-                Msg::LazygitLaunchCompleted(LazygitLaunchCompletion {
-                    session_name: completion_session,
-                    duration_ms,
-                    result,
-                })
-            }));
+            self.session_tracker_mut(kind)
+                .mark_in_flight(session_name.clone());
+            self.queue_session_launch_task(kind, session_name, launch_request);
             return None;
         }
 
@@ -90,43 +256,38 @@ impl GroveApp {
         );
         let duration_ms =
             Self::duration_millis(Instant::now().saturating_duration_since(launch_started_at));
-        let launch_succeeded = launch_result.is_ok();
-        let mut completion_fields = vec![
-            ("session".to_string(), Value::from(session_name.clone())),
-            (
-                "multiplexer".to_string(),
-                Value::from(self.multiplexer.label()),
-            ),
-            ("async".to_string(), Value::from(false)),
-            ("duration_ms".to_string(), Value::from(duration_ms)),
-            ("ok".to_string(), Value::from(launch_succeeded)),
-        ];
-
-        if let Err(error) = launch_result {
-            if tmux_launch_error_indicates_duplicate_session(&error) {
-                completion_fields.push(("ok".to_string(), Value::from(true)));
-                completion_fields.push(("reused_existing_session".to_string(), Value::from(true)));
-                completion_fields.push(("error".to_string(), Value::from(error)));
-                self.log_event_with_fields("lazygit_launch", "completed", completion_fields);
-                self.last_tmux_error = None;
-                self.lazygit_failed_sessions.remove(&session_name);
-                self.lazygit_ready_sessions.insert(session_name.clone());
-                return Some(session_name);
-            }
-
-            completion_fields.push(("error".to_string(), Value::from(error.clone())));
-            self.log_event_with_fields("lazygit_launch", "completed", completion_fields);
-            self.last_tmux_error = Some(error);
-            self.show_toast("lazygit launch failed", true);
-            self.lazygit_ready_sessions.remove(&session_name);
-            self.lazygit_failed_sessions.insert(session_name);
-            return None;
+        let workspace_name = if kind == SessionKind::WorkspaceShell {
+            Some(workspace.name.clone())
+        } else {
+            None
+        };
+        if self.complete_session_launch(
+            kind,
+            session_name.clone(),
+            duration_ms,
+            launch_result,
+            SessionLaunchCompletionContext {
+                async_launch: false,
+                workspace_name,
+                log_tmux_error_on_failure: log_tmux_error_on_sync_failure,
+                poll_preview_on_ready: false,
+            },
+        ) {
+            return Some(session_name);
         }
 
-        self.log_event_with_fields("lazygit_launch", "completed", completion_fields);
-        self.lazygit_failed_sessions.remove(&session_name);
-        self.lazygit_ready_sessions.insert(session_name.clone());
-        Some(session_name)
+        None
+    }
+
+    fn ensure_lazygit_session_for_selected_workspace(&mut self) -> Option<String> {
+        let workspace = self.state.selected_workspace()?.clone();
+        self.ensure_session_for_workspace(
+            SessionKind::Lazygit,
+            &workspace,
+            self.lazygit_command.clone(),
+            false,
+            false,
+        )
     }
 
     pub(super) fn ensure_workspace_shell_session_for_workspace(
@@ -143,115 +304,13 @@ impl GroveApp {
             return None;
         }
 
-        let session_name = shell_session_name_for_workspace(&workspace);
-        if self.shell_ready_sessions.contains(&session_name) {
-            return Some(session_name);
-        }
-        if self.shell_failed_sessions.contains(&session_name) {
-            if !retry_failed {
-                return None;
-            }
-            self.shell_failed_sessions.remove(&session_name);
-        }
-        if self.shell_launch_in_flight.contains(&session_name) {
-            return None;
-        }
-
-        let (capture_cols, capture_rows) = self.capture_dimensions();
-        let launch_request = shell_launch_request_for_workspace(
+        self.ensure_session_for_workspace(
+            SessionKind::WorkspaceShell,
             &workspace,
-            session_name.clone(),
             String::new(),
-            Some(capture_cols),
-            Some(capture_rows),
-        );
-        let async_launch = self.tmux_input.supports_background_launch();
-        self.log_event_with_fields(
-            "workspace_shell_launch",
-            "started",
-            [
-                ("session".to_string(), Value::from(session_name.clone())),
-                ("workspace".to_string(), Value::from(workspace.name.clone())),
-                (
-                    "multiplexer".to_string(),
-                    Value::from(self.multiplexer.label()),
-                ),
-                ("async".to_string(), Value::from(async_launch)),
-                ("capture_cols".to_string(), Value::from(capture_cols)),
-                ("capture_rows".to_string(), Value::from(capture_rows)),
-            ],
-        );
-
-        if async_launch {
-            self.shell_launch_in_flight.insert(session_name.clone());
-            let completion_session = session_name.clone();
-            self.queue_cmd(Cmd::task(move || {
-                let started_at = Instant::now();
-                let (_, result) = execute_shell_launch_request_for_mode(
-                    &launch_request,
-                    CommandExecutionMode::Process,
-                );
-                let duration_ms =
-                    GroveApp::duration_millis(Instant::now().saturating_duration_since(started_at));
-                Msg::WorkspaceShellLaunchCompleted(WorkspaceShellLaunchCompletion {
-                    session_name: completion_session,
-                    duration_ms,
-                    result,
-                })
-            }));
-            return None;
-        }
-
-        let launch_started_at = Instant::now();
-        let (_, launch_result) = execute_shell_launch_request_for_mode(
-            &launch_request,
-            CommandExecutionMode::Delegating(&mut |command| self.execute_tmux_command(command)),
-        );
-        let duration_ms =
-            Self::duration_millis(Instant::now().saturating_duration_since(launch_started_at));
-        let launch_succeeded = launch_result.is_ok();
-        let mut completion_fields = vec![
-            ("session".to_string(), Value::from(session_name.clone())),
-            ("workspace".to_string(), Value::from(workspace.name)),
-            (
-                "multiplexer".to_string(),
-                Value::from(self.multiplexer.label()),
-            ),
-            ("async".to_string(), Value::from(false)),
-            ("duration_ms".to_string(), Value::from(duration_ms)),
-            ("ok".to_string(), Value::from(launch_succeeded)),
-        ];
-
-        if let Err(error) = launch_result {
-            if tmux_launch_error_indicates_duplicate_session(&error) {
-                completion_fields.push(("ok".to_string(), Value::from(true)));
-                completion_fields.push(("reused_existing_session".to_string(), Value::from(true)));
-                completion_fields.push(("error".to_string(), Value::from(error)));
-                self.log_event_with_fields(
-                    "workspace_shell_launch",
-                    "completed",
-                    completion_fields,
-                );
-                self.last_tmux_error = None;
-                self.shell_failed_sessions.remove(&session_name);
-                self.shell_ready_sessions.insert(session_name.clone());
-                return Some(session_name);
-            }
-
-            completion_fields.push(("error".to_string(), Value::from(error.clone())));
-            self.log_event_with_fields("workspace_shell_launch", "completed", completion_fields);
-            self.last_tmux_error = Some(error.clone());
-            self.log_tmux_error(error);
-            self.show_toast("workspace shell launch failed", true);
-            self.shell_ready_sessions.remove(&session_name);
-            self.shell_failed_sessions.insert(session_name);
-            return None;
-        }
-
-        self.log_event_with_fields("workspace_shell_launch", "completed", completion_fields);
-        self.shell_failed_sessions.remove(&session_name);
-        self.shell_ready_sessions.insert(session_name.clone());
-        Some(session_name)
+            retry_failed,
+            true,
+        )
     }
 
     pub(super) fn ensure_workspace_shell_session_for_selected_workspace(
@@ -279,7 +338,7 @@ impl GroveApp {
         }
 
         let session_name = shell_session_name_for_workspace(workspace);
-        if self.shell_ready_sessions.contains(&session_name) {
+        if self.shell_sessions.is_ready(&session_name) {
             return Some(session_name);
         }
 
@@ -290,7 +349,7 @@ impl GroveApp {
         let workspace = self.state.selected_workspace()?;
 
         let session_name = shell_session_name_for_workspace(workspace);
-        if self.shell_ready_sessions.contains(&session_name) {
+        if self.shell_sessions.is_ready(&session_name) {
             return Some(session_name);
         }
 
@@ -366,64 +425,18 @@ impl GroveApp {
             duration_ms,
             result,
         } = completion;
-        self.lazygit_launch_in_flight.remove(&session_name);
-
-        let mut completion_fields = vec![
-            ("session".to_string(), Value::from(session_name.clone())),
-            (
-                "multiplexer".to_string(),
-                Value::from(self.multiplexer.label()),
-            ),
-            ("async".to_string(), Value::from(true)),
-            ("duration_ms".to_string(), Value::from(duration_ms)),
-            ("ok".to_string(), Value::from(result.is_ok())),
-        ];
-
-        match result {
-            Ok(()) => {
-                self.last_tmux_error = None;
-                self.lazygit_failed_sessions.remove(&session_name);
-                self.lazygit_ready_sessions.insert(session_name.clone());
-                self.log_event_with_fields("lazygit_launch", "completed", completion_fields);
-
-                let selected_session_matches =
-                    self.state.selected_workspace().is_some_and(|workspace| {
-                        git_session_name_for_workspace(workspace) == session_name
-                    });
-                if selected_session_matches && self.preview_tab == PreviewTab::Git {
-                    self.poll_preview();
-                }
-            }
-            Err(error) => {
-                if tmux_launch_error_indicates_duplicate_session(&error) {
-                    completion_fields.push(("ok".to_string(), Value::from(true)));
-                    completion_fields
-                        .push(("reused_existing_session".to_string(), Value::from(true)));
-                    completion_fields.push(("error".to_string(), Value::from(error)));
-                    self.last_tmux_error = None;
-                    self.lazygit_failed_sessions.remove(&session_name);
-                    self.lazygit_ready_sessions.insert(session_name.clone());
-                    self.log_event_with_fields("lazygit_launch", "completed", completion_fields);
-
-                    let selected_session_matches =
-                        self.state.selected_workspace().is_some_and(|workspace| {
-                            git_session_name_for_workspace(workspace) == session_name
-                        });
-                    if selected_session_matches && self.preview_tab == PreviewTab::Git {
-                        self.poll_preview();
-                    }
-                    return;
-                }
-
-                completion_fields.push(("error".to_string(), Value::from(error.clone())));
-                self.log_event_with_fields("lazygit_launch", "completed", completion_fields);
-                self.last_tmux_error = Some(error.clone());
-                self.log_tmux_error(error);
-                self.lazygit_ready_sessions.remove(&session_name);
-                self.lazygit_failed_sessions.insert(session_name);
-                self.show_toast("lazygit launch failed", true);
-            }
-        }
+        self.complete_session_launch(
+            SessionKind::Lazygit,
+            session_name,
+            duration_ms,
+            result,
+            SessionLaunchCompletionContext {
+                async_launch: true,
+                workspace_name: None,
+                log_tmux_error_on_failure: true,
+                poll_preview_on_ready: true,
+            },
+        );
     }
 
     pub(super) fn handle_workspace_shell_launch_completed(
@@ -435,80 +448,18 @@ impl GroveApp {
             duration_ms,
             result,
         } = completion;
-        self.shell_launch_in_flight.remove(&session_name);
-
-        let mut completion_fields = vec![
-            ("session".to_string(), Value::from(session_name.clone())),
-            (
-                "multiplexer".to_string(),
-                Value::from(self.multiplexer.label()),
-            ),
-            ("async".to_string(), Value::from(true)),
-            ("duration_ms".to_string(), Value::from(duration_ms)),
-            ("ok".to_string(), Value::from(result.is_ok())),
-        ];
-
-        match result {
-            Ok(()) => {
-                self.last_tmux_error = None;
-                self.shell_failed_sessions.remove(&session_name);
-                self.shell_ready_sessions.insert(session_name.clone());
-                self.log_event_with_fields(
-                    "workspace_shell_launch",
-                    "completed",
-                    completion_fields,
-                );
-
-                let selected_session_matches =
-                    self.state.selected_workspace().is_some_and(|workspace| {
-                        shell_session_name_for_workspace(workspace) == session_name
-                    });
-                if selected_session_matches
-                    && matches!(self.preview_tab, PreviewTab::Agent | PreviewTab::Shell)
-                {
-                    self.poll_preview();
-                }
-            }
-            Err(error) => {
-                if tmux_launch_error_indicates_duplicate_session(&error) {
-                    completion_fields.push(("ok".to_string(), Value::from(true)));
-                    completion_fields
-                        .push(("reused_existing_session".to_string(), Value::from(true)));
-                    completion_fields.push(("error".to_string(), Value::from(error)));
-                    self.last_tmux_error = None;
-                    self.shell_failed_sessions.remove(&session_name);
-                    self.shell_ready_sessions.insert(session_name.clone());
-                    self.log_event_with_fields(
-                        "workspace_shell_launch",
-                        "completed",
-                        completion_fields,
-                    );
-
-                    let selected_session_matches =
-                        self.state.selected_workspace().is_some_and(|workspace| {
-                            shell_session_name_for_workspace(workspace) == session_name
-                        });
-                    if selected_session_matches
-                        && matches!(self.preview_tab, PreviewTab::Agent | PreviewTab::Shell)
-                    {
-                        self.poll_preview();
-                    }
-                    return;
-                }
-
-                completion_fields.push(("error".to_string(), Value::from(error.clone())));
-                self.log_event_with_fields(
-                    "workspace_shell_launch",
-                    "completed",
-                    completion_fields,
-                );
-                self.last_tmux_error = Some(error.clone());
-                self.log_tmux_error(error);
-                self.shell_ready_sessions.remove(&session_name);
-                self.shell_failed_sessions.insert(session_name);
-                self.show_toast("workspace shell launch failed", true);
-            }
-        }
+        self.complete_session_launch(
+            SessionKind::WorkspaceShell,
+            session_name,
+            duration_ms,
+            result,
+            SessionLaunchCompletionContext {
+                async_launch: true,
+                workspace_name: None,
+                log_tmux_error_on_failure: true,
+                poll_preview_on_ready: true,
+            },
+        );
     }
 
     pub(super) fn interactive_target_session(&self) -> Option<String> {

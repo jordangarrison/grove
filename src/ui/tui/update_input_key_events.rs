@@ -97,7 +97,7 @@ impl GroveApp {
             && let Some(workspace) = self.state.selected_workspace()
         {
             let session_name = shell_session_name_for_workspace(workspace);
-            self.shell_failed_sessions.remove(&session_name);
+            self.shell_sessions.retry_failed(&session_name);
         }
         if !self.enter_interactive(Instant::now()) {
             reduce(&mut self.state, Action::EnterPreviewMode);

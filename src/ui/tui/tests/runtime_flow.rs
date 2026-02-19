@@ -134,7 +134,8 @@ fn prepare_live_preview_session_launches_shell_from_list_mode() {
     );
     assert!(live_preview.is_some_and(|target| target.include_escape_sequences));
     assert!(
-        app.shell_ready_sessions
+        app.shell_sessions
+            .ready
             .contains("grove-ws-feature-a-shell")
     );
     assert!(commands.borrow().iter().any(|command| {
@@ -1186,7 +1187,8 @@ fn refresh_workspace_completion_autostarts_agent_for_new_workspace() {
     assert!(app.pending_auto_start_workspace.is_none());
     assert!(app.launch_skip_permissions);
     assert!(
-        !app.shell_launch_in_flight
+        !app.shell_sessions
+            .in_flight
             .contains("grove-ws-feature-a-shell")
     );
 }
@@ -1206,7 +1208,8 @@ fn refresh_workspace_completion_auto_launches_shell_for_new_workspace() {
 
     assert!(cmd_contains_task(&cmd));
     assert!(
-        app.shell_launch_in_flight
+        app.shell_sessions
+            .in_flight
             .contains("grove-ws-feature-a-shell")
     );
     assert!(app.pending_auto_launch_shell_workspace_path.is_none());
@@ -5938,7 +5941,11 @@ fn git_tab_queues_async_lazygit_launch_when_supported() {
 
     assert_eq!(app.preview_tab, PreviewTab::Git);
     assert!(cmd_contains_task(&cmd));
-    assert!(app.lazygit_launch_in_flight.contains("grove-ws-grove-git"));
+    assert!(
+        app.lazygit_sessions
+            .in_flight
+            .contains("grove-ws-grove-git")
+    );
 }
 
 #[test]
@@ -5994,7 +6001,8 @@ fn git_tab_launches_lazygit_with_dedicated_tmux_session() {
 #[test]
 fn lazygit_launch_completion_success_marks_session_ready() {
     let mut app = fixture_app();
-    app.lazygit_launch_in_flight
+    app.lazygit_sessions
+        .in_flight
         .insert("grove-ws-grove-git".to_string());
 
     ftui::Model::update(
@@ -6006,15 +6014,20 @@ fn lazygit_launch_completion_success_marks_session_ready() {
         }),
     );
 
-    assert!(app.lazygit_ready_sessions.contains("grove-ws-grove-git"));
-    assert!(!app.lazygit_launch_in_flight.contains("grove-ws-grove-git"));
-    assert!(!app.lazygit_failed_sessions.contains("grove-ws-grove-git"));
+    assert!(app.lazygit_sessions.ready.contains("grove-ws-grove-git"));
+    assert!(
+        !app.lazygit_sessions
+            .in_flight
+            .contains("grove-ws-grove-git")
+    );
+    assert!(!app.lazygit_sessions.failed.contains("grove-ws-grove-git"));
 }
 
 #[test]
 fn lazygit_launch_completion_failure_marks_session_failed() {
     let mut app = fixture_app();
-    app.lazygit_launch_in_flight
+    app.lazygit_sessions
+        .in_flight
         .insert("grove-ws-grove-git".to_string());
 
     ftui::Model::update(
@@ -6026,15 +6039,20 @@ fn lazygit_launch_completion_failure_marks_session_failed() {
         }),
     );
 
-    assert!(app.lazygit_failed_sessions.contains("grove-ws-grove-git"));
-    assert!(!app.lazygit_launch_in_flight.contains("grove-ws-grove-git"));
+    assert!(app.lazygit_sessions.failed.contains("grove-ws-grove-git"));
+    assert!(
+        !app.lazygit_sessions
+            .in_flight
+            .contains("grove-ws-grove-git")
+    );
     assert!(app.status_bar_line().contains("lazygit launch failed"));
 }
 
 #[test]
 fn lazygit_launch_completion_duplicate_session_marks_session_ready() {
     let mut app = fixture_app();
-    app.lazygit_launch_in_flight
+    app.lazygit_sessions
+        .in_flight
         .insert("grove-ws-grove-git".to_string());
 
     ftui::Model::update(
@@ -6048,16 +6066,21 @@ fn lazygit_launch_completion_duplicate_session_marks_session_ready() {
         }),
     );
 
-    assert!(app.lazygit_ready_sessions.contains("grove-ws-grove-git"));
-    assert!(!app.lazygit_launch_in_flight.contains("grove-ws-grove-git"));
-    assert!(!app.lazygit_failed_sessions.contains("grove-ws-grove-git"));
+    assert!(app.lazygit_sessions.ready.contains("grove-ws-grove-git"));
+    assert!(
+        !app.lazygit_sessions
+            .in_flight
+            .contains("grove-ws-grove-git")
+    );
+    assert!(!app.lazygit_sessions.failed.contains("grove-ws-grove-git"));
     assert!(!app.status_bar_line().contains("lazygit launch failed"));
 }
 
 #[test]
 fn workspace_shell_launch_completion_success_marks_session_ready() {
     let mut app = fixture_app();
-    app.shell_launch_in_flight
+    app.shell_sessions
+        .in_flight
         .insert("grove-ws-feature-a-shell".to_string());
 
     ftui::Model::update(
@@ -6070,15 +6093,18 @@ fn workspace_shell_launch_completion_success_marks_session_ready() {
     );
 
     assert!(
-        app.shell_ready_sessions
+        app.shell_sessions
+            .ready
             .contains("grove-ws-feature-a-shell")
     );
     assert!(
-        !app.shell_launch_in_flight
+        !app.shell_sessions
+            .in_flight
             .contains("grove-ws-feature-a-shell")
     );
     assert!(
-        !app.shell_failed_sessions
+        !app.shell_sessions
+            .failed
             .contains("grove-ws-feature-a-shell")
     );
 }
@@ -6090,7 +6116,8 @@ fn workspace_shell_launch_completion_success_polls_from_list_mode() {
     app.state.mode = UiMode::List;
     app.state.focus = PaneFocus::WorkspaceList;
     app.preview_tab = PreviewTab::Agent;
-    app.shell_launch_in_flight
+    app.shell_sessions
+        .in_flight
         .insert("grove-ws-feature-a-shell".to_string());
 
     let cmd = ftui::Model::update(
@@ -6108,7 +6135,8 @@ fn workspace_shell_launch_completion_success_polls_from_list_mode() {
 #[test]
 fn workspace_shell_launch_completion_duplicate_session_marks_session_ready() {
     let mut app = fixture_app();
-    app.shell_launch_in_flight
+    app.shell_sessions
+        .in_flight
         .insert("grove-ws-feature-a-shell".to_string());
 
     ftui::Model::update(
@@ -6123,15 +6151,18 @@ fn workspace_shell_launch_completion_duplicate_session_marks_session_ready() {
     );
 
     assert!(
-        app.shell_ready_sessions
+        app.shell_sessions
+            .ready
             .contains("grove-ws-feature-a-shell")
     );
     assert!(
-        !app.shell_launch_in_flight
+        !app.shell_sessions
+            .in_flight
             .contains("grove-ws-feature-a-shell")
     );
     assert!(
-        !app.shell_failed_sessions
+        !app.shell_sessions
+            .failed
             .contains("grove-ws-feature-a-shell")
     );
     assert!(

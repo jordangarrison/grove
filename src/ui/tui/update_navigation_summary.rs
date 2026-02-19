@@ -7,10 +7,10 @@ impl GroveApp {
             .map(|workspace| {
                 if self.preview_tab == PreviewTab::Shell {
                     let shell_session_name = shell_session_name_for_workspace(workspace);
-                    if self.shell_launch_in_flight.contains(&shell_session_name) {
+                    if self.shell_sessions.is_in_flight(&shell_session_name) {
                         return format!("Starting shell session for {}...", workspace.name);
                     }
-                    if self.shell_failed_sessions.contains(&shell_session_name) {
+                    if self.shell_sessions.is_failed(&shell_session_name) {
                         return format!(
                             "Shell session failed for {}.\nPress Enter to retry session launch.",
                             workspace.name
@@ -29,10 +29,10 @@ impl GroveApp {
                 }
 
                 let shell_session_name = shell_session_name_for_workspace(workspace);
-                if self.shell_launch_in_flight.contains(&shell_session_name) {
+                if self.shell_sessions.is_in_flight(&shell_session_name) {
                     return format!("Starting shell session for {}...", workspace.name);
                 }
-                if self.shell_failed_sessions.contains(&shell_session_name) {
+                if self.shell_sessions.is_failed(&shell_session_name) {
                     return format!(
                         "Shell session failed for {}.\nPress Enter to retry session launch.",
                         workspace.name
