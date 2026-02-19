@@ -78,8 +78,8 @@ impl GroveApp {
             .with_data("y", Value::from(y))
             .with_data("mapped", Value::from(point.is_some()))
             .with_data("interactive", Value::from(self.interactive.is_some()))
-            .with_data("mode", Value::from(Self::mode_name(self.state.mode)))
-            .with_data("focus", Value::from(Self::focus_name(self.state.focus)))
+            .with_data("mode", Value::from(self.state.mode.name()))
+            .with_data("focus", Value::from(self.state.focus.name()))
             .with_data(
                 "preview_offset",
                 Value::from(usize_to_u64(self.preview.offset)),

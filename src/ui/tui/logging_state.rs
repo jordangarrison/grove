@@ -10,37 +10,15 @@ pub(super) struct TransitionSnapshot {
 }
 
 impl GroveApp {
-    fn focus_parts(focus: PaneFocus) -> (&'static str, &'static str) {
-        match focus {
-            PaneFocus::WorkspaceList => ("WorkspaceList", "workspace_list"),
-            PaneFocus::Preview => ("Preview", "preview"),
-        }
-    }
-
-    fn mode_parts(mode: UiMode) -> (&'static str, &'static str) {
-        match mode {
-            UiMode::List => ("List", "list"),
-            UiMode::Preview => ("Preview", "preview"),
-        }
-    }
-
     pub(super) fn mode_label(&self) -> &'static str {
         if self.interactive.is_some() {
             return "Interactive";
         }
-        Self::mode_parts(self.state.mode).0
+        self.state.mode.label()
     }
 
     pub(super) fn focus_label(&self) -> &'static str {
-        Self::focus_parts(self.state.focus).0
-    }
-
-    pub(super) fn focus_name(focus: PaneFocus) -> &'static str {
-        Self::focus_parts(focus).1
-    }
-
-    pub(super) fn mode_name(mode: UiMode) -> &'static str {
-        Self::mode_parts(mode).1
+        self.state.focus.label()
     }
 
     pub(super) fn hit_region_name(region: HitRegion) -> &'static str {
@@ -123,17 +101,14 @@ impl GroveApp {
             self.log_event_with_fields(
                 "state_change",
                 "focus_changed",
-                [(
-                    "focus".to_string(),
-                    Value::from(Self::focus_name(after.focus)),
-                )],
+                [("focus".to_string(), Value::from(after.focus.name()))],
             );
         }
         if after.mode != before.mode {
             self.log_event_with_fields(
                 "mode_change",
                 "mode_changed",
-                [("mode".to_string(), Value::from(Self::mode_name(after.mode)))],
+                [("mode".to_string(), Value::from(after.mode.name()))],
             );
         }
         match (&before.interactive_session, &after.interactive_session) {

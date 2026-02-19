@@ -160,8 +160,8 @@ impl GroveApp {
             .with_data("modal_open", Value::from(self.modal_open()))
             .with_data("interactive", Value::from(self.interactive.is_some()))
             .with_data("divider_drag_active", Value::from(self.divider_drag_active))
-            .with_data("focus", Value::from(Self::focus_name(self.state.focus)))
-            .with_data("mode", Value::from(Self::mode_name(self.state.mode)));
+            .with_data("focus", Value::from(self.state.focus.name()))
+            .with_data("mode", Value::from(self.state.mode.name()));
         if let Some(row_data) = row_data {
             event = event.with_data("row_data", Value::from(row_data));
         }

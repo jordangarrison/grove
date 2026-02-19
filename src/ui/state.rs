@@ -6,10 +6,42 @@ pub enum PaneFocus {
     Preview,
 }
 
+impl PaneFocus {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::WorkspaceList => "WorkspaceList",
+            Self::Preview => "Preview",
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::WorkspaceList => "workspace_list",
+            Self::Preview => "preview",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UiMode {
     List,
     Preview,
+}
+
+impl UiMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::List => "List",
+            Self::Preview => "Preview",
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::List => "list",
+            Self::Preview => "preview",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
