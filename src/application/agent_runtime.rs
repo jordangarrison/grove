@@ -6,7 +6,7 @@ use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
@@ -860,8 +860,11 @@ pub(crate) fn detect_waiting_prompt(output: &str) -> Option<String> {
     if let Some(last_non_empty) = tail_lines.iter().rev().find(|line| !line.trim().is_empty()) {
         let trimmed = last_non_empty.trim_start();
         let prefix = trimmed.chars().next()?;
-        if matches!(prefix, '>' | '›' | '❯' | '»') {
-            return Some(trimmed.to_string());
+        if matches!(prefix, '›' | '❯' | '»') {
+            let without_prefix = trimmed.trim_start_matches(['›', '❯', '»']).trim_start();
+            if without_prefix.to_ascii_lowercase().starts_with("try ") {
+                return Some(trimmed.to_string());
+            }
         }
     }
 
@@ -902,6 +905,17 @@ pub(crate) fn detect_status(
         || tail_lower.contains("reasoning about")
     {
         return WorkspaceStatus::Thinking;
+    }
+
+    if lines[start..].iter().any(|line| {
+        let normalized = line
+            .trim()
+            .trim_start_matches(['•', '-', '*', '·', '✓', '✔', '☑'])
+            .trim()
+            .to_ascii_lowercase();
+        normalized == "done" || normalized == "done."
+    }) {
+        return WorkspaceStatus::Done;
     }
 
     if DONE_PATTERNS
@@ -1097,6 +1111,25 @@ fn detect_agent_session_status_in_home(
     }
 }
 
+pub(crate) fn latest_assistant_attention_marker(
+    agent: AgentType,
+    workspace_path: &Path,
+) -> Option<String> {
+    let home_dir = dirs::home_dir()?;
+    if !workspace_path.exists() {
+        return None;
+    }
+
+    match agent {
+        AgentType::Claude => {
+            latest_claude_assistant_attention_marker_in_home(workspace_path, &home_dir)
+        }
+        AgentType::Codex => {
+            latest_codex_assistant_attention_marker_in_home(workspace_path, &home_dir)
+        }
+    }
+}
+
 fn detect_claude_session_status_in_home(
     workspace_path: &Path,
     home_dir: &Path,
@@ -1143,6 +1176,42 @@ fn detect_codex_session_status_in_home(
     }
 
     get_codex_last_message_status_cached(&session_file)
+}
+
+fn latest_claude_assistant_attention_marker_in_home(
+    workspace_path: &Path,
+    home_dir: &Path,
+) -> Option<String> {
+    let workspace_path = absolute_path(workspace_path)?;
+    let project_dir_name = claude_project_dir_name(&workspace_path);
+    let project_dir = home_dir
+        .join(".claude")
+        .join("projects")
+        .join(project_dir_name);
+    let session_files = find_recent_jsonl_files(&project_dir, Some("agent-"))?;
+    for session_file in session_files {
+        let Some((is_assistant, marker)) =
+            get_last_message_marker_jsonl(&session_file, "type", "user", "assistant")
+        else {
+            continue;
+        };
+        if is_assistant {
+            return Some(marker);
+        }
+        return None;
+    }
+
+    None
+}
+
+fn latest_codex_assistant_attention_marker_in_home(
+    workspace_path: &Path,
+    home_dir: &Path,
+) -> Option<String> {
+    let sessions_dir = home_dir.join(".codex").join("sessions");
+    let session_file = find_codex_session_for_path_cached(&sessions_dir, workspace_path)?;
+    let (is_assistant, marker) = get_codex_last_message_marker(&session_file)?;
+    is_assistant.then_some(marker)
 }
 
 fn absolute_path(path: &Path) -> Option<PathBuf> {
@@ -1270,6 +1339,48 @@ fn get_last_message_status_jsonl(
     None
 }
 
+fn marker_for_session_line(path: &Path, line: &str) -> Option<String> {
+    let modified = fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok()?;
+    let modified_ms = modified.duration_since(UNIX_EPOCH).ok()?.as_millis();
+    let mut hasher = DefaultHasher::new();
+    line.hash(&mut hasher);
+    let line_hash = hasher.finish();
+    Some(format!("{}:{modified_ms}:{line_hash}", path.display()))
+}
+
+fn get_last_message_marker_jsonl(
+    path: &Path,
+    type_field: &str,
+    user_value: &str,
+    assistant_value: &str,
+) -> Option<(bool, String)> {
+    let lines = read_tail_lines(path, SESSION_STATUS_TAIL_BYTES)?;
+    for line in lines.iter().rev() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let value: serde_json::Value = match serde_json::from_str(trimmed) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        let Some(message_type) = value.get(type_field).and_then(|value| value.as_str()) else {
+            continue;
+        };
+        if message_type == user_value {
+            let marker = marker_for_session_line(path, trimmed)?;
+            return Some((false, marker));
+        }
+        if message_type == assistant_value {
+            let marker = marker_for_session_line(path, trimmed)?;
+            return Some((true, marker));
+        }
+    }
+    None
+}
+
 fn find_codex_session_for_path(sessions_dir: &Path, workspace_path: &Path) -> Option<PathBuf> {
     let mut pending = vec![sessions_dir.to_path_buf()];
     let mut best_path: Option<PathBuf> = None;
@@ -1386,6 +1497,48 @@ fn get_codex_last_message_status(path: &Path) -> Option<WorkspaceStatus> {
             _ => continue,
         }
     }
+    None
+}
+
+fn get_codex_last_message_marker(path: &Path) -> Option<(bool, String)> {
+    let lines = read_tail_lines(path, SESSION_STATUS_TAIL_BYTES)?;
+    for line in lines.iter().rev() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let value: serde_json::Value = match serde_json::from_str(trimmed) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        if value.get("type").and_then(|value| value.as_str()) != Some("response_item") {
+            continue;
+        }
+        if value
+            .get("payload")
+            .and_then(|payload| payload.get("type"))
+            .and_then(|value| value.as_str())
+            != Some("message")
+        {
+            continue;
+        }
+        match value
+            .get("payload")
+            .and_then(|payload| payload.get("role"))
+            .and_then(|value| value.as_str())
+        {
+            Some("assistant") => {
+                let marker = marker_for_session_line(path, trimmed)?;
+                return Some((true, marker));
+            }
+            Some("user") => {
+                let marker = marker_for_session_line(path, trimmed)?;
+                return Some((false, marker));
+            }
+            _ => continue,
+        }
+    }
+
     None
 }
 

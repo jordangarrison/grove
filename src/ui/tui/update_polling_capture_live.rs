@@ -34,9 +34,12 @@ impl GroveApp {
                     let workspace_path = self.state.workspaces[index].path.clone();
                     let workspace_agent = self.state.workspaces[index].agent;
                     let workspace_is_main = self.state.workspaces[index].is_main;
-                    self.capture_changed_cleaned_for_workspace(&workspace_path, output.as_str());
+                    let previous_status = self.state.workspaces[index].status;
+                    let previous_orphaned = self.state.workspaces[index].is_orphaned;
+                    let (_, cleaned_output) = self
+                        .capture_changed_cleaned_for_workspace(&workspace_path, output.as_str());
                     let resolved_status = detect_status_with_session_override(
-                        output.as_str(),
+                        cleaned_output.as_str(),
                         SessionActivity::Active,
                         workspace_is_main,
                         true,
@@ -47,6 +50,13 @@ impl GroveApp {
                     let workspace = &mut self.state.workspaces[index];
                     workspace.status = resolved_status;
                     workspace.is_orphaned = false;
+                    self.track_workspace_status_transition(
+                        &workspace_path,
+                        previous_status,
+                        resolved_status,
+                        previous_orphaned,
+                        false,
+                    );
                 }
                 self.last_tmux_error = None;
                 self.event_log.log(
@@ -175,16 +185,33 @@ impl GroveApp {
                 if capture_error_indicates_missing_session {
                     self.lazygit_sessions.remove_ready(session_name);
                     self.shell_sessions.remove_ready(session_name);
-                    if let Some(workspace) = self.state.selected_workspace_mut()
-                        && session_name_for_workspace_ref(workspace) == session_name
-                    {
-                        let workspace_path = workspace.path.clone();
-                        workspace.status = if workspace.is_main {
+                    let selected_workspace_index = self
+                        .state
+                        .selected_workspace()
+                        .filter(|workspace| {
+                            session_name_for_workspace_ref(workspace) == session_name
+                        })
+                        .map(|_| self.state.selected_index);
+                    if let Some(index) = selected_workspace_index {
+                        let workspace_path = self.state.workspaces[index].path.clone();
+                        let previous_status = self.state.workspaces[index].status;
+                        let previous_orphaned = self.state.workspaces[index].is_orphaned;
+                        let next_status = if self.state.workspaces[index].is_main {
                             WorkspaceStatus::Main
                         } else {
                             WorkspaceStatus::Idle
                         };
-                        workspace.is_orphaned = !workspace.is_main;
+                        let next_orphaned = !self.state.workspaces[index].is_main;
+                        let workspace = &mut self.state.workspaces[index];
+                        workspace.status = next_status;
+                        workspace.is_orphaned = next_orphaned;
+                        self.track_workspace_status_transition(
+                            &workspace_path,
+                            previous_status,
+                            next_status,
+                            previous_orphaned,
+                            next_orphaned,
+                        );
                         self.clear_status_tracking_for_workspace_path(&workspace_path);
                     }
                     if self

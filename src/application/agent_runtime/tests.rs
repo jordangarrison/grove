@@ -977,6 +977,18 @@ fn waiting_prompt_detects_unicode_prompt_prefix() {
 }
 
 #[test]
+fn waiting_prompt_does_not_treat_plain_shell_angle_prompt_as_waiting() {
+    let output = "build finished\n> \n";
+    assert_eq!(detect_waiting_prompt(output), None);
+}
+
+#[test]
+fn waiting_prompt_does_not_treat_generic_skills_hint_as_waiting() {
+    let output = "Done.\n› Use /skills to list available skills\n";
+    assert_eq!(detect_waiting_prompt(output), None);
+}
+
+#[test]
 fn claude_session_file_marks_waiting_when_last_message_is_assistant() {
     let root = unique_test_dir("grove-claude-session");
     let home = root.join("home");
@@ -1033,6 +1045,57 @@ fn codex_session_file_marks_waiting_when_last_message_is_assistant() {
         Duration::from_secs(0),
     );
     assert_eq!(status, Some(WorkspaceStatus::Waiting));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn claude_attention_marker_exists_when_last_message_is_assistant() {
+    let root = unique_test_dir("grove-claude-attention-marker");
+    let home = root.join("home");
+    let workspace_path = root.join("ws").join("feature-alpha");
+    fs::create_dir_all(&home).expect("home directory should exist");
+    fs::create_dir_all(&workspace_path).expect("workspace directory should exist");
+
+    let project_dir_name = super::claude_project_dir_name(&workspace_path);
+    let project_dir = home.join(".claude").join("projects").join(project_dir_name);
+    fs::create_dir_all(&project_dir).expect("project directory should exist");
+
+    let session_file = project_dir.join("session-1.jsonl");
+    fs::write(
+        &session_file,
+        "{\"type\":\"system\"}\n{\"type\":\"assistant\"}\n",
+    )
+    .expect("session file should be written");
+
+    let marker = super::latest_claude_assistant_attention_marker_in_home(&workspace_path, &home);
+    assert!(marker.is_some());
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn codex_attention_marker_exists_when_last_message_is_assistant() {
+    let root = unique_test_dir("grove-codex-attention-marker");
+    let home = root.join("home");
+    let workspace_path = root.join("ws").join("feature-beta");
+    fs::create_dir_all(&home).expect("home directory should exist");
+    fs::create_dir_all(&workspace_path).expect("workspace directory should exist");
+
+    let sessions_dir = home.join(".codex").join("sessions").join("2026").join("02");
+    fs::create_dir_all(&sessions_dir).expect("sessions directory should exist");
+    let session_file = sessions_dir.join("rollout-1.jsonl");
+    fs::write(
+        &session_file,
+        format!(
+            "{{\"type\":\"session_meta\",\"payload\":{{\"cwd\":\"{}\"}}}}\n{{\"type\":\"response_item\",\"payload\":{{\"type\":\"message\",\"role\":\"assistant\"}}}}\n",
+            workspace_path.display()
+        ),
+    )
+    .expect("session file should be written");
+
+    let marker = super::latest_codex_assistant_attention_marker_in_home(&workspace_path, &home);
+    assert!(marker.is_some());
 
     let _ = fs::remove_dir_all(root);
 }
@@ -1137,6 +1200,27 @@ fn status_resolution_uses_recent_tail_and_waiting_prompt_before_error() {
     assert_eq!(
         detect_status("", SessionActivity::Idle, true, false, true),
         WorkspaceStatus::Main
+    );
+    assert_eq!(
+        detect_status(
+            "task output\n• Done.\n› Use /skills to list available skills\n",
+            SessionActivity::Active,
+            false,
+            true,
+            true
+        ),
+        WorkspaceStatus::Done
+    );
+}
+
+#[test]
+fn status_resolution_detects_done_marker_beyond_last_twelve_lines() {
+    let mut lines = vec!["header".to_string(), "• Done.".to_string()];
+    lines.extend((0..20).map(|index| format!("detail line {index}")));
+    let output = lines.join("\n");
+    assert_eq!(
+        detect_status(&output, SessionActivity::Active, false, true, true),
+        WorkspaceStatus::Done
     );
 }
 

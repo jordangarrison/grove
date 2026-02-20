@@ -40,12 +40,12 @@ use crate::application::agent_runtime::{
     WorkspaceStatusTarget, detect_status_with_session_override, evaluate_capture_change,
     execute_command_with, execute_launch_request_with_result_for_mode,
     execute_shell_launch_request_for_mode, execute_stop_workspace_with_result_for_mode,
-    git_session_name_for_workspace, launch_request_for_workspace, poll_interval,
-    session_name_for_workspace_ref, shell_launch_request_for_workspace,
-    shell_session_name_for_workspace, tmux_capture_error_indicates_missing_session,
-    tmux_launch_error_indicates_duplicate_session, trimmed_nonempty,
-    workspace_can_enter_interactive, workspace_can_start_agent, workspace_can_stop_agent,
-    workspace_status_targets_for_polling_with_live_preview,
+    git_session_name_for_workspace, latest_assistant_attention_marker,
+    launch_request_for_workspace, poll_interval, session_name_for_workspace_ref,
+    shell_launch_request_for_workspace, shell_session_name_for_workspace,
+    tmux_capture_error_indicates_missing_session, tmux_launch_error_indicates_duplicate_session,
+    trimmed_nonempty, workspace_can_enter_interactive, workspace_can_start_agent,
+    workspace_can_stop_agent, workspace_status_targets_for_polling_with_live_preview,
 };
 #[cfg(test)]
 use crate::application::interactive::render_cursor_overlay;
@@ -63,7 +63,9 @@ use crate::application::workspace_lifecycle::{
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
-use crate::infrastructure::config::{GroveConfig, ProjectConfig, ProjectDefaults};
+use crate::infrastructure::config::{
+    GroveConfig, ProjectConfig, ProjectDefaults, WorkspaceAttentionAckConfig,
+};
 use crate::infrastructure::event_log::{Event as LogEvent, EventLogger};
 use crate::ui::mouse::{clamp_sidebar_ratio, ratio_from_drag};
 use crate::ui::state::{Action, AppState, PaneFocus, UiMode, reduce};
@@ -195,6 +197,11 @@ enum SessionKind {
     WorkspaceShell,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorkspaceAttention {
+    NeedsAttention,
+}
+
 #[derive(Debug, Default)]
 struct SessionTracker {
     ready: HashSet<String>,
@@ -275,6 +282,8 @@ struct GroveApp {
     output_changing: bool,
     agent_output_changing: bool,
     agent_activity_frames: VecDeque<bool>,
+    workspace_attention: HashMap<PathBuf, WorkspaceAttention>,
+    workspace_attention_ack_markers: HashMap<PathBuf, String>,
     workspace_status_digests: HashMap<String, OutputDigest>,
     workspace_output_changing: HashMap<String, bool>,
     lazygit_sessions: SessionTracker,

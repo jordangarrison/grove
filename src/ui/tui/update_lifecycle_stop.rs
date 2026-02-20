@@ -53,18 +53,29 @@ impl GroveApp {
                     self.interactive = None;
                 }
 
-                if let Some(workspace) = self
+                if let Some(workspace_index) = self
                     .state
                     .workspaces
-                    .iter_mut()
-                    .find(|workspace| workspace.path == completion.workspace_path)
+                    .iter()
+                    .position(|workspace| workspace.path == completion.workspace_path)
                 {
-                    workspace.status = if workspace.is_main {
+                    let previous_status = self.state.workspaces[workspace_index].status;
+                    let previous_orphaned = self.state.workspaces[workspace_index].is_orphaned;
+                    let next_status = if self.state.workspaces[workspace_index].is_main {
                         WorkspaceStatus::Main
                     } else {
                         WorkspaceStatus::Idle
                     };
+                    let workspace = &mut self.state.workspaces[workspace_index];
+                    workspace.status = next_status;
                     workspace.is_orphaned = false;
+                    self.track_workspace_status_transition(
+                        &completion.workspace_path,
+                        previous_status,
+                        next_status,
+                        previous_orphaned,
+                        false,
+                    );
                 }
                 self.clear_status_tracking_for_workspace_path(&completion.workspace_path);
                 self.clear_agent_activity_tracking();

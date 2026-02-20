@@ -5,7 +5,6 @@ use std::process::Command;
 use crate::infrastructure::config::{GroveConfig, ProjectConfig};
 use crate::infrastructure::paths::refer_to_same_location;
 use crate::infrastructure::process::stderr_trimmed;
-use crate::ui::mouse::clamp_sidebar_ratio;
 
 use super::*;
 
@@ -15,12 +14,6 @@ pub(super) struct AppDependencies {
     pub(super) config_path: PathBuf,
     pub(super) event_log: Box<dyn EventLogger>,
     pub(super) debug_record_start_ts: Option<u64>,
-}
-
-pub(super) fn load_sidebar_width_pct(config_path: &Path) -> u16 {
-    let config = crate::infrastructure::config::load_from_path(config_path)
-        .unwrap_or_else(|_| GroveConfig::default());
-    clamp_sidebar_ratio(config.sidebar_width_pct)
 }
 
 fn default_config_path() -> PathBuf {

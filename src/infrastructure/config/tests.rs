@@ -21,6 +21,7 @@ fn missing_config_uses_defaults() {
         GroveConfig {
             sidebar_width_pct: 33,
             projects: Vec::new(),
+            attention_acks: Vec::new(),
         }
     );
 }
@@ -42,6 +43,7 @@ fn save_and_load_round_trip() {
                 auto_run_setup_commands: true,
             },
         }],
+        attention_acks: Vec::new(),
     };
     save_to_path(&path, &config).expect("config should save");
 
@@ -75,6 +77,7 @@ fn load_project_without_defaults_uses_project_defaults_fallback() {
     let loaded = load_from_path(&path).expect("legacy project config should load");
     assert_eq!(loaded.projects.len(), 1);
     assert_eq!(loaded.sidebar_width_pct, 33);
+    assert_eq!(loaded.attention_acks, Vec::new());
     assert_eq!(loaded.projects[0].defaults.base_branch, "");
     assert_eq!(
         loaded.projects[0].defaults.setup_commands,

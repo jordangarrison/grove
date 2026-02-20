@@ -9,6 +9,8 @@ pub struct GroveConfig {
     pub sidebar_width_pct: u16,
     #[serde(default)]
     pub projects: Vec<ProjectConfig>,
+    #[serde(default)]
+    pub attention_acks: Vec<WorkspaceAttentionAckConfig>,
 }
 
 const fn default_sidebar_width_pct() -> u16 {
@@ -20,8 +22,15 @@ impl Default for GroveConfig {
         Self {
             sidebar_width_pct: default_sidebar_width_pct(),
             projects: Vec::new(),
+            attention_acks: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkspaceAttentionAckConfig {
+    pub workspace_path: PathBuf,
+    pub marker: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

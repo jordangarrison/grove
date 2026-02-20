@@ -67,12 +67,7 @@ impl GroveApp {
             return;
         }
 
-        let config = GroveConfig {
-            sidebar_width_pct: self.sidebar_width_pct,
-            projects: self.projects.clone(),
-        };
-        if let Err(error) = crate::infrastructure::config::save_to_path(&self.config_path, &config)
-        {
+        if let Err(error) = self.save_runtime_config() {
             self.show_toast(format!("settings save failed: {error}"), true);
             return;
         }

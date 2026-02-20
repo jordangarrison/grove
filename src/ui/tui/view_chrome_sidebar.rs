@@ -104,7 +104,14 @@ impl GroveApp {
                         workspace.status,
                         is_selected,
                     );
+                    let (attention_symbol, attention_color) = if is_working {
+                        (" ", theme.overlay0)
+                    } else {
+                        self.workspace_attention_indicator(workspace.path.as_path())
+                            .unwrap_or((" ", theme.overlay0))
+                    };
                     let selected = if is_selected { "▸" } else { " " };
+                    let leading_prefix = format!("{selected} {attention_symbol} ");
                     let row_background = if is_selected {
                         if self.state.focus == PaneFocus::WorkspaceList && !self.modal_open() {
                             Some(theme.surface1)
@@ -142,6 +149,11 @@ impl GroveApp {
                     let agent_separator = " · ";
                     let mut row_spans = vec![
                         FtSpan::styled(format!("{selected} "), primary_style),
+                        FtSpan::styled(
+                            attention_symbol.to_string(),
+                            primary_style.fg(attention_color).bold(),
+                        ),
+                        FtSpan::styled(" ".to_string(), primary_style),
                         FtSpan::styled(workspace_name.clone(), workspace_label_style),
                     ];
                     if !branch_text.is_empty() {
@@ -172,7 +184,7 @@ impl GroveApp {
 
                     if is_working {
                         let primary_label_x = inner.x.saturating_add(
-                            u16::try_from(text_display_width("▸ ")).unwrap_or(u16::MAX),
+                            u16::try_from(text_display_width(&leading_prefix)).unwrap_or(u16::MAX),
                         );
                         animated_labels.push((
                             workspace_name.clone(),
@@ -180,14 +192,11 @@ impl GroveApp {
                             primary_label_x,
                             row_y,
                         ));
-                        let agent_prefix =
-                            format!("{workspace_name}{branch_text}{agent_separator}");
+                        let agent_prefix = format!(
+                            "{leading_prefix}{workspace_name}{branch_text}{agent_separator}"
+                        );
                         let secondary_label_x = inner.x.saturating_add(
-                            u16::try_from(
-                                text_display_width("▸ ")
-                                    .saturating_add(text_display_width(&agent_prefix)),
-                            )
-                            .unwrap_or(u16::MAX),
+                            u16::try_from(text_display_width(&agent_prefix)).unwrap_or(u16::MAX),
                         );
                         animated_labels.push((
                             workspace.agent.label().to_string(),

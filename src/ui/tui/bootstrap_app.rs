@@ -1,16 +1,18 @@
 use crate::infrastructure::adapters::BootstrapData;
 use crate::infrastructure::config::ProjectConfig;
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use super::bootstrap_config::{AppDependencies, load_runtime_config, load_sidebar_width_pct};
+use super::bootstrap_config::{AppDependencies, load_runtime_config};
 use super::bootstrap_discovery::bootstrap_data_for_projects;
 use super::*;
 #[cfg(test)]
 use crate::infrastructure::paths::refer_to_same_location;
+use crate::ui::mouse::clamp_sidebar_ratio;
 
 impl GroveApp {
     pub(super) fn new(event_log: Box<dyn EventLogger>, debug_record_start_ts: Option<u64>) -> Self {
@@ -91,7 +93,17 @@ impl GroveApp {
             event_log,
             debug_record_start_ts,
         } = dependencies;
-        let sidebar_width_pct = load_sidebar_width_pct(&config_path);
+        let persisted_config = crate::infrastructure::config::load_from_path(&config_path)
+            .unwrap_or_else(|_| GroveConfig::default());
+        let sidebar_width_pct = clamp_sidebar_ratio(persisted_config.sidebar_width_pct);
+        let workspace_attention_ack_markers = persisted_config
+            .attention_acks
+            .into_iter()
+            .filter_map(|entry| {
+                let marker = trimmed_nonempty(&entry.marker)?;
+                Some((entry.workspace_path, marker))
+            })
+            .collect::<HashMap<PathBuf, String>>();
         let mapper_config = KeybindingConfig::from_env().with_sequence_config(
             KeySequenceConfig::from_env()
                 .disable_sequences()
@@ -127,6 +139,8 @@ impl GroveApp {
             output_changing: false,
             agent_output_changing: false,
             agent_activity_frames: VecDeque::with_capacity(AGENT_ACTIVITY_WINDOW_FRAMES),
+            workspace_attention: HashMap::new(),
+            workspace_attention_ack_markers,
             workspace_status_digests: HashMap::new(),
             workspace_output_changing: HashMap::new(),
             lazygit_sessions: SessionTracker::default(),
@@ -176,6 +190,7 @@ impl GroveApp {
             stop_in_flight: false,
             deferred_cmds: Vec::new(),
         };
+        app.reconcile_workspace_attention_tracking();
         app.refresh_preview_summary();
         app
     }

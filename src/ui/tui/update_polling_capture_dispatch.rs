@@ -5,10 +5,6 @@ impl GroveApp {
         &self,
         live_preview: Option<&LivePreviewTarget>,
     ) -> Vec<WorkspaceStatusTarget> {
-        if live_preview.is_some() {
-            return Vec::new();
-        }
-
         workspace_status_targets_for_polling_with_live_preview(&self.state.workspaces, live_preview)
     }
 

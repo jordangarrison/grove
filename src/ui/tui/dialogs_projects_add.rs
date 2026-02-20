@@ -16,10 +16,12 @@ impl GroveApp {
         config_path: &Path,
         sidebar_width_pct: u16,
         projects: &[ProjectConfig],
+        attention_acks: &[WorkspaceAttentionAckConfig],
     ) -> Result<(), String> {
         let config = GroveConfig {
             sidebar_width_pct,
             projects: projects.to_vec(),
+            attention_acks: attention_acks.to_vec(),
         };
         crate::infrastructure::config::save_to_path(config_path, &config)
     }
@@ -29,6 +31,7 @@ impl GroveApp {
             &self.config_path,
             self.sidebar_width_pct,
             &self.projects,
+            &self.workspace_attention_acks_for_config(),
         )
     }
 
@@ -93,6 +96,7 @@ impl GroveApp {
                 &self.config_path,
                 self.sidebar_width_pct,
                 &updated_projects,
+                &self.workspace_attention_acks_for_config(),
             );
             self.apply_delete_project_completion(DeleteProjectCompletion {
                 project_name: project.name,
@@ -105,12 +109,14 @@ impl GroveApp {
 
         let config_path = self.config_path.clone();
         let sidebar_width_pct = self.sidebar_width_pct;
+        let attention_acks = self.workspace_attention_acks_for_config();
         self.project_delete_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
             let result = Self::save_projects_config_to_path(
                 &config_path,
                 sidebar_width_pct,
                 &updated_projects,
+                &attention_acks,
             );
             Msg::DeleteProjectCompleted(DeleteProjectCompletion {
                 project_name: project.name,

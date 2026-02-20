@@ -1,6 +1,24 @@
 use super::*;
 
 impl GroveApp {
+    fn workspace_attention_color(&self, attention: WorkspaceAttention) -> PackedRgba {
+        let theme = ui_theme();
+        match attention {
+            WorkspaceAttention::NeedsAttention => theme.yellow,
+        }
+    }
+
+    pub(super) fn workspace_attention_indicator(
+        &self,
+        workspace_path: &Path,
+    ) -> Option<(&'static str, PackedRgba)> {
+        let attention = self.workspace_attention(workspace_path)?;
+        let symbol = match attention {
+            WorkspaceAttention::NeedsAttention => "!",
+        };
+        Some((symbol, self.workspace_attention_color(attention)))
+    }
+
     pub(super) fn pane_border_style(&self, focused: bool) -> Style {
         let theme = ui_theme();
         if focused {

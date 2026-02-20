@@ -19,7 +19,7 @@ use super::{
     ProjectDefaultsDialogField, RefreshWorkspacesCompletion, SettingsDialogField,
     StartAgentCompletion, StartAgentConfigField, StartAgentConfigState, StopAgentCompletion,
     TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT,
-    WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, ansi_16_color,
+    WorkspaceAttention, WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, ansi_16_color,
     ansi_line_to_styled_line, parse_cursor_metadata, ui_theme, usize_to_u64,
 };
 use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
@@ -719,19 +719,22 @@ fn workspace_age_renders_in_preview_header_not_sidebar_row() {
     let expected_age = app.relative_age_label(app.state.workspaces[0].last_activity_unix_secs);
     let expected_age_prefix = expected_age.chars().take(2).collect::<String>();
 
-    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
+    let layout = GroveApp::view_layout_for_size(160, 24, app.sidebar_width_pct, false);
     let sidebar_x_start = layout.sidebar.x.saturating_add(1);
     let sidebar_x_end = layout.sidebar.right().saturating_sub(1);
     let preview_x_start = layout.preview.x.saturating_add(1);
     let preview_x_end = layout.preview.right().saturating_sub(1);
 
     with_rendered_frame(&app, 160, 24, |frame| {
-        let Some(sidebar_row) =
-            find_row_containing(frame, "▸ base", sidebar_x_start, sidebar_x_end)
+        let Some(sidebar_row) = find_row_containing(frame, "base", sidebar_x_start, sidebar_x_end)
         else {
             panic!("sidebar workspace row should be rendered");
         };
         let sidebar_text = row_text(frame, sidebar_row, sidebar_x_start, sidebar_x_end);
+        assert!(
+            sidebar_text.starts_with("▸ "),
+            "sidebar row should keep selection marker, got: {sidebar_text}"
+        );
         assert!(
             !sidebar_text.contains(expected_age.as_str()),
             "sidebar row should not include age label, got: {sidebar_text}"
@@ -758,11 +761,11 @@ fn selected_workspace_row_has_selection_marker() {
     let mut app = fixture_app();
     app.state.selected_index = 1;
 
-    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
+    let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct, false);
     let x_start = layout.sidebar.x.saturating_add(1);
     let x_end = layout.sidebar.right().saturating_sub(1);
 
-    with_rendered_frame(&app, 80, 24, |frame| {
+    with_rendered_frame(&app, 120, 24, |frame| {
         let Some(selected_row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
             panic!("selected workspace row should be rendered");
         };
@@ -802,16 +805,17 @@ fn sidebar_row_omits_duplicate_workspace_and_branch_text() {
 fn sidebar_row_shows_deleting_indicator_for_in_flight_delete() {
     let mut app = fixture_background_app(WorkspaceStatus::Idle);
     app.state.selected_index = 1;
+    app.sidebar_width_pct = 60;
     app.delete_in_flight = true;
     app.delete_in_flight_workspace = Some(app.state.workspaces[1].path.clone());
     app.delete_requested_workspaces
         .insert(app.state.workspaces[1].path.clone());
 
-    let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
+    let layout = GroveApp::view_layout_for_size(160, 24, app.sidebar_width_pct, false);
     let x_start = layout.sidebar.x.saturating_add(1);
     let x_end = layout.sidebar.right().saturating_sub(1);
 
-    with_rendered_frame(&app, 80, 24, |frame| {
+    with_rendered_frame(&app, 160, 24, |frame| {
         let Some(feature_row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
             panic!("feature row should be rendered");
         };
@@ -984,8 +988,12 @@ fn active_workspace_activity_window_expires_after_inactive_frames() {
 fn waiting_workspace_row_has_no_status_badge_or_input_banner() {
     let (mut app, _commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Waiting, Vec::new());
-    app.state.selected_index = 1;
+    app.state.selected_index = 0;
     app.sidebar_width_pct = 70;
+    app.workspace_attention.insert(
+        PathBuf::from("/repos/grove-feature-a"),
+        WorkspaceAttention::NeedsAttention,
+    );
 
     let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct, false);
     let x_start = layout.sidebar.x.saturating_add(1);
@@ -999,6 +1007,90 @@ fn waiting_workspace_row_has_no_status_badge_or_input_banner() {
         assert!(
             !sidebar_row_text.contains("["),
             "waiting workspace should not show status badge, got: {sidebar_row_text}"
+        );
+        assert!(
+            sidebar_row_text.contains(" ! "),
+            "waiting workspace should show attention indicator, got: {sidebar_row_text}"
+        );
+    });
+}
+
+#[test]
+fn working_workspace_row_hides_attention_indicator() {
+    let (mut app, _commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    app.state.selected_index = 1;
+    app.output_changing = true;
+    app.agent_output_changing = true;
+    app.workspace_attention.insert(
+        PathBuf::from("/repos/grove-feature-a"),
+        WorkspaceAttention::NeedsAttention,
+    );
+
+    let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct, false);
+    let x_start = layout.sidebar.x.saturating_add(1);
+    let x_end = layout.sidebar.right().saturating_sub(1);
+
+    with_rendered_frame(&app, 120, 24, |frame| {
+        let Some(selected_row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
+            panic!("selected workspace row should be rendered");
+        };
+        let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
+        assert!(
+            !sidebar_row_text.contains(" ! "),
+            "working workspace should hide attention indicator, got: {sidebar_row_text}"
+        );
+    });
+}
+
+#[test]
+fn done_workspace_row_shows_done_attention_indicator() {
+    let (mut app, _commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Done, Vec::new());
+    app.state.selected_index = 0;
+    app.workspace_attention.insert(
+        PathBuf::from("/repos/grove-feature-a"),
+        WorkspaceAttention::NeedsAttention,
+    );
+
+    let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct, false);
+    let x_start = layout.sidebar.x.saturating_add(1);
+    let x_end = layout.sidebar.right().saturating_sub(1);
+
+    with_rendered_frame(&app, 120, 24, |frame| {
+        let Some(selected_row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
+            panic!("selected workspace row should be rendered");
+        };
+        let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
+        assert!(
+            sidebar_row_text.contains(" ! "),
+            "done workspace should show done attention indicator, got: {sidebar_row_text}"
+        );
+    });
+}
+
+#[test]
+fn error_workspace_row_shows_error_attention_indicator() {
+    let (mut app, _commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Error, Vec::new());
+    app.state.selected_index = 0;
+    app.workspace_attention.insert(
+        PathBuf::from("/repos/grove-feature-a"),
+        WorkspaceAttention::NeedsAttention,
+    );
+
+    let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct, false);
+    let x_start = layout.sidebar.x.saturating_add(1);
+    let x_end = layout.sidebar.right().saturating_sub(1);
+
+    with_rendered_frame(&app, 120, 24, |frame| {
+        let Some(selected_row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
+            panic!("selected workspace row should be rendered");
+        };
+        let sidebar_row_text = row_text(frame, selected_row, x_start, x_end);
+        assert!(
+            sidebar_row_text.contains(" ! "),
+            "error workspace should show error attention indicator, got: {sidebar_row_text}"
         );
     });
 }

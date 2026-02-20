@@ -60,14 +60,24 @@ impl GroveApp {
         match completion.result {
             Ok(()) => {
                 self.clear_status_tracking_for_workspace_path(&completion.workspace_path);
-                if let Some(workspace) = self
+                if let Some(workspace_index) = self
                     .state
                     .workspaces
-                    .iter_mut()
-                    .find(|workspace| workspace.path == completion.workspace_path)
+                    .iter()
+                    .position(|workspace| workspace.path == completion.workspace_path)
                 {
+                    let previous_status = self.state.workspaces[workspace_index].status;
+                    let previous_orphaned = self.state.workspaces[workspace_index].is_orphaned;
+                    let workspace = &mut self.state.workspaces[workspace_index];
                     workspace.status = WorkspaceStatus::Active;
                     workspace.is_orphaned = false;
+                    self.track_workspace_status_transition(
+                        &completion.workspace_path,
+                        previous_status,
+                        WorkspaceStatus::Active,
+                        previous_orphaned,
+                        false,
+                    );
                 }
                 self.event_log.log(
                     LogEvent::new("agent_lifecycle", "agent_started")
