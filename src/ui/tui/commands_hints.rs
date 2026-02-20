@@ -125,7 +125,7 @@ impl UiCommand {
             (UiCommand::UpdateFromBase, _context) => Some("u update"),
             (UiCommand::OpenProjects, _context) => Some("p projects"),
             (UiCommand::StartAgent, StatusHintContext::PreviewAgent) => Some("s start"),
-            (UiCommand::StopAgent, StatusHintContext::PreviewAgent) => Some("x stop"),
+            (UiCommand::StopAgent, StatusHintContext::PreviewAgent) => Some("x stop..."),
             (UiCommand::DeleteWorkspace, _context) => Some("D delete"),
             (UiCommand::OpenSettings, _context) => Some("S settings"),
             (UiCommand::ToggleMouseCapture, _context) => Some("M mouse"),
@@ -242,7 +242,7 @@ impl UiCommand {
             (UiCommand::ScrollBottom, HelpHintContext::PreviewAgent) => Some("G or End bottom"),
             (UiCommand::ScrollBottom, HelpHintContext::PreviewShell) => Some("G or End bottom"),
             (UiCommand::StartAgent, HelpHintContext::PreviewAgent) => Some("s start"),
-            (UiCommand::StopAgent, HelpHintContext::PreviewAgent) => Some("x stop"),
+            (UiCommand::StopAgent, HelpHintContext::PreviewAgent) => Some("x stop (confirm)"),
             (UiCommand::EnterInteractive, HelpHintContext::PreviewGit) => {
                 Some("Enter attach lazygit")
             }

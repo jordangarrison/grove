@@ -334,6 +334,7 @@ impl GroveApp {
     pub(super) fn active_dialog_kind(&self) -> Option<&'static str> {
         match self.active_dialog.as_ref() {
             Some(ActiveDialog::Launch(_)) => Some("launch"),
+            Some(ActiveDialog::Stop(_)) => Some("stop"),
             Some(ActiveDialog::Delete(_)) => Some("delete"),
             Some(ActiveDialog::Merge(_)) => Some("merge"),
             Some(ActiveDialog::UpdateFromBase(_)) => Some("update_from_base"),
@@ -353,6 +354,14 @@ impl GroveApp {
         LaunchDialogState
     );
     active_dialog_take_accessor!(take_launch_dialog, Launch, LaunchDialogState);
+    active_dialog_accessors!(
+        stop_dialog,
+        stop_dialog_mut,
+        set_stop_dialog,
+        Stop,
+        StopDialogState
+    );
+    active_dialog_take_accessor!(take_stop_dialog, Stop, StopDialogState);
     active_dialog_accessors!(
         delete_dialog,
         delete_dialog_mut,

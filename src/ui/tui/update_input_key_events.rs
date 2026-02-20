@@ -165,7 +165,12 @@ impl GroveApp {
                     matches!(key_event.code, KeyCode::Char('e') | KeyCode::Char('E'))
                 }
                 UiCommand::StartAgent => matches!(key_event.code, KeyCode::Char('s')),
-                UiCommand::StopAgent => matches!(key_event.code, KeyCode::Char('x')),
+                UiCommand::StopAgent => {
+                    matches!(key_event.code, KeyCode::Char('x'))
+                        && (self.state.mode == UiMode::Preview
+                            || self.state.focus == PaneFocus::Preview)
+                        && self.preview_tab == PreviewTab::Agent
+                }
                 UiCommand::DeleteWorkspace => matches!(key_event.code, KeyCode::Char('D')),
                 UiCommand::MergeWorkspace => matches!(key_event.code, KeyCode::Char('m')),
                 UiCommand::UpdateFromBase => matches!(key_event.code, KeyCode::Char('u')),
@@ -208,6 +213,10 @@ impl GroveApp {
         }
         if self.launch_dialog().is_some() {
             self.handle_launch_dialog_key(*key_event);
+            return true;
+        }
+        if self.stop_dialog().is_some() {
+            self.handle_stop_dialog_key(*key_event);
             return true;
         }
         if self.delete_dialog().is_some() {
@@ -271,6 +280,7 @@ impl GroveApp {
                         | UiCommand::MoveSelectionUp
                         | UiCommand::PreviousTab
                         | UiCommand::NextTab
+                        | UiCommand::StopAgent
                 )
             {
                 self.exit_interactive_to_list();

@@ -1,20 +1,15 @@
 use super::*;
 
 impl GroveApp {
-    pub(super) fn stop_selected_workspace_agent(&mut self) {
+    pub(super) fn stop_workspace_agent(&mut self, workspace: Workspace) {
         if self.stop_in_flight {
             return;
         }
 
-        if !workspace_can_stop_agent(self.state.selected_workspace()) {
+        if !workspace_can_stop_agent(Some(&workspace)) {
             self.show_info_toast("no agent running");
             return;
         }
-
-        let Some(workspace) = self.state.selected_workspace().cloned() else {
-            self.show_info_toast("no workspace selected");
-            return;
-        };
 
         if !self.tmux_input.supports_background_launch() {
             let completion = execute_stop_workspace_with_result_for_mode(
@@ -79,6 +74,9 @@ impl GroveApp {
                 }
                 self.clear_status_tracking_for_workspace_path(&completion.workspace_path);
                 self.clear_agent_activity_tracking();
+                self.state.mode = UiMode::List;
+                self.state.focus = PaneFocus::WorkspaceList;
+                self.refresh_preview_summary();
                 self.event_log.log(
                     LogEvent::new("agent_lifecycle", "agent_stopped")
                         .with_data("workspace", Value::from(completion.workspace_name))

@@ -105,6 +105,7 @@ mod dialogs_settings;
 mod dialogs_state_create_edit;
 mod dialogs_state_lifecycle;
 mod dialogs_state_project_settings;
+mod dialogs_stop;
 mod dialogs_update_from_base;
 use dialogs::*;
 use dialogs_state_create_edit::*;
@@ -169,6 +170,7 @@ mod view_overlays_settings;
 mod view_overlays_workspace_delete;
 mod view_overlays_workspace_launch;
 mod view_overlays_workspace_merge;
+mod view_overlays_workspace_stop;
 mod view_overlays_workspace_update;
 mod view_preview;
 mod view_preview_content;
@@ -250,6 +252,7 @@ impl SessionTracker {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ActiveDialog {
     Launch(LaunchDialogState),
+    Stop(StopDialogState),
     Delete(DeleteDialogState),
     Merge(MergeDialogState),
     UpdateFromBase(UpdateFromBaseDialogState),

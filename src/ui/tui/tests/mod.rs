@@ -18,9 +18,10 @@ use super::{
     PendingResizeVerification, PreviewPollCompletion, PreviewTab, ProjectAddDialogField,
     ProjectDefaultsDialogField, RefreshWorkspacesCompletion, SettingsDialogField,
     StartAgentCompletion, StartAgentConfigField, StartAgentConfigState, StopAgentCompletion,
-    TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT,
-    WorkspaceAttention, WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, ansi_16_color,
-    ansi_line_to_styled_line, parse_cursor_metadata, ui_theme, usize_to_u64,
+    StopDialogField, TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField,
+    WORKSPACE_ITEM_HEIGHT, WorkspaceAttention, WorkspaceShellLaunchCompletion,
+    WorkspaceStatusCapture, ansi_16_color, ansi_line_to_styled_line, parse_cursor_metadata,
+    ui_theme, usize_to_u64,
 };
 use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
 use crate::application::interactive::InteractiveState;
@@ -1359,7 +1360,7 @@ fn status_row_shows_start_hint_in_preview_mode() {
     app.state.focus = PaneFocus::Preview;
     app.preview_tab = PreviewTab::Agent;
 
-    with_rendered_frame(&app, 180, 24, |frame| {
+    with_rendered_frame(&app, 220, 24, |frame| {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
         assert!(status_text.contains("Enter attach shell"));
@@ -2139,6 +2140,7 @@ fn status_row_shows_interactive_reserved_key_hints() {
         let status_text = row_text(frame, status_row, 0, frame.width());
         assert!(status_text.contains("Ctrl+K palette"));
         assert!(status_text.contains("Esc Esc/Ctrl+\\ exit"));
+        assert!(status_text.contains("Alt+C copy"));
     });
 }
 
@@ -2274,6 +2276,21 @@ fn status_row_shows_launch_dialog_keybind_hints_when_modal_open() {
         let status_row = frame.height().saturating_sub(1);
         let status_text = row_text(frame, status_row, 0, frame.width());
         assert!(status_text.contains("Space toggles unsafe"));
+    });
+}
+
+#[test]
+fn status_row_shows_stop_dialog_keybind_hints_when_modal_open() {
+    let mut app = fixture_app();
+    app.state.selected_index = 1;
+    app.state.workspaces[1].status = WorkspaceStatus::Active;
+    app.open_stop_dialog();
+
+    with_rendered_frame(&app, 90, 24, |frame| {
+        let status_row = frame.height().saturating_sub(1);
+        let status_text = row_text(frame, status_row, 0, frame.width());
+        assert!(status_text.contains("Enter select/kill"));
+        assert!(status_text.contains("x confirm"));
     });
 }
 

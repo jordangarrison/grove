@@ -22,6 +22,7 @@ impl GroveApp {
         self.render_create_dialog_overlay(frame, area);
         self.render_edit_dialog_overlay(frame, area);
         self.render_launch_dialog_overlay(frame, area);
+        self.render_stop_dialog_overlay(frame, area);
         self.render_delete_dialog_overlay(frame, area);
         self.render_merge_dialog_overlay(frame, area);
         self.render_update_from_base_dialog_overlay(frame, area);

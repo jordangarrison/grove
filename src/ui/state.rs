@@ -94,12 +94,17 @@ pub fn reduce(state: &mut AppState, action: Action) {
                 state.selected_index += 1;
             }
         }
-        Action::ToggleFocus => {
-            state.focus = match state.focus {
-                PaneFocus::WorkspaceList => PaneFocus::Preview,
-                PaneFocus::Preview => PaneFocus::WorkspaceList,
-            };
-        }
+        Action::ToggleFocus => match state.focus {
+            PaneFocus::WorkspaceList => {
+                if state.selected_workspace().is_some() {
+                    state.mode = UiMode::Preview;
+                    state.focus = PaneFocus::Preview;
+                }
+            }
+            PaneFocus::Preview => {
+                state.focus = PaneFocus::WorkspaceList;
+            }
+        },
         Action::EnterPreviewMode => {
             if state.selected_workspace().is_some() {
                 state.mode = UiMode::Preview;

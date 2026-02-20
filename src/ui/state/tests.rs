@@ -74,7 +74,7 @@ fn reducer_toggles_focus_and_switches_modes() {
 
     reduce(&mut state, Action::ToggleFocus);
     assert_eq!(state.focus, PaneFocus::Preview);
-    assert_eq!(state.mode, UiMode::List);
+    assert_eq!(state.mode, UiMode::Preview);
 
     reduce(&mut state, Action::EnterPreviewMode);
     assert_eq!(state.mode, UiMode::Preview);

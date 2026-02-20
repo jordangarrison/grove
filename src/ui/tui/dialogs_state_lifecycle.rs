@@ -73,6 +73,13 @@ pub(super) struct LaunchDialogState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct StopDialogState {
+    pub(super) workspace: Workspace,
+    pub(super) session_name: String,
+    pub(super) focused_field: StopDialogField,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct DeleteDialogState {
     pub(super) project_name: Option<String>,
     pub(super) project_path: Option<PathBuf>,
@@ -117,6 +124,16 @@ pub(super) enum DeleteDialogField {
     DeleteButton,
     CancelButton,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum StopDialogField {
+    StopButton,
+    CancelButton,
+}
+
+cyclic_field_nav!(pub(super) StopDialogField {
+    StopButton, CancelButton,
+});
 
 cyclic_field_nav!(pub(super) DeleteDialogField {
     DeleteLocalBranch, KillTmuxSessions, DeleteButton, CancelButton,

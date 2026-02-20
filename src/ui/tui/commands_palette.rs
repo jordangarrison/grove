@@ -171,7 +171,7 @@ impl UiCommand {
             Self::StopAgent => Some(PaletteCommandSpec {
                 id: "palette:stop_agent",
                 title: "Stop Agent",
-                description: "Stop selected workspace agent (x)",
+                description: "Open confirm dialog to kill selected workspace agent session (x in Agent preview)",
                 tags: &["stop", "agent", "workspace", "x"],
                 category: "Workspace",
             }),

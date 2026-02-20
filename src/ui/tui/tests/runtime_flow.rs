@@ -24,6 +24,29 @@ fn start_agent_emits_dialog_and_lifecycle_events() {
 }
 
 #[test]
+fn stop_agent_emits_dialog_and_lifecycle_events() {
+    let (mut app, _commands, _captures, _cursor_captures, events) =
+        fixture_app_with_tmux_and_events(WorkspaceStatus::Active, Vec::new(), Vec::new());
+    focus_agent_preview_tab(&mut app);
+    app.state.selected_index = 1;
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
+    let kinds = event_kinds(&events);
+    assert_kind_subsequence(
+        &kinds,
+        &["dialog_opened", "dialog_confirmed", "agent_stopped"],
+    );
+    assert!(kinds.iter().any(|kind| kind == "toast_shown"));
+}
+
+#[test]
 fn preview_poll_change_emits_output_changed_event() {
     let (mut app, _commands, _captures, _cursor_captures, events) =
         fixture_app_with_tmux_and_events(
@@ -1694,28 +1717,28 @@ fn h_and_l_toggle_focus_between_panes_when_not_interactive() {
         Msg::Key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press)),
     );
     assert_eq!(app.state.focus, PaneFocus::Preview);
-    assert_eq!(app.state.mode, UiMode::List);
+    assert_eq!(app.state.mode, UiMode::Preview);
 
     ftui::Model::update(
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press)),
     );
     assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
-    assert_eq!(app.state.mode, UiMode::List);
+    assert_eq!(app.state.mode, UiMode::Preview);
 
     ftui::Model::update(
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('h')).with_kind(KeyEventKind::Press)),
     );
     assert_eq!(app.state.focus, PaneFocus::Preview);
-    assert_eq!(app.state.mode, UiMode::List);
+    assert_eq!(app.state.mode, UiMode::Preview);
 
     ftui::Model::update(
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('h')).with_kind(KeyEventKind::Press)),
     );
     assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
-    assert_eq!(app.state.mode, UiMode::List);
+    assert_eq!(app.state.mode, UiMode::Preview);
 }
 
 #[test]
@@ -3328,6 +3351,166 @@ fn create_dialog_enter_on_cancel_closes_modal() {
 }
 
 #[test]
+fn stop_key_opens_stop_dialog_for_selected_workspace() {
+    let mut app = fixture_app();
+    app.state.selected_index = 1;
+    app.state.workspaces[1].status = WorkspaceStatus::Active;
+    focus_agent_preview_tab(&mut app);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+    );
+
+    let Some(dialog) = app.stop_dialog() else {
+        panic!("stop dialog should be open");
+    };
+    assert_eq!(dialog.workspace.name, "feature-a");
+    assert_eq!(dialog.session_name, "grove-ws-feature-a");
+    assert_eq!(dialog.focused_field, StopDialogField::StopButton);
+}
+
+#[test]
+fn x_opens_stop_dialog_from_agent_preview_when_list_is_focused() {
+    let mut app = fixture_app();
+    app.state.selected_index = 1;
+    app.state.workspaces[1].status = WorkspaceStatus::Active;
+    app.state.mode = UiMode::Preview;
+    app.state.focus = PaneFocus::WorkspaceList;
+    app.preview_tab = PreviewTab::Agent;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(app.stop_dialog().is_some());
+}
+
+#[test]
+fn l_then_x_opens_stop_dialog_from_agent_preview() {
+    let mut app = fixture_app();
+    app.state.selected_index = 1;
+    app.state.workspaces[1].status = WorkspaceStatus::Active;
+    app.state.mode = UiMode::List;
+    app.state.focus = PaneFocus::WorkspaceList;
+    app.preview_tab = PreviewTab::Agent;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press)),
+    );
+    assert_eq!(app.state.mode, UiMode::Preview);
+    assert_eq!(app.state.focus, PaneFocus::Preview);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(app.stop_dialog().is_some());
+}
+
+#[test]
+fn x_opens_stop_dialog_from_agent_preview_when_preview_is_focused_in_list_mode() {
+    let mut app = fixture_app();
+    app.state.selected_index = 1;
+    app.state.workspaces[1].status = WorkspaceStatus::Active;
+    app.state.mode = UiMode::List;
+    app.state.focus = PaneFocus::Preview;
+    app.preview_tab = PreviewTab::Agent;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(app.stop_dialog().is_some());
+}
+
+#[test]
+fn alt_x_noop_in_noninteractive_shell_preview() {
+    let mut app = fixture_app();
+    app.state.selected_index = 1;
+    app.state.workspaces[1].status = WorkspaceStatus::Active;
+    app.state.mode = UiMode::Preview;
+    app.state.focus = PaneFocus::Preview;
+    app.preview_tab = PreviewTab::Shell;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('x'))
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+
+    assert!(app.stop_dialog().is_none());
+}
+
+#[test]
+fn alt_x_does_not_exit_interactive_or_open_stop_dialog() {
+    let (mut app, commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    app.state.selected_index = 1;
+    app.interactive = Some(InteractiveState::new(
+        "%0".to_string(),
+        "grove-ws-feature-a".to_string(),
+        Instant::now(),
+        34,
+        78,
+    ));
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('x'))
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+
+    assert!(app.interactive.is_some());
+    assert!(app.stop_dialog().is_none());
+    assert_eq!(
+        commands.borrow().as_slice(),
+        &[vec![
+            "tmux".to_string(),
+            "send-keys".to_string(),
+            "-l".to_string(),
+            "-t".to_string(),
+            "grove-ws-feature-a".to_string(),
+            "x".to_string(),
+        ]]
+    );
+}
+
+#[test]
+fn stop_dialog_blocks_navigation_and_escape_cancels() {
+    let mut app = fixture_app();
+    app.state.selected_index = 1;
+    app.state.workspaces[1].status = WorkspaceStatus::Active;
+    app.open_stop_dialog();
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
+    );
+    assert_eq!(app.state.selected_index, 1);
+    assert_eq!(
+        app.stop_dialog().map(|dialog| dialog.focused_field),
+        Some(StopDialogField::CancelButton)
+    );
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
+    );
+    assert!(app.stop_dialog().is_none());
+}
+
+#[test]
 fn stop_key_stops_selected_workspace_agent() {
     let (mut app, commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -3336,6 +3519,12 @@ fn stop_key_stops_selected_workspace_agent() {
     ftui::Model::update(
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+    );
+    assert!(app.stop_dialog().is_some());
+    assert!(commands.borrow().is_empty());
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
     );
 
     assert_eq!(
@@ -3397,18 +3586,29 @@ fn background_stop_key_queues_lifecycle_task() {
     app.state.selected_index = 1;
     focus_agent_preview_tab(&mut app);
 
-    let cmd = ftui::Model::update(
+    let open_cmd = ftui::Model::update(
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
     );
+    assert!(!cmd_contains_task(&open_cmd));
+    assert!(app.stop_dialog().is_some());
 
-    assert!(cmd_contains_task(&cmd));
+    let confirm_cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(cmd_contains_task(&confirm_cmd));
 }
 
 #[test]
 fn stop_agent_completed_updates_workspace_status_and_exits_interactive() {
     let mut app = fixture_app();
     app.state.selected_index = 1;
+    app.state.mode = UiMode::Preview;
+    app.state.focus = PaneFocus::Preview;
+    app.preview.lines = vec!["stale-preview".to_string()];
+    app.preview.render_lines = app.preview.lines.clone();
     app.interactive = Some(InteractiveState::new(
         "%0".to_string(),
         "grove-ws-feature-a".to_string(),
@@ -3434,6 +3634,10 @@ fn stop_agent_completed_updates_workspace_status_and_exits_interactive() {
         Some(WorkspaceStatus::Idle)
     );
     assert!(app.interactive.is_none());
+    assert_eq!(app.state.mode, UiMode::List);
+    assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+    let preview_text = app.preview.lines.join("\n");
+    assert!(!preview_text.contains("stale-preview"));
 }
 
 #[test]
@@ -3530,6 +3734,10 @@ fn stop_key_on_active_main_workspace_stops_agent() {
     ftui::Model::update(
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
     );
 
     assert_eq!(

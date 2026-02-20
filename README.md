@@ -131,7 +131,8 @@ Inside Grove:
 - `n` new workspace
 - `s` start agent
 - `Enter` open preview / interactive attach (context dependent)
-- `x` stop agent
+- `x` stop agent in Agent preview (with confirm modal)
+- `Alt+X` stop selected workspace agent from any context (with confirm modal)
 - `m` merge workspace branch into base
 - `u` update selected workspace (feature merges from base, base pulls from origin)
 - `D` delete workspace

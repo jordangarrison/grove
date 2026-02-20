@@ -120,6 +120,10 @@ impl GroveApp {
             return "Tab/S-Tab or C-n/C-p field, h/l buttons, Space toggles unsafe, Enter select/start, Esc cancel"
                 .to_string();
         }
+        if self.stop_dialog().is_some() {
+            return "Tab/S-Tab or C-n/C-p field, h/l buttons, Enter select/kill, x confirm, Esc cancel"
+                .to_string();
+        }
         if self.delete_dialog().is_some() {
             return "Tab/S-Tab or C-n/C-p field, j/k move, Space toggle branch delete, Enter select/delete, D confirm, Esc cancel"
                 .to_string();

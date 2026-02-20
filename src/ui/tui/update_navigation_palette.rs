@@ -111,9 +111,7 @@ impl GroveApp {
                     && workspace_can_start_agent(self.state.selected_workspace())
             }
             UiCommand::StopAgent => {
-                self.preview_agent_tab_is_focused()
-                    && !self.stop_in_flight
-                    && workspace_can_stop_agent(self.state.selected_workspace())
+                !self.stop_in_flight && workspace_can_stop_agent(self.state.selected_workspace())
             }
             UiCommand::DeleteWorkspace => {
                 self.state.selected_workspace().is_some_and(|workspace| {

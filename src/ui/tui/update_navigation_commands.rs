@@ -173,9 +173,7 @@ impl GroveApp {
                 }
             }
             UiCommand::StopAgent => {
-                if self.preview_agent_tab_is_focused() {
-                    self.stop_selected_workspace_agent();
-                }
+                self.open_stop_dialog();
             }
             UiCommand::DeleteWorkspace => {
                 self.open_delete_dialog();
