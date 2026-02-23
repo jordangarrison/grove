@@ -80,3 +80,27 @@ fn workspace_accepts_valid_values() {
     assert!(workspace.is_orphaned);
     assert!(!workspace.supported_agent);
 }
+
+#[test]
+fn agent_type_metadata_roundtrips_marker() {
+    for agent in AgentType::all() {
+        assert_eq!(AgentType::from_marker(agent.marker()), Some(*agent));
+        assert!(!agent.label().is_empty());
+        assert!(!agent.command_override_env_var().is_empty());
+    }
+}
+
+#[test]
+fn agent_type_cycles_all_variants() {
+    let mut forward = AgentType::Claude;
+    for _ in 0..AgentType::all().len() {
+        forward = forward.next();
+    }
+    assert_eq!(forward, AgentType::Claude);
+
+    let mut backward = AgentType::Claude;
+    for _ in 0..AgentType::all().len() {
+        backward = backward.previous();
+    }
+    assert_eq!(backward, AgentType::Claude);
+}

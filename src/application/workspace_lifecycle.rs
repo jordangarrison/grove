@@ -970,20 +970,12 @@ fn ensure_workspace_grove_dir(workspace_path: &Path) -> Result<(), WorkspaceLife
 }
 
 fn parse_agent_marker(value: &str) -> Result<AgentType, WorkspaceMarkerError> {
-    match value {
-        "claude" => Ok(AgentType::Claude),
-        "codex" => Ok(AgentType::Codex),
-        invalid => Err(WorkspaceMarkerError::InvalidAgentMarker(
-            invalid.to_string(),
-        )),
-    }
+    AgentType::from_marker(value)
+        .ok_or_else(|| WorkspaceMarkerError::InvalidAgentMarker(value.to_string()))
 }
 
 fn agent_marker_value(agent: AgentType) -> &'static str {
-    match agent {
-        AgentType::Claude => "claude",
-        AgentType::Codex => "codex",
-    }
+    agent.marker()
 }
 
 fn workspace_name_is_valid(name: &str) -> bool {

@@ -94,7 +94,7 @@ impl GroveApp {
                 if let Some(dialog) = self.create_dialog_mut()
                     && dialog.focused_field == CreateDialogField::Agent
                 {
-                    Self::toggle_create_dialog_agent(dialog);
+                    Self::select_previous_create_dialog_agent(dialog);
                 }
                 if let Some(dialog) = self.create_dialog_mut()
                     && dialog.focused_field == CreateDialogField::AutoRunSetupCommands
@@ -126,7 +126,7 @@ impl GroveApp {
                 if let Some(dialog) = self.create_dialog_mut()
                     && dialog.focused_field == CreateDialogField::Agent
                 {
-                    Self::toggle_create_dialog_agent(dialog);
+                    Self::select_next_create_dialog_agent(dialog);
                 }
                 if let Some(dialog) = self.create_dialog_mut()
                     && dialog.focused_field == CreateDialogField::AutoRunSetupCommands
@@ -210,7 +210,11 @@ impl GroveApp {
                     if dialog.focused_field == CreateDialogField::Agent
                         && (character == 'j' || character == 'k' || character == ' ')
                     {
-                        Self::toggle_create_dialog_agent(dialog);
+                        if character == 'k' {
+                            Self::select_previous_create_dialog_agent(dialog);
+                        } else {
+                            Self::select_next_create_dialog_agent(dialog);
+                        }
                         return;
                     }
                     if dialog.focused_field == CreateDialogField::AutoRunSetupCommands
@@ -280,8 +284,12 @@ impl GroveApp {
             _ => {}
         }
     }
-    fn toggle_create_dialog_agent(dialog: &mut CreateDialogState) {
-        dialog.agent = Self::toggle_agent(dialog.agent);
+    fn select_next_create_dialog_agent(dialog: &mut CreateDialogState) {
+        dialog.agent = Self::next_agent(dialog.agent);
+    }
+
+    fn select_previous_create_dialog_agent(dialog: &mut CreateDialogState) {
+        dialog.agent = Self::previous_agent(dialog.agent);
     }
     fn shift_create_dialog_project(&mut self, delta: isize) {
         let Some(current_index) = self.create_dialog().map(|dialog| dialog.project_index) else {

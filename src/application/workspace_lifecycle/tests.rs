@@ -521,6 +521,14 @@ fn write_workspace_agent_marker_writes_expected_value() {
             .trim(),
         "codex"
     );
+
+    write_workspace_agent_marker(&workspace, AgentType::OpenCode).expect("write should succeed");
+    assert_eq!(
+        fs::read_to_string(workspace.join(".grove/agent"))
+            .expect("marker should be readable")
+            .trim(),
+        "opencode"
+    );
 }
 
 #[test]

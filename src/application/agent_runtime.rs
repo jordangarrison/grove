@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use rusqlite::{Connection, OpenFlags};
+
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 
 pub const TMUX_SESSION_PREFIX: &str = "grove-ws-";
@@ -28,6 +30,8 @@ const STATUS_TAIL_LINES: usize = 60;
 const SESSION_STATUS_TAIL_BYTES: usize = 256 * 1024;
 const SESSION_ACTIVITY_THRESHOLD: Duration = Duration::from_secs(30);
 const CODEX_SESSION_LOOKUP_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
+const OPENCODE_SESSION_LOOKUP_REFRESH_INTERVAL: Duration = Duration::from_millis(500);
+const OPENCODE_UNSAFE_PERMISSION_JSON: &str = r#"{"*":"allow"}"#;
 const DONE_PATTERNS: [&str; 5] = [
     "task completed",
     "all done",
@@ -808,14 +812,15 @@ fn default_agent_command(agent: AgentType, skip_permissions: bool) -> String {
         (AgentType::Claude, false) => "claude".to_string(),
         (AgentType::Codex, true) => "codex --dangerously-bypass-approvals-and-sandbox".to_string(),
         (AgentType::Codex, false) => "codex".to_string(),
+        (AgentType::OpenCode, true) => {
+            format!("OPENCODE_PERMISSION='{OPENCODE_UNSAFE_PERMISSION_JSON}' opencode")
+        }
+        (AgentType::OpenCode, false) => "opencode".to_string(),
     }
 }
 
 fn env_agent_command_override(agent: AgentType) -> Option<String> {
-    let variable = match agent {
-        AgentType::Claude => "GROVE_CLAUDE_CMD",
-        AgentType::Codex => "GROVE_CODEX_CMD",
-    };
+    let variable = agent.command_override_env_var();
     let override_value = std::env::var(variable).ok()?;
     trimmed_nonempty(&override_value)
 }
@@ -991,6 +996,24 @@ struct CodexMessageStatusCacheEntry {
     status: Option<WorkspaceStatus>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct OpenCodeSessionLookupKey {
+    database_path: PathBuf,
+    workspace_path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+struct OpenCodeSessionLookupCacheEntry {
+    checked_at: Instant,
+    session: OpenCodeSessionMetadata,
+}
+
+#[derive(Debug, Clone)]
+struct OpenCodeSessionMetadata {
+    session_id: String,
+    time_updated_ms: i64,
+}
+
 fn codex_session_lookup_cache()
 -> &'static Mutex<HashMap<CodexSessionLookupKey, CodexSessionLookupCacheEntry>> {
     static CACHE: OnceLock<Mutex<HashMap<CodexSessionLookupKey, CodexSessionLookupCacheEntry>>> =
@@ -1000,6 +1023,14 @@ fn codex_session_lookup_cache()
 
 fn codex_message_status_cache() -> &'static Mutex<HashMap<PathBuf, CodexMessageStatusCacheEntry>> {
     static CACHE: OnceLock<Mutex<HashMap<PathBuf, CodexMessageStatusCacheEntry>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn opencode_session_lookup_cache()
+-> &'static Mutex<HashMap<OpenCodeSessionLookupKey, OpenCodeSessionLookupCacheEntry>> {
+    static CACHE: OnceLock<
+        Mutex<HashMap<OpenCodeSessionLookupKey, OpenCodeSessionLookupCacheEntry>>,
+    > = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -1065,6 +1096,43 @@ fn get_codex_last_message_status_cached(path: &Path) -> Option<WorkspaceStatus> 
     status
 }
 
+fn find_opencode_session_for_path_cached(
+    database_path: &Path,
+    workspace_path: &Path,
+) -> Option<OpenCodeSessionMetadata> {
+    let workspace_path = absolute_path(workspace_path)?;
+    let key = OpenCodeSessionLookupKey {
+        database_path: database_path.to_path_buf(),
+        workspace_path: workspace_path.clone(),
+    };
+    let now = Instant::now();
+
+    if let Ok(cache) = opencode_session_lookup_cache().lock()
+        && let Some(entry) = cache.get(&key)
+        && now.saturating_duration_since(entry.checked_at)
+            < OPENCODE_SESSION_LOOKUP_REFRESH_INTERVAL
+    {
+        return Some(entry.session.clone());
+    }
+
+    let session = find_opencode_session_for_path(database_path, workspace_path.as_path());
+    if let Ok(mut cache) = opencode_session_lookup_cache().lock() {
+        if let Some(session) = session.as_ref() {
+            cache.insert(
+                key,
+                OpenCodeSessionLookupCacheEntry {
+                    checked_at: now,
+                    session: session.clone(),
+                },
+            );
+        } else {
+            cache.remove(&key);
+        }
+    }
+
+    session
+}
+
 fn detect_status_with_session_override_in_home(
     context: StatusOverrideContext<'_>,
 ) -> WorkspaceStatus {
@@ -1108,6 +1176,9 @@ fn detect_agent_session_status_in_home(
         AgentType::Codex => {
             detect_codex_session_status_in_home(workspace_path, home_dir, activity_threshold)
         }
+        AgentType::OpenCode => {
+            detect_opencode_session_status_in_home(workspace_path, home_dir, activity_threshold)
+        }
     }
 }
 
@@ -1126,6 +1197,9 @@ pub(crate) fn latest_assistant_attention_marker(
         }
         AgentType::Codex => {
             latest_codex_assistant_attention_marker_in_home(workspace_path, &home_dir)
+        }
+        AgentType::OpenCode => {
+            latest_opencode_assistant_attention_marker_in_home(workspace_path, &home_dir)
         }
     }
 }
@@ -1178,6 +1252,26 @@ fn detect_codex_session_status_in_home(
     get_codex_last_message_status_cached(&session_file)
 }
 
+fn detect_opencode_session_status_in_home(
+    workspace_path: &Path,
+    home_dir: &Path,
+    activity_threshold: Duration,
+) -> Option<WorkspaceStatus> {
+    let database_path = opencode_database_path_in_home(home_dir);
+    let session = find_opencode_session_for_path_cached(&database_path, workspace_path)?;
+
+    if is_timestamp_recently_updated_ms(session.time_updated_ms, activity_threshold) {
+        return Some(WorkspaceStatus::Active);
+    }
+
+    let (_, role, _) = get_opencode_last_message_entry(&database_path, &session.session_id)?;
+    match role.as_str() {
+        "assistant" => Some(WorkspaceStatus::Waiting),
+        "user" => Some(WorkspaceStatus::Active),
+        _ => None,
+    }
+}
+
 fn latest_claude_assistant_attention_marker_in_home(
     workspace_path: &Path,
     home_dir: &Path,
@@ -1212,6 +1306,118 @@ fn latest_codex_assistant_attention_marker_in_home(
     let session_file = find_codex_session_for_path_cached(&sessions_dir, workspace_path)?;
     let (is_assistant, marker) = get_codex_last_message_marker(&session_file)?;
     is_assistant.then_some(marker)
+}
+
+fn latest_opencode_assistant_attention_marker_in_home(
+    workspace_path: &Path,
+    home_dir: &Path,
+) -> Option<String> {
+    let database_path = opencode_database_path_in_home(home_dir);
+    let session = find_opencode_session_for_path_cached(&database_path, workspace_path)?;
+    let (message_id, role, message_updated_ms) =
+        get_opencode_last_message_entry(&database_path, &session.session_id)?;
+    if role != "assistant" {
+        return None;
+    }
+
+    Some(format!(
+        "{}:{}:{message_id}:{message_updated_ms}",
+        database_path.display(),
+        session.session_id
+    ))
+}
+
+fn opencode_database_path_in_home(home_dir: &Path) -> PathBuf {
+    let xdg_data_dir = std::env::var_os("XDG_DATA_HOME")
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from);
+    let data_dir = match dirs::home_dir() {
+        Some(actual_home) if actual_home == home_dir => {
+            xdg_data_dir.unwrap_or_else(|| home_dir.join(".local").join("share"))
+        }
+        _ => home_dir.join(".local").join("share"),
+    };
+    data_dir.join("opencode").join("opencode.db")
+}
+
+fn find_opencode_session_for_path(
+    database_path: &Path,
+    workspace_path: &Path,
+) -> Option<OpenCodeSessionMetadata> {
+    if !database_path.exists() {
+        return None;
+    }
+
+    let workspace_path = absolute_path(workspace_path)?;
+    let connection = open_opencode_database(database_path)?;
+    let mut statement = connection
+        .prepare("SELECT id, directory, time_updated FROM session ORDER BY time_updated DESC")
+        .ok()?;
+    let rows = statement
+        .query_map([], |row| {
+            let session_id: String = row.get(0)?;
+            let directory: String = row.get(1)?;
+            let time_updated_ms: i64 = row.get(2)?;
+            Ok((session_id, directory, time_updated_ms))
+        })
+        .ok()?;
+
+    for row in rows.flatten() {
+        let (session_id, directory, time_updated_ms) = row;
+        if !cwd_matches(Path::new(&directory), workspace_path.as_path()) {
+            continue;
+        }
+        return Some(OpenCodeSessionMetadata {
+            session_id,
+            time_updated_ms,
+        });
+    }
+
+    None
+}
+
+fn get_opencode_last_message_entry(
+    database_path: &Path,
+    session_id: &str,
+) -> Option<(String, String, i64)> {
+    let connection = open_opencode_database(database_path)?;
+    let mut statement = connection
+        .prepare(
+            "SELECT id, data, time_updated FROM message WHERE session_id = ? ORDER BY time_created DESC LIMIT 1",
+        )
+        .ok()?;
+    let row = statement
+        .query_row([session_id], |row| {
+            let message_id: String = row.get(0)?;
+            let data: String = row.get(1)?;
+            let updated_ms: i64 = row.get(2)?;
+            Ok((message_id, data, updated_ms))
+        })
+        .ok()?;
+    let value: serde_json::Value = serde_json::from_str(&row.1).ok()?;
+    let role = value
+        .get("role")
+        .and_then(serde_json::Value::as_str)?
+        .to_string();
+    Some((row.0, role, row.2))
+}
+
+fn open_opencode_database(path: &Path) -> Option<Connection> {
+    Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()
+}
+
+fn is_timestamp_recently_updated_ms(updated_ms: i64, threshold: Duration) -> bool {
+    let Some(now_ms) = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| i64::try_from(duration.as_millis()).ok())
+    else {
+        return false;
+    };
+    let Some(threshold_ms) = i64::try_from(threshold.as_millis()).ok() else {
+        return false;
+    };
+    now_ms.saturating_sub(updated_ms).max(0) < threshold_ms
 }
 
 fn absolute_path(path: &Path) -> Option<PathBuf> {

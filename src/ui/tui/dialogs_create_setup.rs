@@ -141,11 +141,12 @@ impl GroveApp {
         self.last_tmux_error = None;
     }
 
-    pub(super) fn toggle_agent(agent: AgentType) -> AgentType {
-        match agent {
-            AgentType::Claude => AgentType::Codex,
-            AgentType::Codex => AgentType::Claude,
-        }
+    pub(super) fn next_agent(agent: AgentType) -> AgentType {
+        agent.next()
+    }
+
+    pub(super) fn previous_agent(agent: AgentType) -> AgentType {
+        agent.previous()
     }
 
     pub(super) fn clear_create_branch_picker(&mut self) {

@@ -33,6 +33,7 @@ impl GroveApp {
         match agent {
             AgentType::Claude => theme.peach,
             AgentType::Codex => theme.text,
+            AgentType::OpenCode => theme.text,
         }
     }
 
@@ -41,6 +42,7 @@ impl GroveApp {
         match agent {
             AgentType::Claude => theme.text,
             AgentType::Codex => theme.overlay0,
+            AgentType::OpenCode => theme.crust,
         }
     }
 

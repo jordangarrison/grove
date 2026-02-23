@@ -138,7 +138,7 @@ Workspace {
     path: PathBuf,          // absolute path to worktree directory
     branch: String,         // git branch name (may differ from `name` when attaching existing branch)
     base_branch: String,    // branch workspace was created from
-    agent_type: AgentType,  // Claude, Codex
+    agent_type: AgentType,  // Claude, Codex, OpenCode
     status: Status,         // derived from agent state
     created_at: Instant,
     last_output_at: Option<Instant>,  // for sort order (most recently active first)
@@ -146,7 +146,7 @@ Workspace {
     is_orphaned: bool,      // agent file exists but tmux session gone
 }
 
-AgentType: Claude | Codex
+AgentType: Claude | Codex | OpenCode
 
 Status: Idle | Active | Thinking | Waiting | Done | Error
 
@@ -183,7 +183,7 @@ Following sidecar's approach: per-worktree marker files, project-local.
 
 Each worktree directory gets marker files at its root:
 
-- `.grove/agent` -- agent type string (`"claude"`, `"codex"`)
+- `.grove/agent` -- agent type string (`"claude"`, `"codex"`, `"opencode"`)
 - `.grove/base` -- base branch the worktree was created from
 
 These are plain text, single-line files. Cheap to read, survive across
@@ -254,7 +254,7 @@ No central workspace list. On startup, discover workspaces by:
 3. For each non-main worktree, check if `.grove/agent` exists
 4. If it does, this is a Grove-managed workspace. Read agent type and base
    branch from marker files.
-   - If agent marker is not `claude` or `codex`, mark workspace as unsupported
+   - If agent marker is not `claude`, `codex`, or `opencode`, mark workspace as unsupported
      and disable start/restart actions.
 5. Cross-reference with live tmux sessions (prefix `grove-ws-`) to
    determine running/stopped status.
@@ -425,7 +425,7 @@ Following sidecar's launcher script approach for prompt support.
 tmux send-keys -t grove-ws-{name} '{agent_cmd}' Enter
 ```
 
-Where `agent_cmd` is `claude` or `codex`.
+Where `agent_cmd` is `claude`, `codex`, or `opencode`.
 
 #### With Prompt
 
@@ -461,6 +461,7 @@ The script self-deletes after running.
 |--------|-----------------------------------------------|
 | Claude | `--dangerously-skip-permissions`              |
 | Codex  | `--dangerously-bypass-approvals-and-sandbox`  |
+| OpenCode | `OPENCODE_PERMISSION='{"*":"allow"}'` |
 
 Optional, toggled in the new workspace dialog.
 Guardrails for v1:
@@ -497,6 +498,10 @@ positives from scrollback.
   - Cache matched session path and extracted `cwd` metadata
   - Fast path: if matched file mtime is within 30s, active
   - Fallback: parse JSONL tail for last speaker role
+- **OpenCode**: `${XDG_DATA_HOME:-~/.local/share}/opencode/opencode.db`
+  - Match session by `session.directory` against workspace path
+  - Fast path: if matched `session.time_updated` is within 30s, active
+  - Fallback: parse latest `message.data.role` (`assistant` vs `user`)
 
 Important nuance: session-file checks run even when tmux output hash is
 unchanged, so Active/Waiting can still update when pane text does not.
@@ -1923,7 +1928,7 @@ struct NewWorkspaceState {
     name_input: TextInputState,
     base_branch_input: TextInputState,
     prompt_input: TextInputState,   // multi-line
-    agent_type: AgentType,          // toggle: Claude | Codex
+    agent_type: AgentType,          // cycle: Claude | Codex | OpenCode
     skip_permissions: bool,
     focused_field: NewWorkspaceField,
     validation_error: Option<String>,
@@ -2310,6 +2315,7 @@ fn detect_status_from_session_files(ws: &Workspace) -> Option<Status> {
     match ws.agent_type {
         AgentType::Claude => detect_claude_session_status(&ws.path),
         AgentType::Codex => detect_codex_session_status(&ws.path),
+        AgentType::OpenCode => detect_opencode_session_status(&ws.path),
     }
 }
 
@@ -2343,6 +2349,17 @@ fn detect_codex_session_status(worktree_path: &Path) -> Option<Status> {
         return Some(Status::Active);
     }
     last_codex_role_from_jsonl_tail(&session)
+}
+
+fn detect_opencode_session_status(worktree_path: &Path) -> Option<Status> {
+    let abs = worktree_path.canonicalize().ok()?;
+    let db = opencode_db_path()?;
+    let session = find_opencode_session_by_directory_cached(&db, &abs)?; // caches session id + updated ts
+
+    if session_updated_within(&session, Duration::from_secs(30)) {
+        return Some(Status::Active);
+    }
+    last_opencode_role_from_sqlite(&db, &session.id)
 }
 ```
 
@@ -2533,7 +2550,7 @@ src/
   polling.rs           -- adaptive output polling, hash-based change detection
   capture_cache.rs     -- active-session registry, batch-capture cache/coordinator
   status.rs            -- agent status detection (output patterns, session files)
-  session_detect.rs    -- per-agent session-file detectors + codex cwd/session cache
+  session_detect.rs    -- per-agent session detectors (jsonl/sqlite) + cached lookup state
   mouse.rs             -- mouse event handling (click, drag, scroll, pane resize)
   widgets/
     workspace_list.rs  -- left pane widget (two-line items, status icons)

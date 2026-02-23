@@ -176,8 +176,9 @@ impl GroveApp {
         }
 
         lines.push(FtLine::raw(""));
-        lines.push(agent_row(AgentType::Claude));
-        lines.push(agent_row(AgentType::Codex));
+        for agent in AgentType::all() {
+            lines.push(agent_row(*agent));
+        }
         lines.push(FtLine::raw(""));
         lines.push(FtLine::from_spans(vec![FtSpan::styled(
             pad_or_truncate_to_display_width("Agent startup (every start)", content_width),

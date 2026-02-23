@@ -4,14 +4,67 @@ use std::path::PathBuf;
 pub enum AgentType {
     Claude,
     Codex,
+    OpenCode,
 }
 
 impl AgentType {
+    pub const ALL: [Self; 3] = [Self::Claude, Self::Codex, Self::OpenCode];
+
+    pub const fn all() -> &'static [Self] {
+        &Self::ALL
+    }
+
     pub const fn label(self) -> &'static str {
         match self {
             Self::Claude => "Claude",
             Self::Codex => "Codex",
+            Self::OpenCode => "OpenCode",
         }
+    }
+
+    pub const fn marker(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+            Self::OpenCode => "opencode",
+        }
+    }
+
+    pub const fn command_override_env_var(self) -> &'static str {
+        match self {
+            Self::Claude => "GROVE_CLAUDE_CMD",
+            Self::Codex => "GROVE_CODEX_CMD",
+            Self::OpenCode => "GROVE_OPENCODE_CMD",
+        }
+    }
+
+    pub fn from_marker(value: &str) -> Option<Self> {
+        match value {
+            "claude" => Some(Self::Claude),
+            "codex" => Some(Self::Codex),
+            "opencode" => Some(Self::OpenCode),
+            _ => None,
+        }
+    }
+
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Claude => Self::Codex,
+            Self::Codex => Self::OpenCode,
+            Self::OpenCode => Self::Claude,
+        }
+    }
+
+    pub const fn previous(self) -> Self {
+        match self {
+            Self::Claude => Self::OpenCode,
+            Self::Codex => Self::Claude,
+            Self::OpenCode => Self::Codex,
+        }
+    }
+
+    pub const fn allows_cursor_overlay(self) -> bool {
+        !matches!(self, Self::Codex)
     }
 }
 

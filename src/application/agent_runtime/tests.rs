@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use std::process;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use rusqlite::Connection;
+
 use super::{
     CaptureChange, CommandExecutionMode, CommandExecutor, LaunchPlan, LaunchRequest,
     LauncherScript, LivePreviewTarget, SessionActivity, build_launch_plan, build_shell_launch_plan,
@@ -458,6 +460,14 @@ fn codex_launch_command_matches_prd_flags() {
     assert_eq!(
         default_agent_command(AgentType::Codex, true),
         "codex --dangerously-bypass-approvals-and-sandbox"
+    );
+    assert_eq!(
+        default_agent_command(AgentType::OpenCode, false),
+        "opencode"
+    );
+    assert_eq!(
+        default_agent_command(AgentType::OpenCode, true),
+        "OPENCODE_PERMISSION='{\"*\":\"allow\"}' opencode"
     );
 }
 
@@ -1095,6 +1105,117 @@ fn codex_attention_marker_exists_when_last_message_is_assistant() {
     .expect("session file should be written");
 
     let marker = super::latest_codex_assistant_attention_marker_in_home(&workspace_path, &home);
+    assert!(marker.is_some());
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn opencode_session_file_marks_waiting_when_last_message_is_assistant() {
+    let root = unique_test_dir("grove-opencode-session");
+    let home = root.join("home");
+    let workspace_path = root.join("ws").join("feature-delta");
+    fs::create_dir_all(&home).expect("home directory should exist");
+    fs::create_dir_all(&workspace_path).expect("workspace directory should exist");
+
+    let data_dir = home.join(".local").join("share").join("opencode");
+    fs::create_dir_all(&data_dir).expect("opencode data directory should exist");
+    let database_path = data_dir.join("opencode.db");
+    let connection = Connection::open(&database_path).expect("database should open");
+    connection
+        .execute_batch(
+            "CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT NOT NULL, time_updated INTEGER NOT NULL);
+             CREATE TABLE message (
+               id TEXT PRIMARY KEY,
+               session_id TEXT NOT NULL,
+               time_created INTEGER NOT NULL,
+               time_updated INTEGER NOT NULL,
+               data TEXT NOT NULL
+             );",
+        )
+        .expect("schema should be created");
+    connection
+        .execute(
+            "INSERT INTO session (id, directory, time_updated) VALUES (?1, ?2, ?3)",
+            (
+                "session-alpha",
+                workspace_path.to_string_lossy().to_string(),
+                1_i64,
+            ),
+        )
+        .expect("session row should be inserted");
+    connection
+        .execute(
+            "INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?1, ?2, ?3, ?4, ?5)",
+            (
+                "message-alpha",
+                "session-alpha",
+                1_i64,
+                1_i64,
+                "{\"role\":\"assistant\"}",
+            ),
+        )
+        .expect("message row should be inserted");
+
+    let status = detect_agent_session_status_in_home(
+        AgentType::OpenCode,
+        &workspace_path,
+        &home,
+        Duration::from_secs(0),
+    );
+    assert_eq!(status, Some(WorkspaceStatus::Waiting));
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn opencode_attention_marker_exists_when_last_message_is_assistant() {
+    let root = unique_test_dir("grove-opencode-attention-marker");
+    let home = root.join("home");
+    let workspace_path = root.join("ws").join("feature-epsilon");
+    fs::create_dir_all(&home).expect("home directory should exist");
+    fs::create_dir_all(&workspace_path).expect("workspace directory should exist");
+
+    let data_dir = home.join(".local").join("share").join("opencode");
+    fs::create_dir_all(&data_dir).expect("opencode data directory should exist");
+    let database_path = data_dir.join("opencode.db");
+    let connection = Connection::open(&database_path).expect("database should open");
+    connection
+        .execute_batch(
+            "CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT NOT NULL, time_updated INTEGER NOT NULL);
+             CREATE TABLE message (
+               id TEXT PRIMARY KEY,
+               session_id TEXT NOT NULL,
+               time_created INTEGER NOT NULL,
+               time_updated INTEGER NOT NULL,
+               data TEXT NOT NULL
+             );",
+        )
+        .expect("schema should be created");
+    connection
+        .execute(
+            "INSERT INTO session (id, directory, time_updated) VALUES (?1, ?2, ?3)",
+            (
+                "session-beta",
+                workspace_path.to_string_lossy().to_string(),
+                1_i64,
+            ),
+        )
+        .expect("session row should be inserted");
+    connection
+        .execute(
+            "INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?1, ?2, ?3, ?4, ?5)",
+            (
+                "message-beta",
+                "session-beta",
+                1_i64,
+                2_i64,
+                "{\"role\":\"assistant\"}",
+            ),
+        )
+        .expect("message row should be inserted");
+
+    let marker = super::latest_opencode_assistant_attention_marker_in_home(&workspace_path, &home);
     assert!(marker.is_some());
 
     let _ = fs::remove_dir_all(root);

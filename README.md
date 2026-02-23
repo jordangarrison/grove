@@ -19,7 +19,7 @@ monitor output live, and clean up safely.
 
 - Git worktree lifecycle, create, edit, merge, update-from-base, delete
 - Agent runtime per workspace via tmux sessions (persistent across TUI restarts)
-- Supported agents, Claude Code and Codex
+- Supported agents, Claude Code, Codex, and OpenCode
 - Interactive mode inside the TUI (send keys directly to running sessions)
 - Live output preview with ANSI rendering and cursor-aware display
 - Git preview tab via `lazygit`

@@ -2465,7 +2465,7 @@ fn edit_dialog_save_updates_workspace_agent_base_branch_and_markers() {
     );
 
     assert!(app.edit_dialog().is_none());
-    assert_eq!(app.state.workspaces[1].agent, AgentType::Claude);
+    assert_eq!(app.state.workspaces[1].agent, AgentType::OpenCode);
     assert_eq!(
         app.state.workspaces[1].base_branch.as_deref(),
         Some("develop")
@@ -2474,7 +2474,7 @@ fn edit_dialog_save_updates_workspace_agent_base_branch_and_markers() {
         fs::read_to_string(workspace_dir.join(".grove/agent"))
             .expect("agent marker should be readable")
             .trim(),
-        "claude"
+        "opencode"
     );
     assert_eq!(
         fs::read_to_string(workspace_dir.join(".grove/base"))

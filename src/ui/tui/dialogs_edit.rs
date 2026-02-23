@@ -85,14 +85,14 @@ impl GroveApp {
             }
             KeyCode::Left => {
                 if dialog.focused_field == EditDialogField::Agent {
-                    Self::toggle_edit_dialog_agent(dialog);
+                    Self::select_previous_edit_dialog_agent(dialog);
                 } else if dialog.focused_field == EditDialogField::CancelButton {
                     dialog.focused_field = EditDialogField::SaveButton;
                 }
             }
             KeyCode::Right => {
                 if dialog.focused_field == EditDialogField::Agent {
-                    Self::toggle_edit_dialog_agent(dialog);
+                    Self::select_next_edit_dialog_agent(dialog);
                 } else if dialog.focused_field == EditDialogField::SaveButton {
                     dialog.focused_field = EditDialogField::CancelButton;
                 }
@@ -102,7 +102,7 @@ impl GroveApp {
                     && dialog.focused_field != EditDialogField::BaseBranch =>
             {
                 if dialog.focused_field == EditDialogField::Agent {
-                    Self::toggle_edit_dialog_agent(dialog);
+                    Self::select_previous_edit_dialog_agent(dialog);
                 } else if dialog.focused_field == EditDialogField::CancelButton {
                     dialog.focused_field = EditDialogField::SaveButton;
                 }
@@ -112,19 +112,19 @@ impl GroveApp {
                     && dialog.focused_field != EditDialogField::BaseBranch =>
             {
                 if dialog.focused_field == EditDialogField::Agent {
-                    Self::toggle_edit_dialog_agent(dialog);
+                    Self::select_next_edit_dialog_agent(dialog);
                 } else if dialog.focused_field == EditDialogField::SaveButton {
                     dialog.focused_field = EditDialogField::CancelButton;
                 }
             }
             KeyCode::Char(' ') => {
                 if dialog.focused_field == EditDialogField::Agent {
-                    Self::toggle_edit_dialog_agent(dialog);
+                    Self::select_next_edit_dialog_agent(dialog);
                 }
             }
             KeyCode::Enter => match dialog.focused_field {
                 EditDialogField::BaseBranch => dialog.focused_field = dialog.focused_field.next(),
-                EditDialogField::Agent => Self::toggle_edit_dialog_agent(dialog),
+                EditDialogField::Agent => Self::select_next_edit_dialog_agent(dialog),
                 EditDialogField::SaveButton => post_action = PostAction::Save,
                 EditDialogField::CancelButton => post_action = PostAction::Cancel,
             },
@@ -189,8 +189,12 @@ impl GroveApp {
         self.last_tmux_error = None;
     }
 
-    fn toggle_edit_dialog_agent(dialog: &mut EditDialogState) {
-        dialog.agent = Self::toggle_agent(dialog.agent);
+    fn select_next_edit_dialog_agent(dialog: &mut EditDialogState) {
+        dialog.agent = Self::next_agent(dialog.agent);
+    }
+
+    fn select_previous_edit_dialog_agent(dialog: &mut EditDialogState) {
+        dialog.agent = Self::previous_agent(dialog.agent);
     }
 
     fn apply_edit_dialog_save(&mut self) {
