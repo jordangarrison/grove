@@ -1,16 +1,6 @@
 use super::*;
 
 impl GroveApp {
-    fn preview_content_background(&self, selected_workspace: Option<&Workspace>) -> PackedRgba {
-        let theme = ui_theme();
-        if self.preview_tab == PreviewTab::Agent
-            && selected_workspace.is_some_and(|workspace| workspace.agent == AgentType::OpenCode)
-        {
-            return PackedRgba::rgb(0, 0, 0);
-        }
-        theme.base
-    }
-
     pub(super) fn render_preview_pane(&self, frame: &mut Frame, area: Rect) {
         if area.is_empty() {
             return;
@@ -37,7 +27,6 @@ impl GroveApp {
         }
 
         let selected_workspace = self.state.selected_workspace();
-        let preview_background = self.preview_content_background(selected_workspace);
         let selected_agent = selected_workspace.map(|workspace| workspace.agent);
         let allow_cursor_overlay = self.preview_tab != PreviewTab::Agent
             || match selected_agent {
@@ -67,9 +56,14 @@ impl GroveApp {
             preview_height,
         ));
 
-        Paragraph::new(FtText::from_lines(text_lines))
-            .style(Style::new().bg(preview_background))
-            .render(inner, frame);
+        let paragraph = Paragraph::new(FtText::from_lines(text_lines));
+        if self.preview_tab == PreviewTab::Agent {
+            paragraph.render(inner, frame);
+        } else {
+            paragraph
+                .style(Style::new().bg(ui_theme().base))
+                .render(inner, frame);
+        }
         for (label, agent, x, y) in animated_labels {
             if y >= inner.bottom() {
                 continue;

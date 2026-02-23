@@ -81,6 +81,26 @@ impl TmuxInput for CommandTmuxInput {
 }
 
 impl CommandTmuxInput {
+    fn capture_pane_args(
+        target_session: &str,
+        scrollback_lines: usize,
+        include_escape_sequences: bool,
+    ) -> Vec<String> {
+        let mut args = vec![
+            "capture-pane".to_string(),
+            "-p".to_string(),
+            "-N".to_string(),
+        ];
+        if include_escape_sequences {
+            args.push("-e".to_string());
+        }
+        args.push("-t".to_string());
+        args.push(target_session.to_string());
+        args.push("-S".to_string());
+        args.push(format!("-{scrollback_lines}"));
+        args
+    }
+
     pub(in crate::ui::tui) fn execute_command(command: &[String]) -> std::io::Result<()> {
         execute_process_command(command)
     }
@@ -90,14 +110,8 @@ impl CommandTmuxInput {
         scrollback_lines: usize,
         include_escape_sequences: bool,
     ) -> std::io::Result<String> {
-        let mut args = vec!["capture-pane".to_string(), "-p".to_string()];
-        if include_escape_sequences {
-            args.push("-e".to_string());
-        }
-        args.push("-t".to_string());
-        args.push(target_session.to_string());
-        args.push("-S".to_string());
-        args.push(format!("-{scrollback_lines}"));
+        let args =
+            Self::capture_pane_args(target_session, scrollback_lines, include_escape_sequences);
 
         let output = std::process::Command::new("tmux").args(args).output()?;
 
@@ -228,5 +242,45 @@ impl CommandTmuxInput {
             "tmux paste-buffer failed: {}",
             stderr_or_status(&paste_output),
         )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CommandTmuxInput;
+
+    #[test]
+    fn capture_pane_args_include_trailing_spaces_flag() {
+        let args = CommandTmuxInput::capture_pane_args("session-a", 120, false);
+        assert_eq!(
+            args,
+            vec![
+                "capture-pane".to_string(),
+                "-p".to_string(),
+                "-N".to_string(),
+                "-t".to_string(),
+                "session-a".to_string(),
+                "-S".to_string(),
+                "-120".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn capture_pane_args_include_escape_flag_when_requested() {
+        let args = CommandTmuxInput::capture_pane_args("session-b", 64, true);
+        assert_eq!(
+            args,
+            vec![
+                "capture-pane".to_string(),
+                "-p".to_string(),
+                "-N".to_string(),
+                "-e".to_string(),
+                "-t".to_string(),
+                "session-b".to_string(),
+                "-S".to_string(),
+                "-64".to_string(),
+            ]
+        );
     }
 }

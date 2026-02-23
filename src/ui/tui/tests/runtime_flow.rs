@@ -6279,11 +6279,11 @@ fn preview_render_lines_align_with_plain_visible_range_when_lengths_differ() {
 }
 
 #[test]
-fn preview_output_rows_use_theme_background_for_non_opencode_agents() {
+fn preview_output_rows_use_theme_background_for_shell_tab() {
     let (mut app, _commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
     app.state.selected_index = 0;
-    app.preview_tab = PreviewTab::Agent;
+    app.preview_tab = PreviewTab::Shell;
 
     ftui::Model::update(
         &mut app,
@@ -6312,14 +6312,13 @@ fn preview_output_rows_use_theme_background_for_non_opencode_agents() {
 }
 
 #[test]
-fn preview_output_rows_use_black_background_for_opencode_agent_tab() {
+fn preview_output_rows_do_not_force_theme_background_for_agent_tab() {
     let (mut app, _commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-    app.state.selected_index = 1;
-    app.state.workspaces[1].agent = AgentType::OpenCode;
+    app.state.selected_index = 0;
     app.preview_tab = PreviewTab::Agent;
-    app.preview.lines = vec!["opencode".to_string()];
-    app.preview.render_lines = app.preview.lines.clone();
+    app.preview.lines.clear();
+    app.preview.render_lines.clear();
 
     ftui::Model::update(
         &mut app,
@@ -6333,17 +6332,16 @@ fn preview_output_rows_use_black_background_for_opencode_agent_tab() {
     let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
     let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
 
+    let far_right_x = preview_inner.right().saturating_sub(1);
     with_rendered_frame(&app, 100, 40, |frame| {
-        for x in preview_inner.x..preview_inner.right() {
-            let Some(cell) = frame.buffer.get(x, output_y) else {
-                panic!("output row cell should be rendered");
-            };
-            assert_eq!(
-                cell.bg,
-                ansi_16_color(0),
-                "expected black background at ({x},{output_y})",
-            );
-        }
+        let Some(cell) = frame.buffer.get(far_right_x, output_y) else {
+            panic!("output row cell should be rendered");
+        };
+        assert_ne!(
+            cell.bg,
+            ui_theme().base,
+            "agent tab should not force theme background at ({far_right_x},{output_y})",
+        );
     });
 }
 
