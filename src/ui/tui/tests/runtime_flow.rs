@@ -6279,6 +6279,75 @@ fn preview_render_lines_align_with_plain_visible_range_when_lengths_differ() {
 }
 
 #[test]
+fn preview_output_rows_use_theme_background_for_non_opencode_agents() {
+    let (mut app, _commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    app.state.selected_index = 0;
+    app.preview_tab = PreviewTab::Agent;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Resize {
+            width: 100,
+            height: 40,
+        },
+    );
+
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+    let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+    let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+
+    with_rendered_frame(&app, 100, 40, |frame| {
+        for x in preview_inner.x..preview_inner.right() {
+            let Some(cell) = frame.buffer.get(x, output_y) else {
+                panic!("output row cell should be rendered");
+            };
+            assert_eq!(
+                cell.bg,
+                ui_theme().base,
+                "expected theme background at ({x},{output_y})",
+            );
+        }
+    });
+}
+
+#[test]
+fn preview_output_rows_use_black_background_for_opencode_agent_tab() {
+    let (mut app, _commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    app.state.selected_index = 1;
+    app.state.workspaces[1].agent = AgentType::OpenCode;
+    app.preview_tab = PreviewTab::Agent;
+    app.preview.lines = vec!["opencode".to_string()];
+    app.preview.render_lines = app.preview.lines.clone();
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Resize {
+            width: 100,
+            height: 40,
+        },
+    );
+
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+    let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+    let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+
+    with_rendered_frame(&app, 100, 40, |frame| {
+        for x in preview_inner.x..preview_inner.right() {
+            let Some(cell) = frame.buffer.get(x, output_y) else {
+                panic!("output row cell should be rendered");
+            };
+            assert_eq!(
+                cell.bg,
+                ansi_16_color(0),
+                "expected black background at ({x},{output_y})",
+            );
+        }
+    });
+}
+
+#[test]
 fn alt_copy_then_alt_paste_uses_mouse_selected_preview_text() {
     let (mut app, commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Active, vec![Ok(String::new())]);
