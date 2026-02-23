@@ -1645,8 +1645,26 @@ fn command_palette_ctrl_p_moves_selection_up() {
 #[test]
 fn command_palette_max_visible_scales_with_viewport_height() {
     assert_eq!(GroveApp::command_palette_max_visible_for_height(16), 11);
+    assert_eq!(GroveApp::command_palette_max_visible_for_height(24), 17);
     assert_eq!(GroveApp::command_palette_max_visible_for_height(40), 30);
     assert_eq!(GroveApp::command_palette_max_visible_for_height(200), 30);
+}
+
+#[test]
+fn command_palette_max_visible_prevents_overlay_clipping() {
+    for viewport_height in 5u16..=120 {
+        let max_visible = GroveApp::command_palette_max_visible_for_height(viewport_height);
+        let top_offset = viewport_height / 6;
+        let requested_rows = u16::try_from(max_visible).unwrap_or(u16::MAX);
+        let palette_height = requested_rows
+            .saturating_add(3)
+            .max(5)
+            .min(viewport_height.saturating_sub(2));
+        assert!(
+            top_offset.saturating_add(palette_height) <= viewport_height,
+            "palette should fit viewport, height={viewport_height}, top_offset={top_offset}, max_visible={max_visible}, palette_height={palette_height}"
+        );
+    }
 }
 
 #[test]
@@ -1661,6 +1679,45 @@ fn open_command_palette_sizes_page_navigation_to_viewport_height() {
     let _ = app.handle_key(KeyEvent::new(KeyCode::PageDown).with_kind(KeyEventKind::Press));
 
     assert_eq!(app.command_palette.selected_index(), expected_jump);
+}
+
+#[test]
+fn command_palette_overlay_uses_near_full_width() {
+    let mut app = fixture_app();
+    app.open_command_palette();
+
+    with_rendered_frame(&app, 80, 24, |frame| {
+        let title_row = find_row_containing(frame, "Command Palette", 0, frame.width())
+            .expect("command palette title row should exist");
+        let left_border = find_cell_with_char(frame, title_row, 0, frame.width(), '┌')
+            .expect("left border should exist");
+        let right_border = find_cell_with_char(frame, title_row, 0, frame.width(), '┐')
+            .expect("right border should exist");
+        assert!(
+            left_border <= 4,
+            "palette should use near-full width, left border x={left_border}"
+        );
+        assert!(
+            right_border >= frame.width().saturating_sub(5),
+            "palette should use near-full width, right border x={right_border}"
+        );
+    });
+}
+
+#[test]
+fn command_palette_keeps_keybind_visible_on_narrow_width() {
+    let mut app = fixture_app();
+    app.open_command_palette();
+    app.command_palette.set_query("toggle pane focus");
+
+    with_rendered_frame(&app, 60, 24, |frame| {
+        let has_keybind = (0..frame.height())
+            .any(|row| row_text(frame, row, 0, frame.width()).contains("[Tab/h/l]"));
+        assert!(
+            has_keybind,
+            "expected keybind hint to remain visible in command palette rows"
+        );
+    });
 }
 
 #[test]

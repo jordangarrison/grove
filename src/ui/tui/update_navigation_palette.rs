@@ -2,7 +2,6 @@ use super::*;
 
 impl GroveApp {
     const COMMAND_PALETTE_MAX_VISIBLE_ROWS: usize = 30;
-    const COMMAND_PALETTE_FRAME_OVERHEAD_ROWS: u16 = 5;
 
     fn has_non_palette_modal_open(&self) -> bool {
         self.active_dialog.is_some() || self.keybind_help_open
@@ -51,9 +50,11 @@ impl GroveApp {
     }
 
     pub(super) fn command_palette_max_visible_for_height(viewport_height: u16) -> usize {
+        let top_offset = viewport_height / 6;
         usize::from(
             viewport_height
-                .saturating_sub(Self::COMMAND_PALETTE_FRAME_OVERHEAD_ROWS)
+                .saturating_sub(top_offset)
+                .saturating_sub(3)
                 .max(1),
         )
         .min(Self::COMMAND_PALETTE_MAX_VISIBLE_ROWS)
