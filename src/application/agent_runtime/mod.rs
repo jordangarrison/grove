@@ -1,16 +1,13 @@
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::hash_map::DefaultHasher;
-use std::fs::{self, File};
+use std::fs;
 use std::hash::{Hash, Hasher};
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-
-use rusqlite::{Connection, OpenFlags};
+use std::time::Duration;
 
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
+
+mod agents;
 
 pub const TMUX_SESSION_PREFIX: &str = "grove-ws-";
 const GROVE_LAUNCHER_SCRIPT_PATH: &str = ".grove/start.sh";
@@ -572,10 +569,7 @@ pub fn stop_plan(session_name: &str) -> Vec<Vec<String>> {
 }
 
 pub fn agent_supports_in_pane_restart(agent: AgentType) -> bool {
-    matches!(
-        agent,
-        AgentType::Claude | AgentType::Codex | AgentType::OpenCode
-    )
+    agents::supports_in_pane_restart(agent)
 }
 
 enum RestartExitInput {
@@ -584,11 +578,7 @@ enum RestartExitInput {
 }
 
 fn restart_exit_input(agent: AgentType) -> Option<RestartExitInput> {
-    match agent {
-        AgentType::Claude => Some(RestartExitInput::Literal("/exit")),
-        AgentType::Codex => Some(RestartExitInput::Named("C-c")),
-        AgentType::OpenCode => Some(RestartExitInput::Named("C-c")),
-    }
+    agents::restart_exit_input(agent)
 }
 
 fn restart_exit_plan(session_name: &str, exit_input: RestartExitInput) -> Vec<Vec<String>> {
@@ -625,36 +615,7 @@ fn resume_command_with_skip_permissions(
     command: &str,
     skip_permissions: bool,
 ) -> String {
-    if !skip_permissions {
-        return command.to_string();
-    }
-
-    match agent {
-        AgentType::Claude => {
-            if command.contains("--dangerously-skip-permissions") {
-                return command.to_string();
-            }
-            if let Some(remainder) = command.strip_prefix("claude ") {
-                return format!("claude --dangerously-skip-permissions {remainder}");
-            }
-            command.to_string()
-        }
-        AgentType::Codex => {
-            if command.contains("--dangerously-bypass-approvals-and-sandbox") {
-                return command.to_string();
-            }
-            if let Some(remainder) = command.strip_prefix("codex ") {
-                return format!("codex --dangerously-bypass-approvals-and-sandbox {remainder}");
-            }
-            command.to_string()
-        }
-        AgentType::OpenCode => {
-            if command.contains("OPENCODE_PERMISSION=") {
-                return command.to_string();
-            }
-            format!("OPENCODE_PERMISSION='{OPENCODE_UNSAFE_PERMISSION_JSON}' {command}")
-        }
-    }
+    agents::resume_command_with_skip_permissions(agent, command, skip_permissions)
 }
 
 fn restart_resume_command(
@@ -675,11 +636,7 @@ fn restart_resume_command(
 }
 
 pub fn extract_agent_resume_command(agent: AgentType, output: &str) -> Option<String> {
-    match agent {
-        AgentType::Claude => extract_claude_resume_command(output),
-        AgentType::Codex => extract_codex_resume_command(output),
-        AgentType::OpenCode => extract_opencode_resume_command(output),
-    }
+    agents::extract_resume_command(agent, output)
 }
 
 pub fn infer_workspace_skip_permissions(agent: AgentType, workspace_path: &Path) -> Option<bool> {
@@ -688,133 +645,7 @@ pub fn infer_workspace_skip_permissions(agent: AgentType, workspace_path: &Path)
         return None;
     }
 
-    match agent {
-        AgentType::Claude => infer_claude_skip_permissions_in_home(workspace_path, &home_dir),
-        AgentType::Codex => infer_codex_skip_permissions_in_home(workspace_path, &home_dir),
-        AgentType::OpenCode => infer_opencode_skip_permissions_in_home(workspace_path, &home_dir),
-    }
-}
-
-fn extract_claude_resume_command(output: &str) -> Option<String> {
-    let mut found = None;
-    for line in output.lines() {
-        let tokens: Vec<&str> = line.split_whitespace().collect();
-        if tokens.len() < 3 {
-            continue;
-        }
-
-        for index in 0..tokens.len().saturating_sub(2) {
-            if tokens[index] != "claude" || tokens[index + 1] != "--resume" {
-                continue;
-            }
-            let Some(session_id) = normalize_resume_session_id(tokens[index + 2]) else {
-                continue;
-            };
-            found = Some(format!("claude --resume {session_id}"));
-        }
-    }
-
-    found
-}
-
-fn extract_codex_resume_command(output: &str) -> Option<String> {
-    let mut found = None;
-    for line in output.lines() {
-        let tokens: Vec<&str> = line.split_whitespace().collect();
-        if tokens.len() < 3 {
-            continue;
-        }
-
-        for index in 0..tokens.len().saturating_sub(2) {
-            if tokens[index] != "codex" {
-                continue;
-            }
-
-            let mode = tokens[index + 1];
-            if mode != "resume" && mode != "--resume" {
-                continue;
-            }
-
-            let Some(session_id) = normalize_codex_resume_session_id(tokens[index + 2]) else {
-                continue;
-            };
-            found = Some(format!("codex resume {session_id}"));
-        }
-    }
-
-    found
-}
-
-fn normalize_codex_resume_session_id(value: &str) -> Option<String> {
-    let normalized = normalize_resume_session_id(value)?;
-    if normalized
-        .chars()
-        .any(|character| character.is_ascii_digit())
-        || normalized.contains('-')
-        || normalized.contains('_')
-    {
-        return Some(normalized);
-    }
-
-    None
-}
-
-fn extract_opencode_resume_command(output: &str) -> Option<String> {
-    let mut found = None;
-    for line in output.lines() {
-        let tokens: Vec<&str> = line.split_whitespace().collect();
-        if tokens.len() < 2 {
-            continue;
-        }
-
-        for index in 0..tokens.len().saturating_sub(1) {
-            if tokens[index] != "opencode" {
-                continue;
-            }
-
-            let mode = tokens[index + 1];
-            if mode == "-c" || mode == "--continue" {
-                found = Some("opencode --continue".to_string());
-                continue;
-            }
-            if mode != "-s" && mode != "--session" {
-                continue;
-            }
-            if index + 2 >= tokens.len() {
-                continue;
-            }
-
-            let Some(session_id) = normalize_resume_session_id(tokens[index + 2]) else {
-                continue;
-            };
-            found = Some(format!("opencode -s {session_id}"));
-        }
-    }
-
-    found
-}
-
-fn normalize_resume_session_id(value: &str) -> Option<String> {
-    if value.contains('<') || value.contains('>') {
-        return None;
-    }
-
-    let trimmed = value.trim_matches(|character: char| {
-        matches!(
-            character,
-            '\'' | '"' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';' | '.' | ':'
-        )
-    });
-    if trimmed.is_empty() {
-        return None;
-    }
-    if !trimmed
-        .chars()
-        .all(|character| character.is_ascii_alphanumeric() || character == '-' || character == '_')
-    {
-        return None;
-    }
-    Some(trimmed.to_string())
+    agents::infer_skip_permissions_in_home(agent, workspace_path, &home_dir)
 }
 
 fn wait_for_resume_command(
@@ -876,14 +707,12 @@ fn restart_workspace_in_pane_with_io_in_home(
 
     let resume_command =
         wait_for_resume_command(workspace.agent, &session_name, &mut capture_output).or_else(
-            |error| match workspace.agent {
-                AgentType::OpenCode => {
-                    let Some(home_dir) = home_dir else {
-                        return Err(error);
-                    };
-                    infer_opencode_resume_command_in_home(&workspace.path, home_dir).ok_or(error)
-                }
-                _ => Err(error),
+            |error| {
+                let Some(home_dir) = home_dir else {
+                    return Err(error);
+                };
+                agents::infer_resume_command_in_home(workspace.agent, &workspace.path, home_dir)
+                    .ok_or(error)
             },
         )?;
     let command = restart_resume_command(
@@ -1360,161 +1189,6 @@ struct StatusOverrideContext<'a> {
     activity_threshold: Duration,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct CodexSessionLookupKey {
-    sessions_dir: PathBuf,
-    workspace_path: PathBuf,
-}
-
-#[derive(Debug, Clone)]
-struct CodexSessionLookupCacheEntry {
-    checked_at: Instant,
-    session_file: PathBuf,
-}
-
-#[derive(Debug, Clone)]
-struct CodexMessageStatusCacheEntry {
-    modified_at: SystemTime,
-    status: Option<WorkspaceStatus>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct OpenCodeSessionLookupKey {
-    database_path: PathBuf,
-    workspace_path: PathBuf,
-}
-
-#[derive(Debug, Clone)]
-struct OpenCodeSessionLookupCacheEntry {
-    checked_at: Instant,
-    session: OpenCodeSessionMetadata,
-}
-
-#[derive(Debug, Clone)]
-struct OpenCodeSessionMetadata {
-    session_id: String,
-    time_updated_ms: i64,
-}
-
-fn codex_session_lookup_cache()
--> &'static Mutex<HashMap<CodexSessionLookupKey, CodexSessionLookupCacheEntry>> {
-    static CACHE: OnceLock<Mutex<HashMap<CodexSessionLookupKey, CodexSessionLookupCacheEntry>>> =
-        OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn codex_message_status_cache() -> &'static Mutex<HashMap<PathBuf, CodexMessageStatusCacheEntry>> {
-    static CACHE: OnceLock<Mutex<HashMap<PathBuf, CodexMessageStatusCacheEntry>>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn opencode_session_lookup_cache()
--> &'static Mutex<HashMap<OpenCodeSessionLookupKey, OpenCodeSessionLookupCacheEntry>> {
-    static CACHE: OnceLock<
-        Mutex<HashMap<OpenCodeSessionLookupKey, OpenCodeSessionLookupCacheEntry>>,
-    > = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn find_codex_session_for_path_cached(
-    sessions_dir: &Path,
-    workspace_path: &Path,
-) -> Option<PathBuf> {
-    let workspace_path = absolute_path(workspace_path)?;
-    let key = CodexSessionLookupKey {
-        sessions_dir: sessions_dir.to_path_buf(),
-        workspace_path: workspace_path.clone(),
-    };
-    let now = Instant::now();
-
-    if let Ok(cache) = codex_session_lookup_cache().lock()
-        && let Some(entry) = cache.get(&key)
-        && now.saturating_duration_since(entry.checked_at) < CODEX_SESSION_LOOKUP_REFRESH_INTERVAL
-        && entry.session_file.exists()
-    {
-        return Some(entry.session_file.clone());
-    }
-
-    let session_file = find_codex_session_for_path(sessions_dir, &workspace_path);
-    if let Ok(mut cache) = codex_session_lookup_cache().lock() {
-        if let Some(session_file) = session_file.as_ref() {
-            cache.insert(
-                key,
-                CodexSessionLookupCacheEntry {
-                    checked_at: now,
-                    session_file: session_file.clone(),
-                },
-            );
-        } else {
-            cache.remove(&key);
-        }
-    }
-
-    session_file
-}
-
-fn get_codex_last_message_status_cached(path: &Path) -> Option<WorkspaceStatus> {
-    let modified_at = fs::metadata(path)
-        .and_then(|metadata| metadata.modified())
-        .ok()?;
-    if let Ok(cache) = codex_message_status_cache().lock()
-        && let Some(entry) = cache.get(path)
-        && entry.modified_at == modified_at
-    {
-        return entry.status;
-    }
-
-    let status = get_codex_last_message_status(path);
-    if let Ok(mut cache) = codex_message_status_cache().lock() {
-        cache.insert(
-            path.to_path_buf(),
-            CodexMessageStatusCacheEntry {
-                modified_at,
-                status,
-            },
-        );
-    }
-
-    status
-}
-
-fn find_opencode_session_for_path_cached(
-    database_path: &Path,
-    workspace_path: &Path,
-) -> Option<OpenCodeSessionMetadata> {
-    let workspace_path = absolute_path(workspace_path)?;
-    let key = OpenCodeSessionLookupKey {
-        database_path: database_path.to_path_buf(),
-        workspace_path: workspace_path.clone(),
-    };
-    let now = Instant::now();
-
-    if let Ok(cache) = opencode_session_lookup_cache().lock()
-        && let Some(entry) = cache.get(&key)
-        && now.saturating_duration_since(entry.checked_at)
-            < OPENCODE_SESSION_LOOKUP_REFRESH_INTERVAL
-    {
-        return Some(entry.session.clone());
-    }
-
-    let session = find_opencode_session_for_path(database_path, workspace_path.as_path());
-    if let Ok(mut cache) = opencode_session_lookup_cache().lock() {
-        if let Some(session) = session.as_ref() {
-            cache.insert(
-                key,
-                OpenCodeSessionLookupCacheEntry {
-                    checked_at: now,
-                    session: session.clone(),
-                },
-            );
-        } else {
-            cache.remove(&key);
-        }
-    }
-
-    session
-}
-
 fn detect_status_with_session_override_in_home(
     context: StatusOverrideContext<'_>,
 ) -> WorkspaceStatus {
@@ -1551,17 +1225,7 @@ fn detect_agent_session_status_in_home(
     home_dir: &Path,
     activity_threshold: Duration,
 ) -> Option<WorkspaceStatus> {
-    match agent {
-        AgentType::Claude => {
-            detect_claude_session_status_in_home(workspace_path, home_dir, activity_threshold)
-        }
-        AgentType::Codex => {
-            detect_codex_session_status_in_home(workspace_path, home_dir, activity_threshold)
-        }
-        AgentType::OpenCode => {
-            detect_opencode_session_status_in_home(workspace_path, home_dir, activity_threshold)
-        }
-    }
+    agents::detect_session_status_in_home(agent, workspace_path, home_dir, activity_threshold)
 }
 
 pub(crate) fn latest_assistant_attention_marker(
@@ -1573,341 +1237,54 @@ pub(crate) fn latest_assistant_attention_marker(
         return None;
     }
 
-    match agent {
-        AgentType::Claude => {
-            latest_claude_assistant_attention_marker_in_home(workspace_path, &home_dir)
-        }
-        AgentType::Codex => {
-            latest_codex_assistant_attention_marker_in_home(workspace_path, &home_dir)
-        }
-        AgentType::OpenCode => {
-            latest_opencode_assistant_attention_marker_in_home(workspace_path, &home_dir)
-        }
-    }
+    agents::latest_attention_marker_in_home(agent, workspace_path, &home_dir)
 }
 
-fn detect_claude_session_status_in_home(
-    workspace_path: &Path,
-    home_dir: &Path,
-    activity_threshold: Duration,
-) -> Option<WorkspaceStatus> {
-    let workspace_path = absolute_path(workspace_path)?;
-    let project_dir_name = claude_project_dir_name(&workspace_path);
-    let project_dir = home_dir
-        .join(".claude")
-        .join("projects")
-        .join(project_dir_name);
-    let session_files = find_recent_jsonl_files(&project_dir, Some("agent-"))?;
-    for session_file in session_files {
-        if is_file_recently_modified(&session_file, activity_threshold) {
-            return Some(WorkspaceStatus::Active);
-        }
-
-        let session_stem = session_file.file_stem()?;
-        let subagents_dir = project_dir.join(session_stem).join("subagents");
-        if any_file_recently_modified(&subagents_dir, ".jsonl", activity_threshold) {
-            return Some(WorkspaceStatus::Active);
-        }
-
-        if let Some(status) =
-            get_last_message_status_jsonl(&session_file, "type", "user", "assistant")
-        {
-            return Some(status);
-        }
-    }
-
-    None
-}
-
-fn detect_codex_session_status_in_home(
-    workspace_path: &Path,
-    home_dir: &Path,
-    activity_threshold: Duration,
-) -> Option<WorkspaceStatus> {
-    let sessions_dir = home_dir.join(".codex").join("sessions");
-    let session_file = find_codex_session_for_path_cached(&sessions_dir, workspace_path)?;
-
-    if is_file_recently_modified(&session_file, activity_threshold) {
-        return Some(WorkspaceStatus::Active);
-    }
-
-    get_codex_last_message_status_cached(&session_file)
-}
-
+#[cfg(test)]
 fn infer_claude_skip_permissions_in_home(workspace_path: &Path, home_dir: &Path) -> Option<bool> {
-    let workspace_path = absolute_path(workspace_path)?;
-    let project_dir_name = claude_project_dir_name(&workspace_path);
-    let project_dir = home_dir
-        .join(".claude")
-        .join("projects")
-        .join(project_dir_name);
-    let session_files = find_recent_jsonl_files(&project_dir, Some("agent-"))?;
-    for session_file in session_files {
-        if let Some(skip_permissions) = session_file_skip_permissions_mode(&session_file, 96) {
-            return Some(skip_permissions);
-        }
-    }
-
-    None
+    agents::infer_skip_permissions_in_home(AgentType::Claude, workspace_path, home_dir)
 }
 
+#[cfg(test)]
 fn infer_codex_skip_permissions_in_home(workspace_path: &Path, home_dir: &Path) -> Option<bool> {
-    let sessions_dir = home_dir.join(".codex").join("sessions");
-    let session_file = find_codex_session_for_path_cached(&sessions_dir, workspace_path)?;
-    codex_session_skip_permissions_mode(&session_file)
+    agents::infer_skip_permissions_in_home(AgentType::Codex, workspace_path, home_dir)
 }
 
+#[cfg(test)]
 fn codex_session_skip_permissions_mode(path: &Path) -> Option<bool> {
-    session_file_skip_permissions_mode(path, 24)
+    agents::codex_session_skip_permissions_mode(path)
 }
 
-fn session_file_skip_permissions_mode(path: &Path, max_lines: usize) -> Option<bool> {
-    let file = File::open(path).ok()?;
-    let reader = BufReader::new(file);
-    for line in reader.lines().map_while(Result::ok).take(max_lines) {
-        if let Some(skip_permissions) = text_skip_permissions_mode(&line) {
-            return Some(skip_permissions);
-        }
-    }
-
-    None
-}
-
-fn text_skip_permissions_mode(value: &str) -> Option<bool> {
-    let lower = value.to_ascii_lowercase();
-    if lower.contains("approval policy is currently never")
-        || lower.contains("<approval_policy>never</approval_policy>")
-        || lower.contains("\"approval_policy\":\"never\"")
-        || lower.contains("\"approval_policy\": \"never\"")
-        || lower.contains("\"permissionmode\":\"bypasspermissions\"")
-        || lower.contains("\"permissionmode\": \"bypasspermissions\"")
-    {
-        return Some(true);
-    }
-    if lower.contains("approval policy is currently on-request")
-        || lower.contains("<approval_policy>on-request</approval_policy>")
-        || lower.contains("\"approval_policy\":\"on-request\"")
-        || lower.contains("\"approval_policy\": \"on-request\"")
-        || lower.contains("\"permissionmode\":\"default\"")
-        || lower.contains("\"permissionmode\": \"default\"")
-    {
-        return Some(false);
-    }
-
-    None
-}
-
+#[cfg(test)]
 fn infer_opencode_skip_permissions_in_home(workspace_path: &Path, home_dir: &Path) -> Option<bool> {
-    let database_path = opencode_database_path_in_home(home_dir);
-    let session = find_opencode_session_for_path_cached(&database_path, workspace_path)?;
-    opencode_session_skip_permissions_mode(&database_path, &session.session_id)
+    agents::infer_skip_permissions_in_home(AgentType::OpenCode, workspace_path, home_dir)
 }
 
-fn infer_opencode_resume_command_in_home(workspace_path: &Path, home_dir: &Path) -> Option<String> {
-    let database_path = opencode_database_path_in_home(home_dir);
-    let session = find_opencode_session_for_path_cached(&database_path, workspace_path)?;
-    Some(format!("opencode -s {}", session.session_id))
-}
-
-fn opencode_session_skip_permissions_mode(database_path: &Path, session_id: &str) -> Option<bool> {
-    let connection = open_opencode_database(database_path)?;
-    for ordering in ["DESC", "ASC"] {
-        let query = format!(
-            "SELECT data FROM message WHERE session_id = ? ORDER BY time_created {ordering} LIMIT 32"
-        );
-        let mut statement = connection.prepare(&query).ok()?;
-        let rows = statement
-            .query_map([session_id], |row| {
-                let data: String = row.get(0)?;
-                Ok(data)
-            })
-            .ok()?;
-        for row in rows.flatten() {
-            if let Some(skip_permissions) = text_skip_permissions_mode(&row) {
-                return Some(skip_permissions);
-            }
-        }
-    }
-
-    None
-}
-
-fn detect_opencode_session_status_in_home(
-    workspace_path: &Path,
-    home_dir: &Path,
-    activity_threshold: Duration,
-) -> Option<WorkspaceStatus> {
-    let database_path = opencode_database_path_in_home(home_dir);
-    let session = find_opencode_session_for_path_cached(&database_path, workspace_path)?;
-
-    if is_timestamp_recently_updated_ms(session.time_updated_ms, activity_threshold) {
-        return Some(WorkspaceStatus::Active);
-    }
-
-    let (_, role, _) = get_opencode_last_message_entry(&database_path, &session.session_id)?;
-    match role.as_str() {
-        "assistant" => Some(WorkspaceStatus::Waiting),
-        "user" => Some(WorkspaceStatus::Active),
-        _ => None,
-    }
-}
-
+#[cfg(test)]
 fn latest_claude_assistant_attention_marker_in_home(
     workspace_path: &Path,
     home_dir: &Path,
 ) -> Option<String> {
-    let workspace_path = absolute_path(workspace_path)?;
-    let project_dir_name = claude_project_dir_name(&workspace_path);
-    let project_dir = home_dir
-        .join(".claude")
-        .join("projects")
-        .join(project_dir_name);
-    let session_files = find_recent_jsonl_files(&project_dir, Some("agent-"))?;
-    for session_file in session_files {
-        let Some((is_assistant, marker)) =
-            get_last_message_marker_jsonl(&session_file, "type", "user", "assistant")
-        else {
-            continue;
-        };
-        if is_assistant {
-            return Some(marker);
-        }
-        return None;
-    }
-
-    None
+    agents::latest_attention_marker_in_home(AgentType::Claude, workspace_path, home_dir)
 }
 
+#[cfg(test)]
 fn latest_codex_assistant_attention_marker_in_home(
     workspace_path: &Path,
     home_dir: &Path,
 ) -> Option<String> {
-    let sessions_dir = home_dir.join(".codex").join("sessions");
-    let session_file = find_codex_session_for_path_cached(&sessions_dir, workspace_path)?;
-    let (is_assistant, marker) = get_codex_last_message_marker(&session_file)?;
-    is_assistant.then_some(marker)
+    agents::latest_attention_marker_in_home(AgentType::Codex, workspace_path, home_dir)
 }
 
+#[cfg(test)]
 fn latest_opencode_assistant_attention_marker_in_home(
     workspace_path: &Path,
     home_dir: &Path,
 ) -> Option<String> {
-    let database_path = opencode_database_path_in_home(home_dir);
-    let session = find_opencode_session_for_path_cached(&database_path, workspace_path)?;
-    let (message_id, role, message_updated_ms) =
-        get_opencode_last_message_entry(&database_path, &session.session_id)?;
-    if role != "assistant" {
-        return None;
-    }
-
-    Some(format!(
-        "{}:{}:{message_id}:{message_updated_ms}",
-        database_path.display(),
-        session.session_id
-    ))
+    agents::latest_attention_marker_in_home(AgentType::OpenCode, workspace_path, home_dir)
 }
 
-fn opencode_database_path_in_home(home_dir: &Path) -> PathBuf {
-    let xdg_data_dir = std::env::var_os("XDG_DATA_HOME")
-        .filter(|path| !path.is_empty())
-        .map(PathBuf::from);
-    let data_dir = match dirs::home_dir() {
-        Some(actual_home) if actual_home == home_dir => {
-            xdg_data_dir.unwrap_or_else(|| home_dir.join(".local").join("share"))
-        }
-        _ => home_dir.join(".local").join("share"),
-    };
-    data_dir.join("opencode").join("opencode.db")
-}
-
-fn find_opencode_session_for_path(
-    database_path: &Path,
-    workspace_path: &Path,
-) -> Option<OpenCodeSessionMetadata> {
-    if !database_path.exists() {
-        return None;
-    }
-
-    let workspace_path = absolute_path(workspace_path)?;
-    let connection = open_opencode_database(database_path)?;
-    let mut statement = connection
-        .prepare("SELECT id, directory, time_updated FROM session ORDER BY time_updated DESC")
-        .ok()?;
-    let rows = statement
-        .query_map([], |row| {
-            let session_id: String = row.get(0)?;
-            let directory: String = row.get(1)?;
-            let time_updated_ms: i64 = row.get(2)?;
-            Ok((session_id, directory, time_updated_ms))
-        })
-        .ok()?;
-
-    for row in rows.flatten() {
-        let (session_id, directory, time_updated_ms) = row;
-        if !cwd_matches(Path::new(&directory), workspace_path.as_path()) {
-            continue;
-        }
-        return Some(OpenCodeSessionMetadata {
-            session_id,
-            time_updated_ms,
-        });
-    }
-
-    None
-}
-
-fn get_opencode_last_message_entry(
-    database_path: &Path,
-    session_id: &str,
-) -> Option<(String, String, i64)> {
-    let connection = open_opencode_database(database_path)?;
-    let mut statement = connection
-        .prepare(
-            "SELECT id, data, time_updated FROM message WHERE session_id = ? ORDER BY time_created DESC LIMIT 1",
-        )
-        .ok()?;
-    let row = statement
-        .query_row([session_id], |row| {
-            let message_id: String = row.get(0)?;
-            let data: String = row.get(1)?;
-            let updated_ms: i64 = row.get(2)?;
-            Ok((message_id, data, updated_ms))
-        })
-        .ok()?;
-    let value: serde_json::Value = serde_json::from_str(&row.1).ok()?;
-    let role = value
-        .get("role")
-        .and_then(serde_json::Value::as_str)?
-        .to_string();
-    Some((row.0, role, row.2))
-}
-
-fn open_opencode_database(path: &Path) -> Option<Connection> {
-    Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()
-}
-
-fn is_timestamp_recently_updated_ms(updated_ms: i64, threshold: Duration) -> bool {
-    let Some(now_ms) = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .ok()
-        .and_then(|duration| i64::try_from(duration.as_millis()).ok())
-    else {
-        return false;
-    };
-    let Some(threshold_ms) = i64::try_from(threshold.as_millis()).ok() else {
-        return false;
-    };
-    now_ms.saturating_sub(updated_ms).max(0) < threshold_ms
-}
-
-fn absolute_path(path: &Path) -> Option<PathBuf> {
-    if path.is_absolute() {
-        return Some(path.to_path_buf());
-    }
-    let current = std::env::current_dir().ok()?;
-    Some(current.join(path))
-}
-
+#[cfg(test)]
 fn claude_project_dir_name(abs_path: &Path) -> String {
     abs_path
         .to_string_lossy()
@@ -1920,312 +1297,6 @@ fn claude_project_dir_name(abs_path: &Path) -> String {
             }
         })
         .collect()
-}
-
-fn is_file_recently_modified(path: &Path, threshold: Duration) -> bool {
-    fs::metadata(path)
-        .and_then(|metadata| metadata.modified())
-        .ok()
-        .and_then(|modified_at| modified_at.elapsed().ok())
-        .is_some_and(|age| age < threshold)
-}
-
-fn any_file_recently_modified(dir: &Path, suffix: &str, threshold: Duration) -> bool {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return false;
-    };
-
-    entries.flatten().any(|entry| {
-        entry.file_type().is_ok_and(|ft| ft.is_file())
-            && entry.file_name().to_string_lossy().ends_with(suffix)
-            && is_file_recently_modified(&entry.path(), threshold)
-    })
-}
-
-fn find_recent_jsonl_files(dir: &Path, exclude_prefix: Option<&str>) -> Option<Vec<PathBuf>> {
-    let entries = fs::read_dir(dir).ok()?;
-    let mut files: Vec<(PathBuf, SystemTime)> = Vec::new();
-    for entry in entries.flatten() {
-        let file_type = match entry.file_type() {
-            Ok(file_type) => file_type,
-            Err(_) => continue,
-        };
-        if !file_type.is_file() {
-            continue;
-        }
-        let file_name = entry.file_name();
-        let file_name = file_name.to_string_lossy();
-        if !file_name.ends_with(".jsonl") {
-            continue;
-        }
-        if exclude_prefix.is_some_and(|prefix| file_name.starts_with(prefix)) {
-            continue;
-        }
-        let modified = match entry.metadata().and_then(|metadata| metadata.modified()) {
-            Ok(modified) => modified,
-            Err(_) => continue,
-        };
-        files.push((entry.path(), modified));
-    }
-
-    files.sort_by(|left, right| right.1.cmp(&left.1));
-    Some(files.into_iter().map(|(path, _)| path).collect())
-}
-
-fn read_tail_lines(path: &Path, max_bytes: usize) -> Option<Vec<String>> {
-    let mut file = File::open(path).ok()?;
-    let size = file.metadata().ok()?.len();
-    if size == 0 {
-        return Some(Vec::new());
-    }
-
-    let max_bytes_u64 = u64::try_from(max_bytes).ok()?;
-    let start = size.saturating_sub(max_bytes_u64);
-    file.seek(SeekFrom::Start(start)).ok()?;
-
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes).ok()?;
-
-    let mut lines: Vec<String> = String::from_utf8_lossy(&bytes)
-        .lines()
-        .map(|line| line.to_string())
-        .collect();
-    if start > 0 && !lines.is_empty() {
-        lines.remove(0);
-    }
-    Some(lines)
-}
-
-fn get_last_message_status_jsonl(
-    path: &Path,
-    type_field: &str,
-    user_value: &str,
-    assistant_value: &str,
-) -> Option<WorkspaceStatus> {
-    let lines = read_tail_lines(path, SESSION_STATUS_TAIL_BYTES)?;
-    for line in lines.iter().rev() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let value: serde_json::Value = match serde_json::from_str(trimmed) {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-        let Some(message_type) = value.get(type_field).and_then(|value| value.as_str()) else {
-            continue;
-        };
-        if message_type == user_value {
-            return Some(WorkspaceStatus::Active);
-        }
-        if message_type == assistant_value {
-            return Some(WorkspaceStatus::Waiting);
-        }
-    }
-    None
-}
-
-fn marker_for_session_line(path: &Path, line: &str) -> Option<String> {
-    let modified = fs::metadata(path)
-        .and_then(|metadata| metadata.modified())
-        .ok()?;
-    let modified_ms = modified.duration_since(UNIX_EPOCH).ok()?.as_millis();
-    let mut hasher = DefaultHasher::new();
-    line.hash(&mut hasher);
-    let line_hash = hasher.finish();
-    Some(format!("{}:{modified_ms}:{line_hash}", path.display()))
-}
-
-fn get_last_message_marker_jsonl(
-    path: &Path,
-    type_field: &str,
-    user_value: &str,
-    assistant_value: &str,
-) -> Option<(bool, String)> {
-    let lines = read_tail_lines(path, SESSION_STATUS_TAIL_BYTES)?;
-    for line in lines.iter().rev() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let value: serde_json::Value = match serde_json::from_str(trimmed) {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-        let Some(message_type) = value.get(type_field).and_then(|value| value.as_str()) else {
-            continue;
-        };
-        if message_type == user_value {
-            let marker = marker_for_session_line(path, trimmed)?;
-            return Some((false, marker));
-        }
-        if message_type == assistant_value {
-            let marker = marker_for_session_line(path, trimmed)?;
-            return Some((true, marker));
-        }
-    }
-    None
-}
-
-fn find_codex_session_for_path(sessions_dir: &Path, workspace_path: &Path) -> Option<PathBuf> {
-    let mut pending = vec![sessions_dir.to_path_buf()];
-    let mut best_path: Option<PathBuf> = None;
-    let mut best_time: Option<SystemTime> = None;
-
-    while let Some(dir) = pending.pop() {
-        let entries = match fs::read_dir(dir) {
-            Ok(entries) => entries,
-            Err(_) => continue,
-        };
-        for entry in entries.flatten() {
-            let file_type = match entry.file_type() {
-                Ok(file_type) => file_type,
-                Err(_) => continue,
-            };
-            let path = entry.path();
-            if file_type.is_dir() {
-                pending.push(path);
-                continue;
-            }
-            if !file_type.is_file()
-                || path
-                    .extension()
-                    .is_none_or(|extension| extension != "jsonl")
-            {
-                continue;
-            }
-
-            let metadata = match entry.metadata() {
-                Ok(metadata) => metadata,
-                Err(_) => continue,
-            };
-            let Some(cwd) = get_codex_session_cwd(&path) else {
-                continue;
-            };
-            if !cwd_matches(&cwd, workspace_path) {
-                continue;
-            }
-            let modified = match metadata.modified() {
-                Ok(modified) => modified,
-                Err(_) => continue,
-            };
-            let replace = match best_time {
-                Some(current_best) => modified > current_best,
-                None => true,
-            };
-            if replace {
-                best_time = Some(modified);
-                best_path = Some(path);
-            }
-        }
-    }
-
-    best_path
-}
-
-fn get_codex_session_cwd(path: &Path) -> Option<PathBuf> {
-    let file = File::open(path).ok()?;
-    let reader = BufReader::new(file);
-    for line in reader.lines().map_while(Result::ok) {
-        let value: serde_json::Value = match serde_json::from_str(&line) {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-        if value.get("type").and_then(|value| value.as_str()) != Some("session_meta") {
-            continue;
-        }
-        let cwd = value
-            .get("payload")
-            .and_then(|payload| payload.get("cwd"))
-            .and_then(|cwd| cwd.as_str())?;
-        return Some(PathBuf::from(cwd));
-    }
-    None
-}
-
-fn cwd_matches(cwd: &Path, workspace_path: &Path) -> bool {
-    let cwd = match absolute_path(cwd) {
-        Some(path) => path,
-        None => return false,
-    };
-    cwd == workspace_path || cwd.starts_with(workspace_path)
-}
-
-fn get_codex_last_message_status(path: &Path) -> Option<WorkspaceStatus> {
-    let lines = read_tail_lines(path, SESSION_STATUS_TAIL_BYTES)?;
-    for line in lines.iter().rev() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let value: serde_json::Value = match serde_json::from_str(trimmed) {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-        if value.get("type").and_then(|value| value.as_str()) != Some("response_item") {
-            continue;
-        }
-        if value
-            .get("payload")
-            .and_then(|payload| payload.get("type"))
-            .and_then(|value| value.as_str())
-            != Some("message")
-        {
-            continue;
-        }
-        match value
-            .get("payload")
-            .and_then(|payload| payload.get("role"))
-            .and_then(|value| value.as_str())
-        {
-            Some("assistant") => return Some(WorkspaceStatus::Waiting),
-            Some("user") => return Some(WorkspaceStatus::Active),
-            _ => continue,
-        }
-    }
-    None
-}
-
-fn get_codex_last_message_marker(path: &Path) -> Option<(bool, String)> {
-    let lines = read_tail_lines(path, SESSION_STATUS_TAIL_BYTES)?;
-    for line in lines.iter().rev() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let value: serde_json::Value = match serde_json::from_str(trimmed) {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-        if value.get("type").and_then(|value| value.as_str()) != Some("response_item") {
-            continue;
-        }
-        if value
-            .get("payload")
-            .and_then(|payload| payload.get("type"))
-            .and_then(|value| value.as_str())
-            != Some("message")
-        {
-            continue;
-        }
-        match value
-            .get("payload")
-            .and_then(|payload| payload.get("role"))
-            .and_then(|value| value.as_str())
-        {
-            Some("assistant") => {
-                let marker = marker_for_session_line(path, trimmed)?;
-                return Some((true, marker));
-            }
-            Some("user") => {
-                let marker = marker_for_session_line(path, trimmed)?;
-                return Some((false, marker));
-            }
-            _ => continue,
-        }
-    }
-
-    None
 }
 
 fn has_unclosed_tag(text: &str, open_tag: &str, close_tag: &str) -> bool {
