@@ -10,6 +10,7 @@ impl GroveApp {
             || self.create_in_flight
             || self.start_in_flight
             || self.stop_in_flight
+            || self.restart_in_flight
     }
 
     fn keybinding_input_nonempty(&self) -> bool {

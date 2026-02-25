@@ -11,6 +11,8 @@ pub struct GroveConfig {
     pub projects: Vec<ProjectConfig>,
     #[serde(default)]
     pub attention_acks: Vec<WorkspaceAttentionAckConfig>,
+    #[serde(default)]
+    pub launch_skip_permissions: bool,
 }
 
 const fn default_sidebar_width_pct() -> u16 {
@@ -23,6 +25,7 @@ impl Default for GroveConfig {
             sidebar_width_pct: default_sidebar_width_pct(),
             projects: Vec::new(),
             attention_acks: Vec::new(),
+            launch_skip_permissions: false,
         }
     }
 }

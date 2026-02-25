@@ -22,6 +22,7 @@ fn missing_config_uses_defaults() {
             sidebar_width_pct: 33,
             projects: Vec::new(),
             attention_acks: Vec::new(),
+            launch_skip_permissions: false,
         }
     );
 }
@@ -44,6 +45,7 @@ fn save_and_load_round_trip() {
             },
         }],
         attention_acks: Vec::new(),
+        launch_skip_permissions: true,
     };
     save_to_path(&path, &config).expect("config should save");
 
@@ -78,6 +80,7 @@ fn load_project_without_defaults_uses_project_defaults_fallback() {
     assert_eq!(loaded.projects.len(), 1);
     assert_eq!(loaded.sidebar_width_pct, 33);
     assert_eq!(loaded.attention_acks, Vec::new());
+    assert!(!loaded.launch_skip_permissions);
     assert_eq!(loaded.projects[0].defaults.base_branch, "");
     assert_eq!(
         loaded.projects[0].defaults.setup_commands,

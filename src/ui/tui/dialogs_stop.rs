@@ -2,7 +2,7 @@ use super::*;
 
 impl GroveApp {
     pub(super) fn handle_stop_dialog_key(&mut self, key_event: KeyEvent) {
-        if self.stop_in_flight {
+        if self.stop_in_flight || self.restart_in_flight {
             return;
         }
 
@@ -94,8 +94,8 @@ impl GroveApp {
         if self.interactive.is_some() {
             self.exit_interactive_to_list();
         }
-        if self.stop_in_flight {
-            self.show_info_toast("agent stop already in progress");
+        if self.stop_in_flight || self.restart_in_flight {
+            self.show_info_toast("agent lifecycle already in progress");
             return;
         }
 
@@ -133,7 +133,7 @@ impl GroveApp {
     }
 
     fn confirm_stop_dialog(&mut self) {
-        if self.stop_in_flight {
+        if self.stop_in_flight || self.restart_in_flight {
             return;
         }
 

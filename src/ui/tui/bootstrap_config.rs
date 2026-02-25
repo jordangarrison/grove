@@ -94,6 +94,37 @@ pub(super) fn read_workspace_launch_prompt(workspace_path: &Path) -> Option<Stri
     Some(trimmed.to_string())
 }
 
+pub(super) fn read_workspace_skip_permissions(workspace_path: &Path) -> Option<bool> {
+    let raw = fs::read_to_string(workspace_path.join(WORKSPACE_SKIP_PERMISSIONS_FILENAME)).ok()?;
+    match raw.trim() {
+        "true" | "1" => Some(true),
+        "false" | "0" => Some(false),
+        _ => None,
+    }
+}
+
+pub(super) fn write_workspace_skip_permissions(
+    workspace_path: &Path,
+    skip_permissions: bool,
+) -> Result<(), String> {
+    let marker_path = workspace_path.join(WORKSPACE_SKIP_PERMISSIONS_FILENAME);
+    let Some(parent) = marker_path.parent() else {
+        return Err(format!(
+            "workspace skip-permissions marker has no parent: {}",
+            marker_path.display()
+        ));
+    };
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("create marker directory failed: {error}"))?;
+    let value = if skip_permissions {
+        "true\n"
+    } else {
+        "false\n"
+    };
+    fs::write(&marker_path, value).map_err(|error| format!("write marker failed: {error}"))?;
+    Ok(())
+}
+
 pub(super) fn load_local_branches(repo_root: &Path) -> Result<Vec<String>, String> {
     let output = Command::new("git")
         .current_dir(repo_root)

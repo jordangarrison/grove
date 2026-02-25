@@ -96,6 +96,7 @@ impl GroveApp {
         let persisted_config = crate::infrastructure::config::load_from_path(&config_path)
             .unwrap_or_else(|_| GroveConfig::default());
         let sidebar_width_pct = clamp_sidebar_ratio(persisted_config.sidebar_width_pct);
+        let launch_skip_permissions = persisted_config.launch_skip_permissions;
         let workspace_attention_ack_markers = persisted_config
             .attention_acks
             .into_iter()
@@ -151,7 +152,7 @@ impl GroveApp {
             sidebar_width_pct,
             sidebar_hidden: false,
             mouse_capture_enabled: true,
-            launch_skip_permissions: false,
+            launch_skip_permissions,
             divider_drag_active: false,
             divider_drag_pointer_offset: 0,
             preview_selection: TextSelectionState::default(),
@@ -190,6 +191,7 @@ impl GroveApp {
             pending_restart_workspace_path: None,
             start_in_flight: false,
             stop_in_flight: false,
+            restart_in_flight: false,
             deferred_cmds: Vec::new(),
         };
         app.reconcile_workspace_attention_tracking();

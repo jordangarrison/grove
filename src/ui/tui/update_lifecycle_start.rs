@@ -1,6 +1,19 @@
 use super::*;
 
 impl GroveApp {
+    pub(super) fn workspace_skip_permissions_for_workspace(&self, workspace: &Workspace) -> bool {
+        if let Some(skip_permissions) = read_workspace_skip_permissions(&workspace.path) {
+            return skip_permissions;
+        }
+        if let Some(skip_permissions) =
+            infer_workspace_skip_permissions(workspace.agent, &workspace.path)
+        {
+            return skip_permissions;
+        }
+
+        self.launch_skip_permissions
+    }
+
     fn start_workspace_agent_with_options(
         &mut self,
         workspace: Workspace,
@@ -8,7 +21,7 @@ impl GroveApp {
         pre_launch_command: Option<String>,
         skip_permissions: bool,
     ) {
-        if self.start_in_flight {
+        if self.start_in_flight || self.restart_in_flight {
             return;
         }
         if !workspace_can_start_agent(Some(&workspace)) {
@@ -16,6 +29,13 @@ impl GroveApp {
             return;
         }
 
+        self.launch_skip_permissions = skip_permissions;
+        if let Err(error) = write_workspace_skip_permissions(&workspace.path, skip_permissions) {
+            self.last_tmux_error = Some(format!("skip permissions marker persist failed: {error}"));
+        }
+        if let Err(error) = self.save_runtime_config() {
+            self.last_tmux_error = Some(format!("skip permissions config persist failed: {error}"));
+        }
         let (capture_cols, capture_rows) = self.capture_dimensions();
         let request = launch_request_for_workspace(
             &workspace,
@@ -57,7 +77,7 @@ impl GroveApp {
         pre_launch_command: Option<String>,
         skip_permissions: bool,
     ) {
-        if self.start_in_flight {
+        if self.start_in_flight || self.restart_in_flight {
             return;
         }
 
@@ -90,12 +110,8 @@ impl GroveApp {
         };
 
         let prompt = read_workspace_launch_prompt(&workspace.path);
-        self.start_workspace_agent_with_options(
-            workspace,
-            prompt,
-            None,
-            self.launch_skip_permissions,
-        );
+        let skip_permissions = self.workspace_skip_permissions_for_workspace(&workspace);
+        self.start_workspace_agent_with_options(workspace, prompt, None, skip_permissions);
     }
 
     pub(super) fn apply_start_agent_completion(&mut self, completion: StartAgentCompletion) {
@@ -169,7 +185,6 @@ impl GroveApp {
             pre_launch_command,
             skip_permissions,
         } = dialog.start_config.parse_start_options();
-        self.launch_skip_permissions = skip_permissions;
         self.start_selected_workspace_agent_with_options(
             prompt,
             pre_launch_command,

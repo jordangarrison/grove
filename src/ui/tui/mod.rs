@@ -37,15 +37,17 @@ use serde_json::Value;
 
 use crate::application::agent_runtime::{
     CommandExecutionMode, LivePreviewTarget, OutputDigest, SessionActivity, ShellLaunchRequest,
-    WorkspaceStatusTarget, detect_status_with_session_override, evaluate_capture_change,
-    execute_command_with, execute_launch_request_with_result_for_mode,
-    execute_shell_launch_request_for_mode, execute_stop_workspace_with_result_for_mode,
-    git_session_name_for_workspace, latest_assistant_attention_marker,
-    launch_request_for_workspace, poll_interval, session_name_for_workspace_ref,
-    shell_launch_request_for_workspace, shell_session_name_for_workspace,
-    tmux_capture_error_indicates_missing_session, tmux_launch_error_indicates_duplicate_session,
-    trimmed_nonempty, workspace_can_enter_interactive, workspace_can_start_agent,
-    workspace_can_stop_agent, workspace_status_targets_for_polling_with_live_preview,
+    WorkspaceStatusTarget, agent_supports_in_pane_restart, detect_status_with_session_override,
+    evaluate_capture_change, execute_command_with, execute_launch_request_with_result_for_mode,
+    execute_restart_workspace_in_pane_with_result, execute_shell_launch_request_for_mode,
+    execute_stop_workspace_with_result_for_mode, git_session_name_for_workspace,
+    infer_workspace_skip_permissions, latest_assistant_attention_marker,
+    launch_request_for_workspace, poll_interval, restart_workspace_in_pane_with_io,
+    session_name_for_workspace_ref, shell_launch_request_for_workspace,
+    shell_session_name_for_workspace, tmux_capture_error_indicates_missing_session,
+    tmux_launch_error_indicates_duplicate_session, trimmed_nonempty,
+    workspace_can_enter_interactive, workspace_can_start_agent, workspace_can_stop_agent,
+    workspace_status_targets_for_polling_with_live_preview,
 };
 #[cfg(test)]
 use crate::application::interactive::render_cursor_overlay;
@@ -82,6 +84,7 @@ use crate::infrastructure::paths::refer_to_same_location;
 use bootstrap_config::AppDependencies;
 use bootstrap_config::{
     filter_branches, load_local_branches, project_display_name, read_workspace_launch_prompt,
+    read_workspace_skip_permissions, write_workspace_skip_permissions,
 };
 use bootstrap_discovery::bootstrap_data_for_projects;
 mod terminal;
@@ -339,6 +342,7 @@ struct GroveApp {
     pending_restart_workspace_path: Option<PathBuf>,
     start_in_flight: bool,
     stop_in_flight: bool,
+    restart_in_flight: bool,
     deferred_cmds: Vec<Cmd<Msg>>,
 }
 

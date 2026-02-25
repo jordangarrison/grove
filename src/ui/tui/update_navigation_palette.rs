@@ -110,15 +110,19 @@ impl GroveApp {
             UiCommand::StartAgent => {
                 self.preview_agent_tab_is_focused()
                     && !self.start_in_flight
+                    && !self.restart_in_flight
                     && workspace_can_start_agent(self.state.selected_workspace())
             }
             UiCommand::StopAgent => {
-                !self.stop_in_flight && workspace_can_stop_agent(self.state.selected_workspace())
+                !self.stop_in_flight
+                    && !self.restart_in_flight
+                    && workspace_can_stop_agent(self.state.selected_workspace())
             }
             UiCommand::RestartAgent => {
                 self.preview_agent_tab_is_focused()
                     && !self.start_in_flight
                     && !self.stop_in_flight
+                    && !self.restart_in_flight
                     && workspace_can_stop_agent(self.state.selected_workspace())
             }
             UiCommand::DeleteWorkspace => {

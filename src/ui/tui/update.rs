@@ -86,6 +86,10 @@ impl GroveApp {
                 self.apply_stop_agent_completion(completion);
                 Cmd::None
             }
+            Msg::RestartAgentCompleted(completion) => {
+                self.apply_restart_agent_completion(completion);
+                Cmd::None
+            }
             Msg::InteractiveSendCompleted(completion) => {
                 self.handle_interactive_send_completed(completion)
             }

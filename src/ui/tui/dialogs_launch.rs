@@ -2,7 +2,7 @@ use super::*;
 
 impl GroveApp {
     pub(super) fn handle_launch_dialog_key(&mut self, key_event: KeyEvent) {
-        if self.start_in_flight {
+        if self.start_in_flight || self.restart_in_flight {
             return;
         }
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -103,8 +103,8 @@ impl GroveApp {
     }
 
     pub(super) fn open_start_dialog(&mut self) {
-        if self.start_in_flight {
-            self.show_info_toast("agent start already in progress");
+        if self.start_in_flight || self.restart_in_flight {
+            self.show_info_toast("agent lifecycle already in progress");
             return;
         }
 
@@ -126,7 +126,7 @@ impl GroveApp {
         }
 
         let prompt = read_workspace_launch_prompt(&workspace.path).unwrap_or_default();
-        let skip_permissions = self.launch_skip_permissions;
+        let skip_permissions = self.workspace_skip_permissions_for_workspace(&workspace);
         self.set_launch_dialog(LaunchDialogState {
             start_config: StartAgentConfigState::new(
                 prompt.clone(),

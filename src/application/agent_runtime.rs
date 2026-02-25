@@ -31,6 +31,12 @@ const SESSION_STATUS_TAIL_BYTES: usize = 256 * 1024;
 const SESSION_ACTIVITY_THRESHOLD: Duration = Duration::from_secs(30);
 const CODEX_SESSION_LOOKUP_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
 const OPENCODE_SESSION_LOOKUP_REFRESH_INTERVAL: Duration = Duration::from_millis(500);
+const RESTART_RESUME_SCROLLBACK_LINES: usize = 240;
+const RESTART_RESUME_CAPTURE_ATTEMPTS: usize = 30;
+#[cfg(test)]
+const RESTART_RESUME_RETRY_DELAY: Duration = Duration::from_millis(0);
+#[cfg(not(test))]
+const RESTART_RESUME_RETRY_DELAY: Duration = Duration::from_millis(120);
 const OPENCODE_UNSAFE_PERMISSION_JSON: &str = r#"{"*":"allow"}"#;
 const DONE_PATTERNS: [&str; 5] = [
     "task completed",
@@ -563,6 +569,382 @@ pub fn stop_plan(session_name: &str) -> Vec<Vec<String>> {
             session_name.to_string(),
         ],
     ]
+}
+
+pub fn agent_supports_in_pane_restart(agent: AgentType) -> bool {
+    matches!(
+        agent,
+        AgentType::Claude | AgentType::Codex | AgentType::OpenCode
+    )
+}
+
+enum RestartExitInput {
+    Literal(&'static str),
+    Named(&'static str),
+}
+
+fn restart_exit_input(agent: AgentType) -> Option<RestartExitInput> {
+    match agent {
+        AgentType::Claude => Some(RestartExitInput::Literal("/exit")),
+        AgentType::Codex => Some(RestartExitInput::Named("C-c")),
+        AgentType::OpenCode => Some(RestartExitInput::Named("C-c")),
+    }
+}
+
+fn restart_exit_plan(session_name: &str, exit_input: RestartExitInput) -> Vec<Vec<String>> {
+    match exit_input {
+        RestartExitInput::Literal(text) => vec![
+            vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-l".to_string(),
+                "-t".to_string(),
+                session_name.to_string(),
+                text.to_string(),
+            ],
+            vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                session_name.to_string(),
+                "Enter".to_string(),
+            ],
+        ],
+        RestartExitInput::Named(key) => vec![vec![
+            "tmux".to_string(),
+            "send-keys".to_string(),
+            "-t".to_string(),
+            session_name.to_string(),
+            key.to_string(),
+        ]],
+    }
+}
+
+fn resume_command_with_skip_permissions(
+    agent: AgentType,
+    command: &str,
+    skip_permissions: bool,
+) -> String {
+    if !skip_permissions {
+        return command.to_string();
+    }
+
+    match agent {
+        AgentType::Claude => {
+            if command.contains("--dangerously-skip-permissions") {
+                return command.to_string();
+            }
+            if let Some(remainder) = command.strip_prefix("claude ") {
+                return format!("claude --dangerously-skip-permissions {remainder}");
+            }
+            command.to_string()
+        }
+        AgentType::Codex => {
+            if command.contains("--dangerously-bypass-approvals-and-sandbox") {
+                return command.to_string();
+            }
+            if let Some(remainder) = command.strip_prefix("codex ") {
+                return format!("codex --dangerously-bypass-approvals-and-sandbox {remainder}");
+            }
+            command.to_string()
+        }
+        AgentType::OpenCode => {
+            if command.contains("OPENCODE_PERMISSION=") {
+                return command.to_string();
+            }
+            format!("OPENCODE_PERMISSION='{OPENCODE_UNSAFE_PERMISSION_JSON}' {command}")
+        }
+    }
+}
+
+fn restart_resume_command(
+    session_name: &str,
+    agent: AgentType,
+    command: &str,
+    skip_permissions: bool,
+) -> Vec<String> {
+    let command = resume_command_with_skip_permissions(agent, command, skip_permissions);
+    vec![
+        "tmux".to_string(),
+        "send-keys".to_string(),
+        "-t".to_string(),
+        session_name.to_string(),
+        command,
+        "Enter".to_string(),
+    ]
+}
+
+pub fn extract_agent_resume_command(agent: AgentType, output: &str) -> Option<String> {
+    match agent {
+        AgentType::Claude => extract_claude_resume_command(output),
+        AgentType::Codex => extract_codex_resume_command(output),
+        AgentType::OpenCode => extract_opencode_resume_command(output),
+    }
+}
+
+pub fn infer_workspace_skip_permissions(agent: AgentType, workspace_path: &Path) -> Option<bool> {
+    let home_dir = dirs::home_dir()?;
+    if !workspace_path.exists() {
+        return None;
+    }
+
+    match agent {
+        AgentType::Claude => infer_claude_skip_permissions_in_home(workspace_path, &home_dir),
+        AgentType::Codex => infer_codex_skip_permissions_in_home(workspace_path, &home_dir),
+        AgentType::OpenCode => infer_opencode_skip_permissions_in_home(workspace_path, &home_dir),
+    }
+}
+
+fn extract_claude_resume_command(output: &str) -> Option<String> {
+    let mut found = None;
+    for line in output.lines() {
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        if tokens.len() < 3 {
+            continue;
+        }
+
+        for index in 0..tokens.len().saturating_sub(2) {
+            if tokens[index] != "claude" || tokens[index + 1] != "--resume" {
+                continue;
+            }
+            let Some(session_id) = normalize_resume_session_id(tokens[index + 2]) else {
+                continue;
+            };
+            found = Some(format!("claude --resume {session_id}"));
+        }
+    }
+
+    found
+}
+
+fn extract_codex_resume_command(output: &str) -> Option<String> {
+    let mut found = None;
+    for line in output.lines() {
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        if tokens.len() < 3 {
+            continue;
+        }
+
+        for index in 0..tokens.len().saturating_sub(2) {
+            if tokens[index] != "codex" {
+                continue;
+            }
+
+            let mode = tokens[index + 1];
+            if mode != "resume" && mode != "--resume" {
+                continue;
+            }
+
+            let Some(session_id) = normalize_codex_resume_session_id(tokens[index + 2]) else {
+                continue;
+            };
+            found = Some(format!("codex resume {session_id}"));
+        }
+    }
+
+    found
+}
+
+fn normalize_codex_resume_session_id(value: &str) -> Option<String> {
+    let normalized = normalize_resume_session_id(value)?;
+    if normalized
+        .chars()
+        .any(|character| character.is_ascii_digit())
+        || normalized.contains('-')
+        || normalized.contains('_')
+    {
+        return Some(normalized);
+    }
+
+    None
+}
+
+fn extract_opencode_resume_command(output: &str) -> Option<String> {
+    let mut found = None;
+    for line in output.lines() {
+        let tokens: Vec<&str> = line.split_whitespace().collect();
+        if tokens.len() < 2 {
+            continue;
+        }
+
+        for index in 0..tokens.len().saturating_sub(1) {
+            if tokens[index] != "opencode" {
+                continue;
+            }
+
+            let mode = tokens[index + 1];
+            if mode == "-c" || mode == "--continue" {
+                found = Some("opencode --continue".to_string());
+                continue;
+            }
+            if mode != "-s" && mode != "--session" {
+                continue;
+            }
+            if index + 2 >= tokens.len() {
+                continue;
+            }
+
+            let Some(session_id) = normalize_resume_session_id(tokens[index + 2]) else {
+                continue;
+            };
+            found = Some(format!("opencode -s {session_id}"));
+        }
+    }
+
+    found
+}
+
+fn normalize_resume_session_id(value: &str) -> Option<String> {
+    if value.contains('<') || value.contains('>') {
+        return None;
+    }
+
+    let trimmed = value.trim_matches(|character: char| {
+        matches!(
+            character,
+            '\'' | '"' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';' | '.' | ':'
+        )
+    });
+    if trimmed.is_empty() {
+        return None;
+    }
+    if !trimmed
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || character == '-' || character == '_')
+    {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+fn wait_for_resume_command(
+    agent: AgentType,
+    session_name: &str,
+    capture_output: &mut impl FnMut(&str, usize, bool) -> std::io::Result<String>,
+) -> Result<String, String> {
+    for attempt in 0..RESTART_RESUME_CAPTURE_ATTEMPTS {
+        let output = capture_output(session_name, RESTART_RESUME_SCROLLBACK_LINES, false)
+            .map_err(|error| error.to_string())?;
+        if let Some(command) = extract_agent_resume_command(agent, output.as_str()) {
+            return Ok(command);
+        }
+        if attempt + 1 < RESTART_RESUME_CAPTURE_ATTEMPTS {
+            std::thread::sleep(RESTART_RESUME_RETRY_DELAY);
+        }
+    }
+
+    Err(format!(
+        "resume command not found in tmux output for '{session_name}'"
+    ))
+}
+
+pub fn restart_workspace_in_pane_with_io(
+    workspace: &Workspace,
+    skip_permissions: bool,
+    mut execute: impl FnMut(&[String]) -> std::io::Result<()>,
+    mut capture_output: impl FnMut(&str, usize, bool) -> std::io::Result<String>,
+) -> Result<(), String> {
+    let home_dir = dirs::home_dir();
+    restart_workspace_in_pane_with_io_in_home(
+        workspace,
+        skip_permissions,
+        &mut execute,
+        &mut capture_output,
+        home_dir.as_deref(),
+    )
+}
+
+fn restart_workspace_in_pane_with_io_in_home(
+    workspace: &Workspace,
+    skip_permissions: bool,
+    mut execute: impl FnMut(&[String]) -> std::io::Result<()>,
+    mut capture_output: impl FnMut(&str, usize, bool) -> std::io::Result<String>,
+    home_dir: Option<&Path>,
+) -> Result<(), String> {
+    let Some(exit_input) = restart_exit_input(workspace.agent) else {
+        return Err(format!(
+            "in-pane restart unsupported for {}",
+            workspace.agent.label()
+        ));
+    };
+    let session_name = session_name_for_workspace_ref(workspace);
+
+    for command in restart_exit_plan(&session_name, exit_input) {
+        execute_command_with(command.as_slice(), |command| execute(command))
+            .map_err(|error| error.to_string())?;
+    }
+
+    let resume_command =
+        wait_for_resume_command(workspace.agent, &session_name, &mut capture_output).or_else(
+            |error| match workspace.agent {
+                AgentType::OpenCode => {
+                    let Some(home_dir) = home_dir else {
+                        return Err(error);
+                    };
+                    infer_opencode_resume_command_in_home(&workspace.path, home_dir).ok_or(error)
+                }
+                _ => Err(error),
+            },
+        )?;
+    let command = restart_resume_command(
+        &session_name,
+        workspace.agent,
+        resume_command.as_str(),
+        skip_permissions,
+    );
+    execute_command_with(command.as_slice(), |command| execute(command))
+        .map_err(|error| error.to_string())
+}
+
+fn capture_output_with_process(
+    target_session: &str,
+    scrollback_lines: usize,
+    include_escape_sequences: bool,
+) -> std::io::Result<String> {
+    let mut args = vec![
+        "capture-pane".to_string(),
+        "-p".to_string(),
+        "-N".to_string(),
+    ];
+    if include_escape_sequences {
+        args.push("-e".to_string());
+    }
+    args.push("-t".to_string());
+    args.push(target_session.to_string());
+    args.push("-S".to_string());
+    args.push(format!("-{scrollback_lines}"));
+
+    let output = std::process::Command::new("tmux").args(args).output()?;
+    if !output.status.success() {
+        let stderr = crate::infrastructure::process::stderr_or_status(&output);
+        return Err(std::io::Error::other(format!(
+            "tmux capture-pane failed for '{target_session}': {stderr}"
+        )));
+    }
+
+    String::from_utf8(output.stdout)
+        .map_err(|error| std::io::Error::other(format!("tmux output utf8 decode failed: {error}")))
+}
+
+pub fn execute_restart_workspace_in_pane_with_result(
+    workspace: &Workspace,
+    skip_permissions: bool,
+) -> SessionExecutionResult {
+    let workspace_name = workspace.name.clone();
+    let workspace_path = workspace.path.clone();
+    let session_name = session_name_for_workspace_ref(workspace);
+    let result = restart_workspace_in_pane_with_io(
+        workspace,
+        skip_permissions,
+        crate::infrastructure::process::execute_command,
+        capture_output_with_process,
+    );
+    SessionExecutionResult {
+        workspace_name,
+        workspace_path,
+        session_name,
+        result,
+    }
 }
 
 #[cfg(test)]
@@ -1250,6 +1632,104 @@ fn detect_codex_session_status_in_home(
     }
 
     get_codex_last_message_status_cached(&session_file)
+}
+
+fn infer_claude_skip_permissions_in_home(workspace_path: &Path, home_dir: &Path) -> Option<bool> {
+    let workspace_path = absolute_path(workspace_path)?;
+    let project_dir_name = claude_project_dir_name(&workspace_path);
+    let project_dir = home_dir
+        .join(".claude")
+        .join("projects")
+        .join(project_dir_name);
+    let session_files = find_recent_jsonl_files(&project_dir, Some("agent-"))?;
+    for session_file in session_files {
+        if let Some(skip_permissions) = session_file_skip_permissions_mode(&session_file, 96) {
+            return Some(skip_permissions);
+        }
+    }
+
+    None
+}
+
+fn infer_codex_skip_permissions_in_home(workspace_path: &Path, home_dir: &Path) -> Option<bool> {
+    let sessions_dir = home_dir.join(".codex").join("sessions");
+    let session_file = find_codex_session_for_path_cached(&sessions_dir, workspace_path)?;
+    codex_session_skip_permissions_mode(&session_file)
+}
+
+fn codex_session_skip_permissions_mode(path: &Path) -> Option<bool> {
+    session_file_skip_permissions_mode(path, 24)
+}
+
+fn session_file_skip_permissions_mode(path: &Path, max_lines: usize) -> Option<bool> {
+    let file = File::open(path).ok()?;
+    let reader = BufReader::new(file);
+    for line in reader.lines().map_while(Result::ok).take(max_lines) {
+        if let Some(skip_permissions) = text_skip_permissions_mode(&line) {
+            return Some(skip_permissions);
+        }
+    }
+
+    None
+}
+
+fn text_skip_permissions_mode(value: &str) -> Option<bool> {
+    let lower = value.to_ascii_lowercase();
+    if lower.contains("approval policy is currently never")
+        || lower.contains("<approval_policy>never</approval_policy>")
+        || lower.contains("\"approval_policy\":\"never\"")
+        || lower.contains("\"approval_policy\": \"never\"")
+        || lower.contains("\"permissionmode\":\"bypasspermissions\"")
+        || lower.contains("\"permissionmode\": \"bypasspermissions\"")
+    {
+        return Some(true);
+    }
+    if lower.contains("approval policy is currently on-request")
+        || lower.contains("<approval_policy>on-request</approval_policy>")
+        || lower.contains("\"approval_policy\":\"on-request\"")
+        || lower.contains("\"approval_policy\": \"on-request\"")
+        || lower.contains("\"permissionmode\":\"default\"")
+        || lower.contains("\"permissionmode\": \"default\"")
+    {
+        return Some(false);
+    }
+
+    None
+}
+
+fn infer_opencode_skip_permissions_in_home(workspace_path: &Path, home_dir: &Path) -> Option<bool> {
+    let database_path = opencode_database_path_in_home(home_dir);
+    let session = find_opencode_session_for_path_cached(&database_path, workspace_path)?;
+    opencode_session_skip_permissions_mode(&database_path, &session.session_id)
+}
+
+fn infer_opencode_resume_command_in_home(workspace_path: &Path, home_dir: &Path) -> Option<String> {
+    let database_path = opencode_database_path_in_home(home_dir);
+    let session = find_opencode_session_for_path_cached(&database_path, workspace_path)?;
+    Some(format!("opencode -s {}", session.session_id))
+}
+
+fn opencode_session_skip_permissions_mode(database_path: &Path, session_id: &str) -> Option<bool> {
+    let connection = open_opencode_database(database_path)?;
+    for ordering in ["DESC", "ASC"] {
+        let query = format!(
+            "SELECT data FROM message WHERE session_id = ? ORDER BY time_created {ordering} LIMIT 32"
+        );
+        let mut statement = connection.prepare(&query).ok()?;
+        let rows = statement
+            .query_map([session_id], |row| {
+                let data: String = row.get(0)?;
+                Ok(data)
+            })
+            .ok()?;
+        for row in rows.flatten() {
+            if let Some(skip_permissions) = text_skip_permissions_mode(&row) {
+                return Some(skip_permissions);
+            }
+        }
+    }
+
+    None
 }
 
 fn detect_opencode_session_status_in_home(

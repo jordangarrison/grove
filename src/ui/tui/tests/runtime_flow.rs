@@ -2165,6 +2165,51 @@ fn unsafe_toggle_changes_launch_command_flags() {
 }
 
 #[test]
+fn unsafe_toggle_persists_launch_skip_permissions_config() {
+    let (mut app, _commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+    focus_agent_preview_tab(&mut app);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('!')).with_kind(KeyEventKind::Press)),
+    );
+
+    let loaded =
+        crate::infrastructure::config::load_from_path(&app.config_path).expect("config loads");
+    assert!(loaded.launch_skip_permissions);
+}
+
+#[test]
+fn start_key_persists_workspace_skip_permissions_marker() {
+    let workspace_dir = unique_temp_workspace_dir("start-skip-marker");
+    let (mut app, _commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+    focus_agent_preview_tab(&mut app);
+    app.state.selected_index = 1;
+    app.state.workspaces[1].path = workspace_dir.clone();
+    app.launch_skip_permissions = true;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
+    let marker = fs::read_to_string(workspace_dir.join(".grove/skip_permissions"))
+        .expect("skip marker should exist after start");
+    assert_eq!(marker, "true\n");
+    let loaded =
+        crate::infrastructure::config::load_from_path(&app.config_path).expect("config loads");
+    assert!(loaded.launch_skip_permissions);
+
+    let _ = fs::remove_dir_all(workspace_dir);
+}
+
+#[test]
 fn start_key_uses_workspace_prompt_file_launcher_script() {
     let workspace_dir = unique_temp_workspace_dir("prompt");
     let prompt_path = workspace_dir.join(".grove/prompt");
@@ -3768,8 +3813,12 @@ fn stop_key_stops_selected_workspace_agent() {
 
 #[test]
 fn restart_key_restarts_selected_workspace_agent() {
-    let (mut app, commands, _captures, _cursor_captures) =
-        fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+    let (mut app, commands, _captures, _cursor_captures) = fixture_app_with_tmux(
+        WorkspaceStatus::Active,
+        vec![Ok(
+            "To continue this session, run codex resume run-1234".to_string()
+        )],
+    );
     focus_agent_preview_tab(&mut app);
     app.state.selected_index = 1;
 
@@ -3801,12 +3850,202 @@ fn restart_key_restarts_selected_workspace_agent() {
         command
             == &vec![
                 "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+                "codex resume run-1234".to_string(),
+                "Enter".to_string(),
+            ]
+    }));
+    assert!(!commands.borrow().iter().any(|command| {
+        command
+            == &vec![
+                "tmux".to_string(),
                 "kill-session".to_string(),
                 "-t".to_string(),
                 "grove-ws-feature-a".to_string(),
             ]
     }));
+    assert_eq!(
+        app.state
+            .selected_workspace()
+            .map(|workspace| workspace.status),
+        Some(WorkspaceStatus::Active)
+    );
+}
+
+#[test]
+fn restart_key_reuses_skip_permissions_mode_for_codex_resume() {
+    let (mut app, commands, _captures, _cursor_captures) = fixture_app_with_tmux(
+        WorkspaceStatus::Active,
+        vec![Ok(
+            "To continue this session, run codex resume run-1234".to_string()
+        )],
+    );
+    focus_agent_preview_tab(&mut app);
+    app.state.selected_index = 1;
+    app.launch_skip_permissions = true;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
     assert!(commands.borrow().iter().any(|command| {
+        command
+            == &vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+                "codex --dangerously-bypass-approvals-and-sandbox resume run-1234".to_string(),
+                "Enter".to_string(),
+            ]
+    }));
+}
+
+#[test]
+fn restart_key_uses_workspace_skip_permissions_marker_for_codex_resume() {
+    let workspace_dir = unique_temp_workspace_dir("restart-skip-marker");
+    fs::create_dir_all(workspace_dir.join(".grove")).expect(".grove dir should be writable");
+    fs::write(workspace_dir.join(".grove/skip_permissions"), "true\n")
+        .expect("skip marker should be writable");
+
+    let (mut app, commands, _captures, _cursor_captures) = fixture_app_with_tmux(
+        WorkspaceStatus::Active,
+        vec![Ok(
+            "To continue this session, run codex resume run-1234".to_string()
+        )],
+    );
+    focus_agent_preview_tab(&mut app);
+    app.state.selected_index = 1;
+    app.state.workspaces[1].path = workspace_dir.clone();
+    app.launch_skip_permissions = false;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(commands.borrow().iter().any(|command| {
+        command
+            == &vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+                "codex --dangerously-bypass-approvals-and-sandbox resume run-1234".to_string(),
+                "Enter".to_string(),
+            ]
+    }));
+
+    let _ = fs::remove_dir_all(workspace_dir);
+}
+
+#[test]
+fn restart_key_uses_workspace_skip_permissions_marker_for_main_codex_workspace() {
+    let workspace_dir = unique_temp_workspace_dir("restart-main-skip-marker");
+    fs::create_dir_all(workspace_dir.join(".grove")).expect(".grove dir should be writable");
+    fs::write(workspace_dir.join(".grove/skip_permissions"), "true\n")
+        .expect("skip marker should be writable");
+
+    let (mut app, commands, _captures, _cursor_captures) = fixture_app_with_tmux(
+        WorkspaceStatus::Active,
+        vec![Ok(
+            "To continue this session, run codex resume run-main-1234".to_string(),
+        )],
+    );
+    focus_agent_preview_tab(&mut app);
+    app.state.selected_index = 0;
+    app.state.workspaces[0].path = workspace_dir.clone();
+    app.state.workspaces[0].agent = AgentType::Codex;
+    app.state.workspaces[0].status = WorkspaceStatus::Active;
+    app.launch_skip_permissions = false;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(commands.borrow().iter().any(|command| {
+        command
+            == &vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                "grove-ws-grove".to_string(),
+                "codex --dangerously-bypass-approvals-and-sandbox resume run-main-1234".to_string(),
+                "Enter".to_string(),
+            ]
+    }));
+
+    let _ = fs::remove_dir_all(workspace_dir);
+}
+
+#[test]
+fn restart_key_restarts_claude_agent_in_same_tmux_session() {
+    let (mut app, commands, _captures, _cursor_captures) = fixture_app_with_tmux(
+        WorkspaceStatus::Active,
+        vec![Ok("Restart with: claude --resume sess-1234".to_string())],
+    );
+    focus_agent_preview_tab(&mut app);
+    app.state.selected_index = 1;
+    app.state.workspaces[1].agent = AgentType::Claude;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
+    let recorded = commands.borrow();
+    assert!(recorded.iter().any(|command| {
+        command
+            == &vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-l".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+                "/exit".to_string(),
+            ]
+    }));
+    assert!(recorded.iter().any(|command| {
+        command
+            == &vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+                "claude --resume sess-1234".to_string(),
+                "Enter".to_string(),
+            ]
+    }));
+    assert!(!recorded.iter().any(|command| {
+        command
+            == &vec![
+                "tmux".to_string(),
+                "kill-session".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+            ]
+    }));
+    assert!(!recorded.iter().any(|command| {
         command
             == &vec![
                 "tmux".to_string(),
@@ -3818,6 +4057,29 @@ fn restart_key_restarts_selected_workspace_agent() {
                 "/repos/grove-feature-a".to_string(),
             ]
     }));
+}
+
+#[test]
+fn restart_key_restarts_opencode_in_same_tmux_session() {
+    let (mut app, commands, _captures, _cursor_captures) = fixture_app_with_tmux(
+        WorkspaceStatus::Active,
+        vec![Ok(
+            "resume with opencode -s ses_36d243142ffeYteys2MXS86Nnt".to_string()
+        )],
+    );
+    focus_agent_preview_tab(&mut app);
+    app.state.selected_index = 1;
+    app.state.workspaces[1].agent = AgentType::OpenCode;
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
     assert!(commands.borrow().iter().any(|command| {
         command
             == &vec![
@@ -3825,16 +4087,29 @@ fn restart_key_restarts_selected_workspace_agent() {
                 "send-keys".to_string(),
                 "-t".to_string(),
                 "grove-ws-feature-a".to_string(),
-                "codex".to_string(),
+                "C-c".to_string(),
+            ]
+    }));
+    assert!(commands.borrow().iter().any(|command| {
+        command
+            == &vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+                "opencode -s ses_36d243142ffeYteys2MXS86Nnt".to_string(),
                 "Enter".to_string(),
             ]
     }));
-    assert_eq!(
-        app.state
-            .selected_workspace()
-            .map(|workspace| workspace.status),
-        Some(WorkspaceStatus::Active)
-    );
+    assert!(!commands.borrow().iter().any(|command| {
+        command
+            == &vec![
+                "tmux".to_string(),
+                "kill-session".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+            ]
+    }));
 }
 
 #[test]

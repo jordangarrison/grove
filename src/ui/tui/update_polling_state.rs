@@ -49,6 +49,7 @@ impl GroveApp {
             sidebar_width_pct: self.sidebar_width_pct,
             projects: self.projects.clone(),
             attention_acks: self.workspace_attention_acks_for_config(),
+            launch_skip_permissions: self.launch_skip_permissions,
         }
     }
 
