@@ -418,6 +418,7 @@ fn arb_key_event() -> impl Strategy<Value = KeyEvent> {
         Just(key_press(KeyCode::Char('s'))),
         Just(key_press(KeyCode::Char('x'))),
         Just(key_press(KeyCode::Char('r'))),
+        Just(key_press(KeyCode::Char('R'))),
         Just(key_press(KeyCode::Char('n'))),
         Just(key_press(KeyCode::Char('!'))),
         Just(key_press(KeyCode::Char('q'))),
@@ -2060,6 +2061,11 @@ fn command_palette_action_set_scopes_to_focus_and_mode() {
     assert!(
         list_ids
             .iter()
+            .any(|id| id == &palette_id(UiCommand::RefreshWorkspaces))
+    );
+    assert!(
+        list_ids
+            .iter()
             .any(|id| id == &palette_id(UiCommand::ToggleMouseCapture))
     );
     assert!(
@@ -2307,6 +2313,97 @@ fn uppercase_s_opens_settings_dialog() {
     let _ = app.handle_key(KeyEvent::new(KeyCode::Char('S')).with_kind(KeyEventKind::Press));
 
     assert!(app.settings_dialog().is_some());
+}
+
+#[test]
+fn uppercase_r_refreshes_workspaces_from_list_mode() {
+    let mut app = fixture_background_app(WorkspaceStatus::Idle);
+
+    let cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('R')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(app.refresh_in_flight);
+    assert!(cmd_contains_task(&cmd));
+    assert!(app.status_bar_line().contains("refreshing workspaces"));
+}
+
+#[test]
+fn uppercase_r_is_debounced_after_recent_manual_refresh() {
+    let mut app = fixture_background_app(WorkspaceStatus::Idle);
+
+    let _ = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('R')).with_kind(KeyEventKind::Press)),
+    );
+    assert!(app.refresh_in_flight);
+
+    app.apply_refresh_workspaces_completion(RefreshWorkspacesCompletion {
+        preferred_workspace_path: None,
+        bootstrap: fixture_bootstrap(WorkspaceStatus::Idle),
+    });
+    assert!(!app.refresh_in_flight);
+
+    let cmd = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('R')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(!app.refresh_in_flight);
+    assert!(!cmd_contains_task(&cmd));
+    assert!(app.status_bar_line().contains("refresh throttled"));
+
+    app.last_manual_refresh_requested_at = Some(Instant::now() - Duration::from_secs(11));
+    let cmd_after_cooldown = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('R')).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(app.refresh_in_flight);
+    assert!(cmd_contains_task(&cmd_after_cooldown));
+}
+
+#[test]
+fn manual_refresh_completion_shows_success_toast() {
+    let mut app = fixture_background_app(WorkspaceStatus::Idle);
+
+    let _ = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('R')).with_kind(KeyEventKind::Press)),
+    );
+    assert!(app.refresh_in_flight);
+
+    app.apply_refresh_workspaces_completion(RefreshWorkspacesCompletion {
+        preferred_workspace_path: None,
+        bootstrap: fixture_bootstrap(WorkspaceStatus::Idle),
+    });
+
+    assert!(!app.refresh_in_flight);
+    assert!(app.status_bar_line().contains("workspace refresh complete"));
+}
+
+#[test]
+fn manual_refresh_completion_shows_error_toast() {
+    let mut app = fixture_background_app(WorkspaceStatus::Idle);
+
+    let _ = ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('R')).with_kind(KeyEventKind::Press)),
+    );
+    assert!(app.refresh_in_flight);
+
+    app.apply_refresh_workspaces_completion(RefreshWorkspacesCompletion {
+        preferred_workspace_path: None,
+        bootstrap: BootstrapData {
+            repo_name: "grove".to_string(),
+            workspaces: Vec::new(),
+            discovery_state: DiscoveryState::Error("github unavailable".to_string()),
+        },
+    });
+
+    assert!(!app.refresh_in_flight);
+    assert!(app.status_bar_line().contains("workspace refresh failed"));
 }
 
 #[test]

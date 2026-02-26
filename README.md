@@ -159,6 +159,7 @@ Inside Grove:
 - `Alt+X` stop selected workspace agent from any context (with confirm modal)
 - `m` merge workspace branch into base
 - `u` update selected workspace (feature merges from base, base pulls from origin)
+- `R` refresh workspace list + GitHub PR metadata
 - `D` delete workspace
 - `p` open project switcher
 - `S` settings

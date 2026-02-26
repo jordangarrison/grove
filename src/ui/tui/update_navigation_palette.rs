@@ -153,6 +153,7 @@ impl GroveApp {
             UiCommand::UpdateFromBase => {
                 !self.update_from_base_in_flight && self.state.selected_workspace().is_some()
             }
+            UiCommand::RefreshWorkspaces => !self.refresh_in_flight,
             UiCommand::FocusPreview | UiCommand::OpenCommandPalette => false,
         }
     }

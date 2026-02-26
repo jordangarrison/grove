@@ -183,6 +183,9 @@ impl GroveApp {
             UiCommand::UpdateFromBase => {
                 self.open_update_from_base_dialog();
             }
+            UiCommand::RefreshWorkspaces => {
+                self.request_manual_workspace_refresh();
+            }
             UiCommand::OpenProjects => {
                 self.open_project_dialog();
             }

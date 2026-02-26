@@ -875,7 +875,7 @@ keys are blocked.
 | `S`          | Stop agent                      |
 | `y`          | Approve agent prompt            |
 | `N`          | Reject agent prompt             |
-| `r`          | Refresh workspace list          |
+| `R`          | Refresh workspace list          |
 | `l` / `Right`| Focus right (preview) pane     |
 | `Tab`        | Switch pane                     |
 | `Shift+Tab`  | Switch pane                     |

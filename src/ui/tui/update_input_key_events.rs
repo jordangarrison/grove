@@ -250,6 +250,7 @@ impl GroveApp {
                 UiCommand::DeleteWorkspace => matches!(key_event.code, KeyCode::Char('D')),
                 UiCommand::MergeWorkspace => matches!(key_event.code, KeyCode::Char('m')),
                 UiCommand::UpdateFromBase => matches!(key_event.code, KeyCode::Char('u')),
+                UiCommand::RefreshWorkspaces => matches!(key_event.code, KeyCode::Char('R')),
                 UiCommand::OpenProjects => {
                     matches!(key_event.code, KeyCode::Char('p') | KeyCode::Char('P'))
                 }

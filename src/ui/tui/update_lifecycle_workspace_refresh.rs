@@ -1,6 +1,48 @@
 use super::*;
 
 impl GroveApp {
+    const MANUAL_WORKSPACE_REFRESH_COOLDOWN: Duration = Duration::from_secs(10);
+
+    fn finalize_manual_workspace_refresh_feedback(&mut self) {
+        if !self.manual_refresh_feedback_pending {
+            return;
+        }
+        self.manual_refresh_feedback_pending = false;
+
+        match &self.discovery_state {
+            DiscoveryState::Ready => self.show_success_toast("workspace refresh complete"),
+            DiscoveryState::Empty => {
+                self.show_info_toast("workspace refresh complete, no workspaces found")
+            }
+            DiscoveryState::Error(message) => {
+                self.show_error_toast(format!("workspace refresh failed: {message}"))
+            }
+        }
+    }
+
+    pub(super) fn request_manual_workspace_refresh(&mut self) {
+        let now = Instant::now();
+        if self.refresh_in_flight {
+            self.show_info_toast("workspace refresh already in progress");
+            return;
+        }
+
+        if let Some(last_requested_at) = self.last_manual_refresh_requested_at {
+            let elapsed = now.saturating_duration_since(last_requested_at);
+            if elapsed < Self::MANUAL_WORKSPACE_REFRESH_COOLDOWN {
+                let remaining = Self::MANUAL_WORKSPACE_REFRESH_COOLDOWN.saturating_sub(elapsed);
+                let remaining_seconds = remaining.as_secs().max(1);
+                self.show_info_toast(format!("refresh throttled, retry in {remaining_seconds}s"));
+                return;
+            }
+        }
+
+        self.last_manual_refresh_requested_at = Some(now);
+        self.manual_refresh_feedback_pending = true;
+        self.show_info_toast("refreshing workspaces...");
+        self.refresh_workspaces(None);
+    }
+
     fn auto_launch_pending_workspace_shell(&mut self) -> bool {
         let Some(pending_path) = self.pending_auto_launch_shell_workspace_path.clone() else {
             return false;
@@ -102,6 +144,7 @@ impl GroveApp {
         if !started_in_background {
             self.poll_preview();
         }
+        self.finalize_manual_workspace_refresh_feedback();
     }
 
     pub(super) fn apply_refresh_workspaces_completion(
@@ -134,5 +177,6 @@ impl GroveApp {
         if !started_in_background {
             self.poll_preview();
         }
+        self.finalize_manual_workspace_refresh_feedback();
     }
 }

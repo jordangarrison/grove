@@ -203,6 +203,13 @@ impl UiCommand {
                 tags: &["update", "sync", "base", "workspace", "u"],
                 category: "Workspace",
             }),
+            Self::RefreshWorkspaces => Some(PaletteCommandSpec {
+                id: "palette:refresh_workspaces",
+                title: "Refresh Workspaces",
+                description: "Refresh workspaces and PR metadata from git + GitHub (R)",
+                tags: &["refresh", "workspace", "pull request", "github", "R"],
+                category: "Workspace",
+            }),
             Self::OpenProjects => Some(PaletteCommandSpec {
                 id: "palette:open_projects",
                 title: "Projects",

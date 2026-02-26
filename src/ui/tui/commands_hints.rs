@@ -22,6 +22,7 @@ impl UiCommand {
                 UiCommand::EditWorkspace,
                 UiCommand::MergeWorkspace,
                 UiCommand::UpdateFromBase,
+                UiCommand::RefreshWorkspaces,
                 UiCommand::OpenProjects,
                 UiCommand::ReorderProjects,
                 UiCommand::DeleteWorkspace,
@@ -82,6 +83,7 @@ impl UiCommand {
             (UiCommand::EditWorkspace, HelpHintContext::Workspace) => Some("e edit/switch"),
             (UiCommand::MergeWorkspace, HelpHintContext::Workspace) => Some("m merge"),
             (UiCommand::UpdateFromBase, HelpHintContext::Workspace) => Some("u update"),
+            (UiCommand::RefreshWorkspaces, HelpHintContext::Workspace) => Some("R refresh"),
             (UiCommand::OpenProjects, HelpHintContext::Workspace) => Some("p projects"),
             (UiCommand::ReorderProjects, HelpHintContext::Workspace) => {
                 Some("Ctrl+R reorder projects")

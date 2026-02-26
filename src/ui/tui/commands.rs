@@ -25,6 +25,7 @@ pub(super) enum UiCommand {
     DeleteWorkspace,
     MergeWorkspace,
     UpdateFromBase,
+    RefreshWorkspaces,
     OpenProjects,
     ReorderProjects,
     DeleteProject,
@@ -56,7 +57,7 @@ pub(super) enum HelpHintContext {
 }
 
 impl UiCommand {
-    pub(super) const ALL: [UiCommand; 34] = [
+    pub(super) const ALL: [UiCommand; 35] = [
         UiCommand::ToggleFocus,
         UiCommand::ToggleSidebar,
         UiCommand::OpenPreview,
@@ -82,6 +83,7 @@ impl UiCommand {
         UiCommand::DeleteWorkspace,
         UiCommand::MergeWorkspace,
         UiCommand::UpdateFromBase,
+        UiCommand::RefreshWorkspaces,
         UiCommand::OpenProjects,
         UiCommand::ReorderProjects,
         UiCommand::DeleteProject,
