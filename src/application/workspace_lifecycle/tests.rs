@@ -265,6 +265,55 @@ fn create_workspace_existing_branch_uses_attach_command_and_marker_branch() {
 }
 
 #[test]
+fn create_workspace_pull_request_fetches_head_and_creates_workspace_branch() {
+    let temp = TestDir::new("create-pr");
+    let repo_root = temp.path.join("grove");
+    fs::create_dir_all(&repo_root).expect("repo dir should exist");
+
+    let git = StubGitRunner::default();
+    let setup = StubSetupRunner::default();
+    let request = CreateWorkspaceRequest {
+        workspace_name: "pr-3484".to_string(),
+        branch_mode: BranchMode::PullRequest {
+            number: 3484,
+            base_branch: "main".to_string(),
+        },
+        agent: AgentType::Claude,
+    };
+
+    let result =
+        create_workspace(&repo_root, &request, &git, &setup).expect("create should succeed");
+    let expected_workspace_path =
+        workspace_directory_path(&repo_root, "pr-3484").expect("path derivation should succeed");
+
+    assert_eq!(
+        git.calls(),
+        vec![
+            vec![
+                "fetch".to_string(),
+                "origin".to_string(),
+                "pull/3484/head".to_string(),
+            ],
+            vec![
+                "worktree".to_string(),
+                "add".to_string(),
+                "-b".to_string(),
+                "pr-3484".to_string(),
+                expected_workspace_path.to_string_lossy().to_string(),
+                "FETCH_HEAD".to_string(),
+            ],
+        ]
+    );
+    assert_eq!(result.workspace_path, expected_workspace_path);
+    assert_eq!(
+        fs::read_to_string(result.workspace_path.join(".grove/base"))
+            .expect("base marker should be readable")
+            .trim(),
+        "main"
+    );
+}
+
+#[test]
 fn create_workspace_setup_script_failure_is_warning_not_failure() {
     let temp = TestDir::new("setup-warning");
     let repo_root = temp.path.join("grove");

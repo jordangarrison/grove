@@ -2,7 +2,9 @@ use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CreateDialogState {
+    pub(super) tab: CreateDialogTab,
     pub(super) workspace_name: String,
+    pub(super) pr_url: String,
     pub(super) project_index: usize,
     pub(super) agent: AgentType,
     pub(super) base_branch: String,
@@ -27,6 +29,7 @@ pub(super) struct EditDialogState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum CreateDialogField {
     WorkspaceName,
+    PullRequestUrl,
     Project,
     BaseBranch,
     SetupCommands,
@@ -35,6 +38,32 @@ pub(super) enum CreateDialogField {
     StartConfig(StartAgentConfigField),
     CreateButton,
     CancelButton,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum CreateDialogTab {
+    Manual,
+    PullRequest,
+}
+
+impl CreateDialogTab {
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::Manual => "Manual",
+            Self::PullRequest => "From PR URL",
+        }
+    }
+
+    pub(super) fn next(self) -> Self {
+        match self {
+            Self::Manual => Self::PullRequest,
+            Self::PullRequest => Self::Manual,
+        }
+    }
+
+    pub(super) fn previous(self) -> Self {
+        self.next()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,43 +79,92 @@ cyclic_field_nav!(pub(super) EditDialogField {
 });
 
 impl CreateDialogField {
-    pub(super) fn next(self) -> Self {
-        match self {
-            Self::WorkspaceName => Self::Project,
-            Self::Project => Self::BaseBranch,
-            Self::BaseBranch => Self::SetupCommands,
-            Self::SetupCommands => Self::AutoRunSetupCommands,
-            Self::AutoRunSetupCommands => Self::Agent,
-            Self::Agent => Self::StartConfig(StartAgentConfigField::Prompt),
-            Self::StartConfig(field) => {
-                if field == StartAgentConfigField::Unsafe {
-                    Self::CreateButton
-                } else {
-                    Self::StartConfig(field.next())
-                }
-            }
-            Self::CreateButton => Self::CancelButton,
-            Self::CancelButton => Self::WorkspaceName,
+    pub(super) fn first_for_tab(tab: CreateDialogTab) -> Self {
+        match tab {
+            CreateDialogTab::Manual => Self::WorkspaceName,
+            CreateDialogTab::PullRequest => Self::Project,
         }
     }
 
-    pub(super) fn previous(self) -> Self {
-        match self {
-            Self::WorkspaceName => Self::CancelButton,
-            Self::Project => Self::WorkspaceName,
-            Self::BaseBranch => Self::Project,
-            Self::SetupCommands => Self::BaseBranch,
-            Self::AutoRunSetupCommands => Self::SetupCommands,
-            Self::Agent => Self::AutoRunSetupCommands,
-            Self::StartConfig(field) => {
-                if field == StartAgentConfigField::Prompt {
-                    Self::Agent
-                } else {
-                    Self::StartConfig(field.previous())
+    pub(super) fn next(self, tab: CreateDialogTab) -> Self {
+        match tab {
+            CreateDialogTab::Manual => match self {
+                Self::WorkspaceName => Self::Project,
+                Self::Project => Self::BaseBranch,
+                Self::BaseBranch => Self::SetupCommands,
+                Self::SetupCommands => Self::AutoRunSetupCommands,
+                Self::AutoRunSetupCommands => Self::Agent,
+                Self::Agent => Self::StartConfig(StartAgentConfigField::Prompt),
+                Self::StartConfig(field) => {
+                    if field == StartAgentConfigField::Unsafe {
+                        Self::CreateButton
+                    } else {
+                        Self::StartConfig(field.next())
+                    }
                 }
-            }
-            Self::CreateButton => Self::StartConfig(StartAgentConfigField::Unsafe),
-            Self::CancelButton => Self::CreateButton,
+                Self::CreateButton => Self::CancelButton,
+                Self::CancelButton => Self::WorkspaceName,
+                Self::PullRequestUrl => Self::Project,
+            },
+            CreateDialogTab::PullRequest => match self {
+                Self::Project => Self::PullRequestUrl,
+                Self::PullRequestUrl => Self::Agent,
+                Self::Agent => Self::StartConfig(StartAgentConfigField::Prompt),
+                Self::StartConfig(field) => {
+                    if field == StartAgentConfigField::Unsafe {
+                        Self::CreateButton
+                    } else {
+                        Self::StartConfig(field.next())
+                    }
+                }
+                Self::CreateButton => Self::CancelButton,
+                Self::CancelButton => Self::Project,
+                Self::WorkspaceName
+                | Self::BaseBranch
+                | Self::SetupCommands
+                | Self::AutoRunSetupCommands => Self::Project,
+            },
+        }
+    }
+
+    pub(super) fn previous(self, tab: CreateDialogTab) -> Self {
+        match tab {
+            CreateDialogTab::Manual => match self {
+                Self::WorkspaceName => Self::CancelButton,
+                Self::Project => Self::WorkspaceName,
+                Self::BaseBranch => Self::Project,
+                Self::SetupCommands => Self::BaseBranch,
+                Self::AutoRunSetupCommands => Self::SetupCommands,
+                Self::Agent => Self::AutoRunSetupCommands,
+                Self::StartConfig(field) => {
+                    if field == StartAgentConfigField::Prompt {
+                        Self::Agent
+                    } else {
+                        Self::StartConfig(field.previous())
+                    }
+                }
+                Self::CreateButton => Self::StartConfig(StartAgentConfigField::Unsafe),
+                Self::CancelButton => Self::CreateButton,
+                Self::PullRequestUrl => Self::Project,
+            },
+            CreateDialogTab::PullRequest => match self {
+                Self::Project => Self::CancelButton,
+                Self::PullRequestUrl => Self::Project,
+                Self::Agent => Self::PullRequestUrl,
+                Self::StartConfig(field) => {
+                    if field == StartAgentConfigField::Prompt {
+                        Self::Agent
+                    } else {
+                        Self::StartConfig(field.previous())
+                    }
+                }
+                Self::CreateButton => Self::StartConfig(StartAgentConfigField::Unsafe),
+                Self::CancelButton => Self::CreateButton,
+                Self::WorkspaceName
+                | Self::BaseBranch
+                | Self::SetupCommands
+                | Self::AutoRunSetupCommands => Self::Project,
+            },
         }
     }
 
@@ -94,6 +172,7 @@ impl CreateDialogField {
     pub(super) fn label(self) -> &'static str {
         match self {
             Self::WorkspaceName => "name",
+            Self::PullRequestUrl => "pr_url",
             Self::Project => "project",
             Self::BaseBranch => "base_branch",
             Self::SetupCommands => "setup_commands",

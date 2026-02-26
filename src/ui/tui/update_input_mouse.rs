@@ -2,6 +2,7 @@ use super::*;
 
 impl GroveApp {
     const PREVIEW_MOUSE_SCROLL_LINES: i32 = 3;
+    const CREATE_DIALOG_TAB_ROW_OFFSET: u16 = 2;
 
     fn preview_tab_at_pointer(&self, x: u16, y: u16) -> Option<PreviewTab> {
         let layout = self.view_layout();
@@ -32,6 +33,52 @@ impl GroveApp {
                 continue;
             };
             let tab_end = tab_x.saturating_add(tab_width).min(preview_inner.right());
+            if x >= tab_x && x < tab_end {
+                return Some(tab);
+            }
+            tab_x = tab_x.saturating_add(tab_width);
+        }
+
+        None
+    }
+
+    fn create_dialog_tab_at_pointer(&self, x: u16, y: u16) -> Option<CreateDialogTab> {
+        self.create_dialog()?;
+
+        let width = self.viewport_width.max(1);
+        let height = self.viewport_height.max(1);
+        if width < 20 || height < 10 {
+            return None;
+        }
+
+        let dialog_width = width.saturating_sub(8).min(90);
+        let dialog_height = 25u16;
+        let dialog_x = width.saturating_sub(dialog_width) / 2;
+        let dialog_y = height.saturating_sub(dialog_height) / 2;
+        let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
+        let inner = Block::new().borders(Borders::ALL).inner(dialog_area);
+        if inner.is_empty() {
+            return None;
+        }
+
+        let tab_row_y = inner.y.saturating_add(Self::CREATE_DIALOG_TAB_ROW_OFFSET);
+        if y != tab_row_y {
+            return None;
+        }
+
+        let mut tab_x = inner.x;
+        for (index, tab) in [CreateDialogTab::Manual, CreateDialogTab::PullRequest]
+            .iter()
+            .copied()
+            .enumerate()
+        {
+            if index > 0 {
+                tab_x = tab_x.saturating_add(1);
+            }
+            let Some(tab_width) = u16::try_from(tab.label().len().saturating_add(2)).ok() else {
+                continue;
+            };
+            let tab_end = tab_x.saturating_add(tab_width).min(inner.right());
             if x >= tab_x && x < tab_end {
                 return Some(tab);
             }
@@ -176,6 +223,15 @@ impl GroveApp {
         self.event_log.log(event);
 
         if self.modal_open() {
+            if matches!(mouse_event.kind, MouseEventKind::Down(MouseButton::Left))
+                && let Some(next_tab) =
+                    self.create_dialog_tab_at_pointer(mouse_event.x, mouse_event.y)
+                && let Some(dialog) = self.create_dialog_mut()
+                && dialog.tab != next_tab
+            {
+                dialog.tab = next_tab;
+                dialog.focused_field = CreateDialogField::first_for_tab(next_tab);
+            }
             return;
         }
 

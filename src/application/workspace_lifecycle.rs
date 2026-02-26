@@ -26,6 +26,7 @@ pub enum WorkspaceLifecycleError {
     InvalidWorkspaceName,
     EmptyBaseBranch,
     EmptyExistingBranch,
+    InvalidPullRequestNumber,
     RepoNameUnavailable,
     HomeDirectoryUnavailable,
     GitCommandFailed(String),
@@ -40,6 +41,9 @@ pub fn workspace_lifecycle_error_message(error: &WorkspaceLifecycleError) -> Str
         }
         WorkspaceLifecycleError::EmptyBaseBranch => "base branch is required".to_string(),
         WorkspaceLifecycleError::EmptyExistingBranch => "existing branch is required".to_string(),
+        WorkspaceLifecycleError::InvalidPullRequestNumber => {
+            "pull request number is required".to_string()
+        }
         WorkspaceLifecycleError::RepoNameUnavailable => "repo name unavailable".to_string(),
         WorkspaceLifecycleError::HomeDirectoryUnavailable => {
             "home directory unavailable".to_string()
@@ -64,6 +68,7 @@ pub enum WorkspaceMarkerError {
 pub enum BranchMode {
     NewBranch { base_branch: String },
     ExistingBranch { existing_branch: String },
+    PullRequest { number: u64, base_branch: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,6 +98,17 @@ impl CreateWorkspaceRequest {
                     return Err(WorkspaceLifecycleError::EmptyExistingBranch);
                 }
             }
+            BranchMode::PullRequest {
+                number,
+                base_branch,
+            } => {
+                if *number == 0 {
+                    return Err(WorkspaceLifecycleError::InvalidPullRequestNumber);
+                }
+                if base_branch.trim().is_empty() {
+                    return Err(WorkspaceLifecycleError::EmptyBaseBranch);
+                }
+            }
         }
 
         Ok(())
@@ -102,6 +118,7 @@ impl CreateWorkspaceRequest {
         match &self.branch_mode {
             BranchMode::NewBranch { .. } => self.workspace_name.clone(),
             BranchMode::ExistingBranch { existing_branch } => existing_branch.clone(),
+            BranchMode::PullRequest { .. } => self.workspace_name.clone(),
         }
     }
 
@@ -109,6 +126,7 @@ impl CreateWorkspaceRequest {
         match &self.branch_mode {
             BranchMode::NewBranch { base_branch } => base_branch.clone(),
             BranchMode::ExistingBranch { existing_branch } => existing_branch.clone(),
+            BranchMode::PullRequest { base_branch, .. } => base_branch.clone(),
         }
     }
 }
@@ -925,6 +943,25 @@ fn run_create_worktree_command(
             workspace_path_arg,
             existing_branch.clone(),
         ],
+        BranchMode::PullRequest { number, .. } => {
+            let fetch_args = vec![
+                "fetch".to_string(),
+                "origin".to_string(),
+                format!("pull/{number}/head"),
+            ];
+            git_runner
+                .run(repo_root, &fetch_args)
+                .map_err(WorkspaceLifecycleError::GitCommandFailed)?;
+
+            vec![
+                "worktree".to_string(),
+                "add".to_string(),
+                "-b".to_string(),
+                request.branch_name(),
+                workspace_path_arg,
+                "FETCH_HEAD".to_string(),
+            ]
+        }
     };
 
     git_runner

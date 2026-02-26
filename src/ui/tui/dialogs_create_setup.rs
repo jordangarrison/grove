@@ -117,7 +117,9 @@ impl GroveApp {
         let setup_commands = self.project_default_setup_commands(project_index);
         let auto_run_setup_commands = self.project_default_auto_run_setup_commands(project_index);
         self.set_create_dialog(CreateDialogState {
+            tab: CreateDialogTab::Manual,
             workspace_name: String::new(),
+            pr_url: String::new(),
             project_index,
             agent: default_agent,
             base_branch: selected_base_branch.clone(),
@@ -128,7 +130,7 @@ impl GroveApp {
                 String::new(),
                 self.launch_skip_permissions,
             ),
-            focused_field: CreateDialogField::WorkspaceName,
+            focused_field: CreateDialogField::first_for_tab(CreateDialogTab::Manual),
         });
         self.refresh_create_dialog_branch_candidates(selected_base_branch);
         self.log_dialog_event_with_fields(

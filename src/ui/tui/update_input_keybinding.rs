@@ -78,6 +78,7 @@ impl GroveApp {
                     let mut refresh_base_branch = false;
                     match dialog.focused_field {
                         CreateDialogField::WorkspaceName => dialog.workspace_name.clear(),
+                        CreateDialogField::PullRequestUrl => dialog.pr_url.clear(),
                         CreateDialogField::BaseBranch => {
                             dialog.base_branch.clear();
                             refresh_base_branch = true;

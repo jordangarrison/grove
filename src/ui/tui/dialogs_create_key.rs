@@ -6,6 +6,19 @@ impl GroveApp {
             return;
         }
 
+        let alt_previous_tab =
+            key_event.code == KeyCode::Char('[') && key_event.modifiers == Modifiers::ALT;
+        let alt_next_tab =
+            key_event.code == KeyCode::Char(']') && key_event.modifiers == Modifiers::ALT;
+        if alt_previous_tab {
+            self.switch_create_dialog_tab(false);
+            return;
+        }
+        if alt_next_tab {
+            self.switch_create_dialog_tab(true);
+            return;
+        }
+
         let ctrl_n = key_event.code == KeyCode::Char('n') && key_event.modifiers == Modifiers::CTRL;
         let ctrl_p = key_event.code == KeyCode::Char('p') && key_event.modifiers == Modifiers::CTRL;
 
@@ -17,9 +30,7 @@ impl GroveApp {
             }
             KeyCode::Enter => {
                 if self.select_create_base_branch_from_dropdown() {
-                    if let Some(dialog) = self.create_dialog_mut() {
-                        dialog.focused_field = dialog.focused_field.next();
-                    }
+                    self.create_dialog_focus_next();
                     self.refresh_create_branch_filtered();
                     return;
                 }
@@ -40,6 +51,7 @@ impl GroveApp {
                             EnterAction::ToggleAutoRunAndAdvance
                         }
                         CreateDialogField::WorkspaceName
+                        | CreateDialogField::PullRequestUrl
                         | CreateDialogField::Project
                         | CreateDialogField::BaseBranch
                         | CreateDialogField::SetupCommands
@@ -55,28 +67,22 @@ impl GroveApp {
                         self.clear_create_branch_picker();
                     }
                     Some(EnterAction::AdvanceField) => {
-                        if let Some(dialog) = self.create_dialog_mut() {
-                            dialog.focused_field = dialog.focused_field.next();
-                        }
+                        self.create_dialog_focus_next();
                     }
                     Some(EnterAction::ToggleAutoRunAndAdvance) => {
                         if let Some(dialog) = self.create_dialog_mut() {
                             dialog.auto_run_setup_commands = !dialog.auto_run_setup_commands;
-                            dialog.focused_field = dialog.focused_field.next();
                         }
+                        self.create_dialog_focus_next();
                     }
                     None => {}
                 }
             }
             KeyCode::Tab => {
-                if let Some(dialog) = self.create_dialog_mut() {
-                    dialog.focused_field = dialog.focused_field.next();
-                }
+                self.create_dialog_focus_next();
             }
             KeyCode::BackTab => {
-                if let Some(dialog) = self.create_dialog_mut() {
-                    dialog.focused_field = dialog.focused_field.previous();
-                }
+                self.create_dialog_focus_previous();
             }
             KeyCode::Left | KeyCode::Right => {}
             KeyCode::Up => {
@@ -141,12 +147,10 @@ impl GroveApp {
                 }
             }
             KeyCode::Char(_) if ctrl_n || ctrl_p => {
-                if let Some(dialog) = self.create_dialog_mut() {
-                    dialog.focused_field = if ctrl_n {
-                        dialog.focused_field.next()
-                    } else {
-                        dialog.focused_field.previous()
-                    };
+                if ctrl_n {
+                    self.create_dialog_focus_next();
+                } else {
+                    self.create_dialog_focus_previous();
                 }
             }
             KeyCode::Backspace => {
@@ -155,6 +159,9 @@ impl GroveApp {
                     match dialog.focused_field {
                         CreateDialogField::WorkspaceName => {
                             dialog.workspace_name.pop();
+                        }
+                        CreateDialogField::PullRequestUrl => {
+                            dialog.pr_url.pop();
                         }
                         CreateDialogField::BaseBranch => {
                             dialog.base_branch.pop();
@@ -251,6 +258,11 @@ impl GroveApp {
                                 dialog.workspace_name.push(character);
                             }
                         }
+                        CreateDialogField::PullRequestUrl => {
+                            if !character.is_control() {
+                                dialog.pr_url.push(character);
+                            }
+                        }
                         CreateDialogField::Project => {}
                         CreateDialogField::BaseBranch => {
                             if !character.is_control() {
@@ -317,7 +329,8 @@ impl GroveApp {
 
     fn create_base_branch_dropdown_visible(&self) -> bool {
         self.create_dialog().is_some_and(|dialog| {
-            dialog.focused_field == CreateDialogField::BaseBranch
+            dialog.tab == CreateDialogTab::Manual
+                && dialog.focused_field == CreateDialogField::BaseBranch
                 && !self.create_branch_filtered.is_empty()
         })
     }
@@ -338,5 +351,28 @@ impl GroveApp {
             return true;
         }
         false
+    }
+
+    fn create_dialog_focus_next(&mut self) {
+        if let Some(dialog) = self.create_dialog_mut() {
+            dialog.focused_field = dialog.focused_field.next(dialog.tab);
+        }
+    }
+
+    fn create_dialog_focus_previous(&mut self) {
+        if let Some(dialog) = self.create_dialog_mut() {
+            dialog.focused_field = dialog.focused_field.previous(dialog.tab);
+        }
+    }
+
+    fn switch_create_dialog_tab(&mut self, forward: bool) {
+        if let Some(dialog) = self.create_dialog_mut() {
+            dialog.tab = if forward {
+                dialog.tab.next()
+            } else {
+                dialog.tab.previous()
+            };
+            dialog.focused_field = CreateDialogField::first_for_tab(dialog.tab);
+        }
     }
 }

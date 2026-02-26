@@ -9,7 +9,7 @@ use self::render_support::{
     assert_row_bg, assert_row_fg, find_cell_with_char, find_row_containing, row_text,
 };
 use super::{
-    AppDependencies, ClipboardAccess, CommandTmuxInput, CreateDialogField,
+    AppDependencies, ClipboardAccess, CommandTmuxInput, CreateDialogField, CreateDialogTab,
     CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
     DeleteWorkspaceCompletion, EditDialogField, GroveApp, HIT_ID_HEADER, HIT_ID_PREVIEW,
     HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_ROW, LaunchDialogField,
@@ -1210,11 +1210,11 @@ fn create_dialog_uses_opaque_background_fill() {
 
     with_rendered_frame(&app, 80, 24, |frame| {
         let dialog_width = frame.width().saturating_sub(8).min(90);
-        let dialog_height = 23u16;
+        let dialog_height = 25u16;
         let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
         let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
         let probe_x = dialog_x.saturating_add(dialog_width.saturating_sub(3));
-        let probe_y = dialog_y.saturating_add(4);
+        let probe_y = dialog_y.saturating_add(1);
         let Some(cell) = frame.buffer.get(probe_x, probe_y) else {
             panic!("expected dialog probe cell at ({probe_x},{probe_y})");
         };
@@ -1249,7 +1249,7 @@ fn create_dialog_selected_agent_row_uses_highlight_background() {
 
     with_rendered_frame(&app, 80, 24, |frame| {
         let dialog_width = frame.width().saturating_sub(8).min(90);
-        let dialog_height = 20u16;
+        let dialog_height = 25u16;
         let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
         let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
         let x_start = dialog_x.saturating_add(1);
@@ -1287,7 +1287,7 @@ fn create_dialog_unfocused_agent_row_uses_base_background() {
 
     with_rendered_frame(&app, 80, 24, |frame| {
         let dialog_width = frame.width().saturating_sub(8).min(90);
-        let dialog_height = 20u16;
+        let dialog_height = 25u16;
         let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
         let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
         let x_start = dialog_x.saturating_add(1);
@@ -1317,7 +1317,7 @@ fn create_dialog_renders_action_buttons() {
 
     with_rendered_frame(&app, 80, 24, |frame| {
         let dialog_width = frame.width().saturating_sub(8).min(90);
-        let dialog_height = 20u16;
+        let dialog_height = 25u16;
         let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
         let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
         let x_start = dialog_x.saturating_add(1);
@@ -1334,6 +1334,154 @@ fn create_dialog_renders_action_buttons() {
             "create dialog action buttons should be visible"
         );
     });
+}
+
+#[test]
+fn create_dialog_alt_brackets_switch_between_manual_and_pr_tabs() {
+    let mut app = fixture_app();
+    app.open_create_dialog();
+
+    assert_eq!(
+        app.create_dialog().map(|dialog| dialog.tab),
+        Some(CreateDialogTab::Manual)
+    );
+    assert_eq!(
+        app.create_dialog().map(|dialog| dialog.focused_field),
+        Some(CreateDialogField::WorkspaceName)
+    );
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char(']'))
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+
+    assert_eq!(
+        app.create_dialog().map(|dialog| dialog.tab),
+        Some(CreateDialogTab::PullRequest)
+    );
+    assert_eq!(
+        app.create_dialog().map(|dialog| dialog.focused_field),
+        Some(CreateDialogField::Project)
+    );
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char('['))
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+
+    assert_eq!(
+        app.create_dialog().map(|dialog| dialog.tab),
+        Some(CreateDialogTab::Manual)
+    );
+    assert_eq!(
+        app.create_dialog().map(|dialog| dialog.focused_field),
+        Some(CreateDialogField::WorkspaceName)
+    );
+}
+
+#[test]
+fn create_dialog_mode_tabs_are_mouse_clickable() {
+    let mut app = fixture_app();
+    app.open_create_dialog();
+    ftui::Model::update(
+        &mut app,
+        Msg::Resize {
+            width: 80,
+            height: 24,
+        },
+    );
+
+    let width = 80u16;
+    let height = 24u16;
+    let dialog_width = width.saturating_sub(8).min(90);
+    let dialog_height = 25u16;
+    let dialog_x = width.saturating_sub(dialog_width) / 2;
+    let dialog_y = height.saturating_sub(dialog_height) / 2;
+    let inner_x = dialog_x.saturating_add(1);
+    let tab_row_y = dialog_y.saturating_add(1).saturating_add(2);
+
+    let manual_tab_width =
+        u16::try_from("Manual".len().saturating_add(2)).expect("manual tab width should fit");
+    let pull_tab_x = inner_x.saturating_add(manual_tab_width).saturating_add(1);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(
+            MouseEventKind::Down(MouseButton::Left),
+            pull_tab_x.saturating_add(1),
+            tab_row_y,
+        )),
+    );
+
+    assert_eq!(
+        app.create_dialog().map(|dialog| dialog.tab),
+        Some(CreateDialogTab::PullRequest)
+    );
+    assert_eq!(
+        app.create_dialog().map(|dialog| dialog.focused_field),
+        Some(CreateDialogField::Project)
+    );
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(
+            MouseEventKind::Down(MouseButton::Left),
+            inner_x.saturating_add(1),
+            tab_row_y,
+        )),
+    );
+
+    assert_eq!(
+        app.create_dialog().map(|dialog| dialog.tab),
+        Some(CreateDialogTab::Manual)
+    );
+    assert_eq!(
+        app.create_dialog().map(|dialog| dialog.focused_field),
+        Some(CreateDialogField::WorkspaceName)
+    );
+}
+
+#[test]
+fn create_dialog_allows_paste_into_pr_url_field() {
+    let mut app = fixture_app();
+    app.open_create_dialog();
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(
+            KeyEvent::new(KeyCode::Char(']'))
+                .with_modifiers(Modifiers::ALT)
+                .with_kind(KeyEventKind::Press),
+        ),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    );
+    assert_eq!(
+        app.create_dialog().map(|dialog| dialog.focused_field),
+        Some(CreateDialogField::PullRequestUrl)
+    );
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Paste(PasteEvent::bracketed(
+            "https://github.com/flocasts/web-monorepo/pull/3484",
+        )),
+    );
+
+    assert_eq!(
+        app.create_dialog().map(|dialog| dialog.pr_url.clone()),
+        Some("https://github.com/flocasts/web-monorepo/pull/3484".to_string())
+    );
 }
 
 #[test]
@@ -2202,7 +2350,7 @@ fn create_dialog_wrapped_hint_rows_keep_hint_style() {
 
     with_rendered_frame(&app, 80, 24, |frame| {
         let dialog_width = frame.width().saturating_sub(8).min(90);
-        let dialog_height = 23u16;
+        let dialog_height = 25u16;
         let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
         let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
         let x_start = dialog_x.saturating_add(1);

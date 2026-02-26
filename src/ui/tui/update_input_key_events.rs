@@ -54,7 +54,77 @@ impl GroveApp {
         }
     }
 
+    fn apply_paste_to_create_dialog(&mut self, text: &str) -> bool {
+        let mut refresh_base_branch = false;
+        let mut handled = false;
+        if let Some(dialog) = self.create_dialog_mut() {
+            match dialog.focused_field {
+                CreateDialogField::WorkspaceName => {
+                    handled = true;
+                    for character in text.chars() {
+                        if character.is_ascii_alphanumeric() || character == '-' || character == '_'
+                        {
+                            dialog.workspace_name.push(character);
+                        }
+                    }
+                }
+                CreateDialogField::PullRequestUrl => {
+                    handled = true;
+                    for character in text.chars() {
+                        if !character.is_control() {
+                            dialog.pr_url.push(character);
+                        }
+                    }
+                }
+                CreateDialogField::BaseBranch => {
+                    handled = true;
+                    for character in text.chars() {
+                        if !character.is_control() {
+                            dialog.base_branch.push(character);
+                            refresh_base_branch = true;
+                        }
+                    }
+                }
+                CreateDialogField::SetupCommands => {
+                    handled = true;
+                    for character in text.chars() {
+                        if !character.is_control() {
+                            dialog.setup_commands.push(character);
+                        }
+                    }
+                }
+                CreateDialogField::StartConfig(field) => {
+                    if matches!(
+                        field,
+                        StartAgentConfigField::Prompt | StartAgentConfigField::PreLaunchCommand
+                    ) {
+                        handled = true;
+                        for character in text.chars() {
+                            if !character.is_control() {
+                                dialog.start_config.push_char(field, character);
+                            }
+                        }
+                    }
+                }
+                CreateDialogField::Project
+                | CreateDialogField::AutoRunSetupCommands
+                | CreateDialogField::Agent
+                | CreateDialogField::CreateButton
+                | CreateDialogField::CancelButton => {}
+            }
+        }
+
+        if refresh_base_branch {
+            self.refresh_create_branch_filtered();
+        }
+        handled
+    }
+
     pub(super) fn handle_paste_event(&mut self, paste_event: PasteEvent) -> Cmd<Msg> {
+        if self.apply_paste_to_create_dialog(&paste_event.text) {
+            return Cmd::None;
+        }
+
         let input_seq = self.next_input_seq();
         let received_at = Instant::now();
         let (target_session, bracketed) = {
