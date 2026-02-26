@@ -530,6 +530,9 @@ impl GroveApp {
         }
 
         let mut list_state = self.sidebar_list_state.borrow_mut();
+        if selected_line.is_some_and(|line| line <= 1) && inner.height > 1 {
+            list_state.scroll_to_top();
+        }
         list_state.select(selected_line);
         let list = VirtualizedList::new(lines.as_slice())
             .fixed_height(1)

@@ -710,6 +710,42 @@ fn sidebar_shows_workspace_names() {
 }
 
 #[test]
+fn sidebar_keeps_first_project_header_visible_after_tiny_initial_render() {
+    let mut app = fixture_app();
+    for index in 0..24usize {
+        let mut workspace = Workspace::try_new(
+            format!("extra-{index}"),
+            PathBuf::from(format!("/repos/grove-extra-{index}")),
+            format!("extra-{index}"),
+            None,
+            AgentType::Codex,
+            WorkspaceStatus::Idle,
+            false,
+        )
+        .expect("workspace should be valid");
+        workspace.project_path = Some(PathBuf::from("/repos/grove"));
+        app.state.workspaces.push(workspace);
+    }
+
+    with_rendered_frame(&app, 80, 3, |_frame| {});
+
+    let layout = GroveApp::view_layout_for_size(80, 16, app.sidebar_width_pct, false);
+    let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
+    let x_start = layout.sidebar.x.saturating_add(1);
+    let x_end = layout.sidebar.right().saturating_sub(1);
+
+    with_rendered_frame(&app, 80, 16, |frame| {
+        let Some(project_row) = find_row_containing(frame, "▾ grove", x_start, x_end) else {
+            panic!("first project header should be visible");
+        };
+        assert_eq!(
+            project_row, sidebar_inner.y,
+            "first project header should remain at top of sidebar"
+        );
+    });
+}
+
+#[test]
 fn workspace_age_renders_in_preview_header_not_sidebar_row() {
     let mut app = fixture_app();
     let now_secs = SystemTime::now()
