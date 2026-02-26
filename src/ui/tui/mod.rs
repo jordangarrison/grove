@@ -31,6 +31,7 @@ use ftui::widgets::notification_queue::{
 };
 use ftui::widgets::paragraph::Paragraph;
 use ftui::widgets::toast::{Toast, ToastIcon, ToastPosition, ToastStyle};
+use ftui::widgets::virtualized::VirtualizedListState;
 use ftui::{Cmd, Model, PackedRgba, Style};
 use ftui_extras::text_effects::{ColorGradient, StyledText, TextEffect};
 use serde_json::Value;
@@ -310,6 +311,7 @@ struct GroveApp {
     copied_text: Option<String>,
     event_log: Box<dyn EventLogger>,
     last_hit_grid: RefCell<Option<HitGrid>>,
+    sidebar_list_state: RefCell<VirtualizedListState>,
     next_tick_due_at: Option<Instant>,
     next_tick_interval_ms: Option<u64>,
     next_poll_due_at: Option<Instant>,

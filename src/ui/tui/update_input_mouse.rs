@@ -2,6 +2,7 @@ use super::*;
 
 impl GroveApp {
     const PREVIEW_MOUSE_SCROLL_LINES: i32 = 3;
+    const SIDEBAR_MOUSE_SCROLL_WORKSPACES: usize = 1;
     const CREATE_DIALOG_TAB_ROW_OFFSET: u16 = 2;
 
     fn preview_tab_at_pointer(&self, x: u16, y: u16) -> Option<PreviewTab> {
@@ -106,72 +107,36 @@ impl GroveApp {
         ratio_from_drag(total_width, relative_x_u16)
     }
 
-    fn sidebar_workspace_index_at_y(&self, y: u16) -> Option<usize> {
-        if self.projects.is_empty() {
-            return None;
-        }
-
-        if matches!(self.discovery_state, DiscoveryState::Error(_))
-            && self.state.workspaces.is_empty()
-        {
-            return None;
-        }
-
+    fn sidebar_workspace_index_at_point(&self, x: u16, y: u16) -> Option<usize> {
         let layout = self.view_layout();
         let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
         if y < sidebar_inner.y || y >= sidebar_inner.bottom() {
             return None;
         }
 
-        let target_row = usize::from(y.saturating_sub(sidebar_inner.y));
-        let mut visual_row = 0usize;
-        for (project_index, project) in self.projects.iter().enumerate() {
-            if project_index > 0 {
-                if visual_row == target_row {
-                    return None;
-                }
-                visual_row = visual_row.saturating_add(1);
-            }
-
-            if visual_row == target_row {
-                return None;
-            }
-            visual_row = visual_row.saturating_add(1);
-
-            let workspace_indices: Vec<usize> = self
-                .state
-                .workspaces
-                .iter()
-                .enumerate()
-                .filter(|(_, workspace)| {
-                    workspace
-                        .project_path
-                        .as_ref()
-                        .is_some_and(|path| refer_to_same_location(path, &project.path))
-                })
-                .map(|(index, _)| index)
-                .collect();
-            if workspace_indices.is_empty() {
-                if visual_row == target_row {
-                    return None;
-                }
-                visual_row = visual_row.saturating_add(1);
-                continue;
-            }
-
-            for workspace_index in workspace_indices {
-                if visual_row == target_row {
-                    return Some(workspace_index);
-                }
-                visual_row = visual_row.saturating_add(usize::from(WORKSPACE_ITEM_HEIGHT));
-            }
+        let row_map = self.sidebar_workspace_row_map();
+        if row_map.is_empty() {
+            return None;
         }
 
-        None
+        let viewport_rows = usize::from(sidebar_inner.height.max(1));
+        let needs_scrollbar = row_map.len() > viewport_rows;
+        if needs_scrollbar && x >= sidebar_inner.right().saturating_sub(1) {
+            return None;
+        }
+
+        let max_offset = row_map.len().saturating_sub(viewport_rows);
+        let scroll_offset = {
+            let list_state = self.sidebar_list_state.borrow();
+            list_state.scroll_offset().min(max_offset)
+        };
+        let target_row = usize::from(y.saturating_sub(sidebar_inner.y));
+        let row_index = scroll_offset.saturating_add(target_row);
+        row_map.get(row_index).copied().flatten()
     }
 
-    fn select_workspace_by_mouse(&mut self, y: u16) {
-        let Some(row) = self.sidebar_workspace_index_at_y(y) else {
+    fn select_workspace_by_mouse(&mut self, x: u16, y: u16) {
+        let Some(row) = self.sidebar_workspace_index_at_point(x, y) else {
             return;
         };
 
@@ -191,6 +156,57 @@ impl GroveApp {
 
         self.state.selected_index = index;
         self.handle_workspace_selection_changed();
+    }
+
+    fn open_url_in_browser(&self, url: &str) -> Result<(), String> {
+        #[cfg(test)]
+        {
+            let _ = url;
+            Ok(())
+        }
+
+        #[cfg(not(test))]
+        {
+            let mut command = if cfg!(target_os = "macos") {
+                let mut command = Command::new("open");
+                command.arg(url);
+                command
+            } else if cfg!(target_os = "windows") {
+                let mut command = Command::new("cmd");
+                command.args(["/C", "start", "", url]);
+                command
+            } else {
+                let mut command = Command::new("xdg-open");
+                command.arg(url);
+                command
+            };
+
+            command
+                .spawn()
+                .map(|_| ())
+                .map_err(|error| format!("failed opening url: {error}"))
+        }
+    }
+
+    fn open_workspace_pull_request_link(&mut self, data: Option<u64>) {
+        let Some(data) = data else {
+            return;
+        };
+        let Some((workspace_index, pull_request_index)) = decode_workspace_pr_hit_data(data) else {
+            return;
+        };
+
+        self.select_workspace_by_index(workspace_index);
+        let Some(workspace) = self.state.workspaces.get(workspace_index) else {
+            return;
+        };
+        let Some(pull_request) = workspace.pull_requests.get(pull_request_index) else {
+            return;
+        };
+
+        if let Err(error) = self.open_url_in_browser(pull_request.url.as_str()) {
+            self.show_error_toast(error);
+        }
     }
 
     pub(super) fn handle_mouse_event(&mut self, mouse_event: MouseEvent) {
@@ -254,8 +270,16 @@ impl GroveApp {
                             self.select_workspace_by_index(index);
                         }
                     } else {
-                        self.select_workspace_by_mouse(mouse_event.y);
+                        self.select_workspace_by_mouse(mouse_event.x, mouse_event.y);
                     }
+                }
+                HitRegion::WorkspacePullRequest => {
+                    if self.interactive.is_some() {
+                        self.exit_interactive_to_list();
+                    } else {
+                        reduce(&mut self.state, Action::EnterListMode);
+                    }
+                    self.open_workspace_pull_request_link(row_data);
                 }
                 HitRegion::Preview => {
                     if let Some(next_tab) =
@@ -304,7 +328,16 @@ impl GroveApp {
                 self.finish_preview_selection_drag(mouse_event.x, mouse_event.y);
             }
             MouseEventKind::ScrollUp => {
-                if matches!(region, HitRegion::Preview) {
+                if matches!(region, HitRegion::WorkspaceList) {
+                    if self.interactive.is_some() {
+                        self.exit_interactive_to_list();
+                    } else {
+                        reduce(&mut self.state, Action::EnterListMode);
+                    }
+                    for _ in 0..Self::SIDEBAR_MOUSE_SCROLL_WORKSPACES {
+                        self.move_selection(Action::MoveSelectionUp);
+                    }
+                } else if matches!(region, HitRegion::Preview) {
                     self.state.mode = UiMode::Preview;
                     self.state.focus = PaneFocus::Preview;
                     if self.preview_scroll_tab_is_focused() {
@@ -313,7 +346,16 @@ impl GroveApp {
                 }
             }
             MouseEventKind::ScrollDown => {
-                if matches!(region, HitRegion::Preview) {
+                if matches!(region, HitRegion::WorkspaceList) {
+                    if self.interactive.is_some() {
+                        self.exit_interactive_to_list();
+                    } else {
+                        reduce(&mut self.state, Action::EnterListMode);
+                    }
+                    for _ in 0..Self::SIDEBAR_MOUSE_SCROLL_WORKSPACES {
+                        self.move_selection(Action::MoveSelectionDown);
+                    }
+                } else if matches!(region, HitRegion::Preview) {
                     self.state.mode = UiMode::Preview;
                     self.state.focus = PaneFocus::Preview;
                     if self.preview_scroll_tab_is_focused() {

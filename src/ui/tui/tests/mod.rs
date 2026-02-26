@@ -2955,4 +2955,80 @@ fn mouse_click_on_workspace_pr_link_selects_workspace() {
     assert_eq!(app.state.selected_index, 1);
 }
 
+#[test]
+fn sidebar_keeps_selected_workspace_visible_with_many_rows() {
+    let mut app = fixture_app();
+    for index in 0..24usize {
+        let mut workspace = Workspace::try_new(
+            format!("extra-{index}"),
+            PathBuf::from(format!("/repos/grove-extra-{index}")),
+            format!("extra-{index}"),
+            None,
+            AgentType::Codex,
+            WorkspaceStatus::Idle,
+            false,
+        )
+        .expect("workspace should be valid");
+        workspace.project_path = Some(PathBuf::from("/repos/grove"));
+        app.state.workspaces.push(workspace);
+    }
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Resize {
+            width: 80,
+            height: 16,
+        },
+    );
+    for _ in 0..18 {
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('j'))));
+    }
+
+    let selected_name = app.state.workspaces[app.state.selected_index].name.clone();
+    let layout = GroveApp::view_layout_for_size(80, 16, app.sidebar_width_pct, false);
+    let x_start = layout.sidebar.x.saturating_add(1);
+    let x_end = layout.sidebar.right().saturating_sub(1);
+    with_rendered_frame(&app, 80, 16, |frame| {
+        assert!(
+            find_row_containing(frame, selected_name.as_str(), x_start, x_end).is_some(),
+            "selected workspace should stay visible"
+        );
+    });
+}
+
+#[test]
+fn mouse_wheel_on_sidebar_moves_workspace_selection() {
+    let mut app = fixture_app();
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+    let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Resize {
+            width: 100,
+            height: 40,
+        },
+    );
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(
+            MouseEventKind::ScrollDown,
+            sidebar_inner.x.saturating_add(1),
+            sidebar_inner.y.saturating_add(1),
+        )),
+    );
+    assert_eq!(app.state.selected_index, 1);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(
+            MouseEventKind::ScrollUp,
+            sidebar_inner.x.saturating_add(1),
+            sidebar_inner.y.saturating_add(1),
+        )),
+    );
+    assert_eq!(app.state.selected_index, 0);
+}
+
 mod runtime_flow;
