@@ -336,6 +336,9 @@ impl GroveApp {
         let base_branch = project.defaults.base_branch.clone();
         let setup_commands = format_setup_commands(&project.defaults.setup_commands);
         let auto_run_setup_commands = project.defaults.auto_run_setup_commands;
+        let claude_env = format_agent_env_vars(&project.defaults.agent_env.claude);
+        let codex_env = format_agent_env_vars(&project.defaults.agent_env.codex);
+        let opencode_env = format_agent_env_vars(&project.defaults.agent_env.opencode);
 
         if let Some(project_dialog) = self.project_dialog_mut() {
             project_dialog.defaults_dialog = Some(ProjectDefaultsDialogState {
@@ -343,6 +346,9 @@ impl GroveApp {
                 base_branch,
                 setup_commands,
                 auto_run_setup_commands,
+                claude_env,
+                codex_env,
+                opencode_env,
                 focused_field: ProjectDefaultsDialogField::BaseBranch,
             });
         }
@@ -355,6 +361,27 @@ impl GroveApp {
         else {
             return;
         };
+        let claude_env = match encode_agent_env_vars(&dialog_state.claude_env) {
+            Ok(env) => env,
+            Err(error) => {
+                self.show_info_toast(format!("invalid Claude env: {error}"));
+                return;
+            }
+        };
+        let codex_env = match encode_agent_env_vars(&dialog_state.codex_env) {
+            Ok(env) => env,
+            Err(error) => {
+                self.show_info_toast(format!("invalid Codex env: {error}"));
+                return;
+            }
+        };
+        let opencode_env = match encode_agent_env_vars(&dialog_state.opencode_env) {
+            Ok(env) => env,
+            Err(error) => {
+                self.show_info_toast(format!("invalid OpenCode env: {error}"));
+                return;
+            }
+        };
         let project_name = {
             let Some(project) = self.projects.get_mut(dialog_state.project_index) else {
                 self.show_info_toast("project not found");
@@ -365,6 +392,11 @@ impl GroveApp {
                 base_branch: dialog_state.base_branch.trim().to_string(),
                 setup_commands: parse_setup_commands(&dialog_state.setup_commands),
                 auto_run_setup_commands: dialog_state.auto_run_setup_commands,
+                agent_env: AgentEnvDefaults {
+                    claude: claude_env,
+                    codex: codex_env,
+                    opencode: opencode_env,
+                },
             };
             project.name.clone()
         };

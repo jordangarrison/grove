@@ -1389,7 +1389,50 @@ fn project_defaults_dialog_save_persists_defaults() {
             Msg::Key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press)),
         );
     }
-    for _ in 0..2 {
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    );
+    for character in [
+        'C', 'L', 'A', 'U', 'D', 'E', '_', 'C', 'O', 'N', 'F', 'I', 'G', '_', 'D', 'I', 'R', '=',
+        '~', '/', '.', 'c', 'l', 'a', 'u', 'd', 'e', '-', 'w', 'o', 'r', 'k',
+    ] {
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press)),
+        );
+    }
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    );
+    for character in [
+        'C', 'O', 'D', 'E', 'X', '_', 'C', 'O', 'N', 'F', 'I', 'G', '_', 'D', 'I', 'R', '=', '~',
+        '/', '.', 'c', 'o', 'd', 'e', 'x', '-', 'w', 'o', 'r', 'k',
+    ] {
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press)),
+        );
+    }
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+    );
+    for character in [
+        'O', 'P', 'E', 'N', 'C', 'O', 'D', 'E', '_', 'C', 'O', 'N', 'F', 'I', 'G', '_', 'D', 'I',
+        'R', '=', '~', '/', '.', 'o', 'p', 'e', 'n', 'c', 'o', 'd', 'e', '-', 'w', 'o', 'r', 'k',
+    ] {
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press)),
+        );
+    }
+    for _ in 0..1 {
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -1406,6 +1449,18 @@ fn project_defaults_dialog_save_persists_defaults() {
         vec!["direnv allow".to_string(), "echo ok".to_string()]
     );
     assert!(app.projects[0].defaults.auto_run_setup_commands);
+    assert_eq!(
+        app.projects[0].defaults.agent_env.claude,
+        vec!["CLAUDE_CONFIG_DIR=~/.claude-work".to_string()]
+    );
+    assert_eq!(
+        app.projects[0].defaults.agent_env.codex,
+        vec!["CODEX_CONFIG_DIR=~/.codex-work".to_string()]
+    );
+    assert_eq!(
+        app.projects[0].defaults.agent_env.opencode,
+        vec!["OPENCODE_CONFIG_DIR=~/.opencode-work".to_string()]
+    );
 
     let loaded =
         crate::infrastructure::config::load_from_path(&app.config_path).expect("config loads");
@@ -1413,6 +1468,18 @@ fn project_defaults_dialog_save_persists_defaults() {
     assert_eq!(
         loaded.projects[0].defaults.setup_commands,
         vec!["direnv allow".to_string(), "echo ok".to_string()]
+    );
+    assert_eq!(
+        loaded.projects[0].defaults.agent_env.claude,
+        vec!["CLAUDE_CONFIG_DIR=~/.claude-work".to_string()]
+    );
+    assert_eq!(
+        loaded.projects[0].defaults.agent_env.codex,
+        vec!["CODEX_CONFIG_DIR=~/.codex-work".to_string()]
+    );
+    assert_eq!(
+        loaded.projects[0].defaults.agent_env.opencode,
+        vec!["OPENCODE_CONFIG_DIR=~/.opencode-work".to_string()]
     );
 }
 
@@ -2162,6 +2229,64 @@ fn unsafe_toggle_changes_launch_command_flags() {
         ])
     );
     assert!(app.launch_skip_permissions);
+}
+
+#[test]
+fn start_key_applies_project_agent_env_defaults_before_agent_launch() {
+    let (mut app, commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+    focus_agent_preview_tab(&mut app);
+    app.state.selected_index = 1;
+    app.projects[0].defaults.agent_env.codex = vec![
+        "CODEX_CONFIG_DIR=~/.codex-work".to_string(),
+        "OPENAI_API_BASE=https://api.example.com/v1".to_string(),
+    ];
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(commands.borrow().iter().any(|command| {
+        command
+            == &vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+                "export CODEX_CONFIG_DIR='~/.codex-work' OPENAI_API_BASE='https://api.example.com/v1'"
+                    .to_string(),
+                "Enter".to_string(),
+            ]
+    }));
+}
+
+#[test]
+fn start_key_rejects_invalid_project_agent_env_defaults() {
+    let (mut app, commands, _captures, _cursor_captures) =
+        fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+    focus_agent_preview_tab(&mut app);
+    app.state.selected_index = 1;
+    app.projects[0].defaults.agent_env.codex = vec!["INVALID-KEY=value".to_string()];
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(commands.borrow().is_empty());
+    assert!(
+        app.status_bar_line()
+            .contains("invalid project agent env: invalid env key 'INVALID-KEY'")
+    );
 }
 
 #[test]

@@ -60,6 +60,10 @@ fn launch_request_for_workspace_copies_workspace_context_and_options() {
         Some("run checks".to_string()),
         Some("direnv exec .".to_string()),
         true,
+        vec![(
+            "CLAUDE_CONFIG_DIR".to_string(),
+            "~/.claude-work".to_string(),
+        )],
         Some(132),
         Some(44),
     );
@@ -74,6 +78,13 @@ fn launch_request_for_workspace_copies_workspace_context_and_options() {
     assert_eq!(request.prompt.as_deref(), Some("run checks"));
     assert_eq!(request.pre_launch_command.as_deref(), Some("direnv exec ."));
     assert!(request.skip_permissions);
+    assert_eq!(
+        request.agent_env,
+        vec![(
+            "CLAUDE_CONFIG_DIR".to_string(),
+            "~/.claude-work".to_string()
+        )]
+    );
     assert_eq!(request.capture_cols, Some(132));
     assert_eq!(request.capture_rows, Some(44));
 }
@@ -416,6 +427,7 @@ fn launch_plan_without_prompt_sends_agent_directly() {
         prompt: None,
         pre_launch_command: None,
         skip_permissions: true,
+        agent_env: Vec::new(),
         capture_cols: None,
         capture_rows: None,
     };
@@ -447,6 +459,7 @@ fn launch_plan_with_capture_dimensions_resizes_before_send_keys() {
         prompt: None,
         pre_launch_command: None,
         skip_permissions: true,
+        agent_env: Vec::new(),
         capture_cols: Some(132),
         capture_rows: Some(44),
     };
@@ -469,6 +482,46 @@ fn launch_plan_with_capture_dimensions_resizes_before_send_keys() {
 }
 
 #[test]
+fn launch_plan_with_agent_env_exports_before_agent_start() {
+    let request = LaunchRequest {
+        project_name: None,
+        workspace_name: "auth-flow".to_string(),
+        workspace_path: PathBuf::from("/repos/grove-auth-flow"),
+        agent: AgentType::Claude,
+        prompt: None,
+        pre_launch_command: None,
+        skip_permissions: false,
+        agent_env: vec![
+            (
+                "CLAUDE_CONFIG_DIR".to_string(),
+                "~/.claude-work".to_string(),
+            ),
+            (
+                "OPENAI_API_BASE".to_string(),
+                "https://api.example.com/v1".to_string(),
+            ),
+        ],
+        capture_cols: None,
+        capture_rows: None,
+    };
+
+    let plan = build_launch_plan(&request);
+
+    assert_eq!(
+        plan.pre_launch_cmds[2],
+        vec![
+            "tmux".to_string(),
+            "send-keys".to_string(),
+            "-t".to_string(),
+            "grove-ws-auth-flow".to_string(),
+            "export CLAUDE_CONFIG_DIR='~/.claude-work' OPENAI_API_BASE='https://api.example.com/v1'"
+                .to_string(),
+            "Enter".to_string(),
+        ]
+    );
+}
+
+#[test]
 fn launch_plan_with_prompt_writes_launcher_script() {
     let request = LaunchRequest {
         project_name: None,
@@ -478,6 +531,7 @@ fn launch_plan_with_prompt_writes_launcher_script() {
         prompt: Some("fix migration".to_string()),
         pre_launch_command: None,
         skip_permissions: false,
+        agent_env: Vec::new(),
         capture_cols: None,
         capture_rows: None,
     };

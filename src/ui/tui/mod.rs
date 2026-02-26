@@ -66,7 +66,7 @@ use crate::application::workspace_lifecycle::{
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
 use crate::infrastructure::config::{
-    GroveConfig, ProjectConfig, ProjectDefaults, WorkspaceAttentionAckConfig,
+    AgentEnvDefaults, GroveConfig, ProjectConfig, ProjectDefaults, WorkspaceAttentionAckConfig,
 };
 use crate::infrastructure::event_log::{Event as LogEvent, EventLogger};
 use crate::ui::mouse::{clamp_sidebar_ratio, ratio_from_drag};

@@ -320,6 +320,7 @@ fn restart_workspace_in_pane_with_io_sends_exit_and_resume_commands() {
     let result = restart_workspace_in_pane_with_io(
         &workspace,
         false,
+        &[],
         |command| {
             commands.push(command.to_vec());
             Ok(())
@@ -374,6 +375,7 @@ fn restart_workspace_in_pane_with_io_returns_error_when_resume_missing() {
     let result = restart_workspace_in_pane_with_io(
         &workspace,
         false,
+        &[],
         |_command| Ok(()),
         |_session_name, _scrollback_lines, _include_escape_sequences| {
             if captures.is_empty() {
@@ -397,6 +399,7 @@ fn restart_workspace_in_pane_with_io_sends_ctrl_c_for_opencode() {
     let result = restart_workspace_in_pane_with_io(
         &workspace,
         false,
+        &[],
         |command| {
             commands.push(command.to_vec());
             Ok(())
@@ -468,6 +471,7 @@ fn restart_workspace_in_pane_with_io_uses_opencode_db_resume_when_output_missing
     let result = super::super::restart_workspace_in_pane_with_io_in_home(
         &workspace,
         false,
+        &[],
         |command| {
             commands.push(command.to_vec());
             Ok(())
@@ -504,6 +508,7 @@ fn restart_workspace_in_pane_with_io_sends_ctrl_c_for_codex() {
     let result = restart_workspace_in_pane_with_io(
         &workspace,
         false,
+        &[],
         |command| {
             commands.push(command.to_vec());
             Ok(())
@@ -540,11 +545,62 @@ fn restart_workspace_in_pane_with_io_sends_ctrl_c_for_codex() {
 }
 
 #[test]
+fn restart_workspace_in_pane_with_io_applies_agent_env_before_resume() {
+    let mut workspace = fixture_workspace("feature-a", false);
+    workspace.agent = AgentType::Codex;
+    let mut commands = Vec::new();
+    let mut captures = vec!["run codex resume run-1234".to_string()];
+
+    let result = restart_workspace_in_pane_with_io(
+        &workspace,
+        false,
+        &[
+            ("FOO".to_string(), "bar".to_string()),
+            ("BAR".to_string(), "baz".to_string()),
+        ],
+        |command| {
+            commands.push(command.to_vec());
+            Ok(())
+        },
+        |_session_name, _scrollback_lines, _include_escape_sequences| {
+            if captures.is_empty() {
+                return Ok(String::new());
+            }
+            Ok(captures.remove(0))
+        },
+    );
+
+    assert!(result.is_ok());
+    assert_eq!(
+        commands[1],
+        vec![
+            "tmux".to_string(),
+            "send-keys".to_string(),
+            "-t".to_string(),
+            "grove-ws-feature-a".to_string(),
+            "export FOO='bar' BAR='baz'".to_string(),
+            "Enter".to_string(),
+        ]
+    );
+    assert_eq!(
+        commands[2],
+        vec![
+            "tmux".to_string(),
+            "send-keys".to_string(),
+            "-t".to_string(),
+            "grove-ws-feature-a".to_string(),
+            "codex resume run-1234".to_string(),
+            "Enter".to_string(),
+        ]
+    );
+}
+
+#[test]
 fn execute_restart_workspace_in_pane_with_result_returns_workspace_context() {
     let mut workspace = fixture_workspace("feature-a", false);
     workspace.agent = AgentType::OpenCode;
 
-    let result = execute_restart_workspace_in_pane_with_result(&workspace, false);
+    let result = execute_restart_workspace_in_pane_with_result(&workspace, false, Vec::new());
     assert_eq!(result.workspace_name, "feature-a");
     assert_eq!(
         result.workspace_path,
@@ -564,6 +620,7 @@ fn restart_workspace_in_pane_with_io_adds_skip_permissions_for_codex_resume() {
     let result = restart_workspace_in_pane_with_io(
         &workspace,
         true,
+        &[],
         |command| {
             commands.push(command.to_vec());
             Ok(())
@@ -599,6 +656,7 @@ fn restart_workspace_in_pane_with_io_adds_skip_permissions_for_claude_resume() {
     let result = restart_workspace_in_pane_with_io(
         &workspace,
         true,
+        &[],
         |command| {
             commands.push(command.to_vec());
             Ok(())
@@ -635,6 +693,7 @@ fn restart_workspace_in_pane_with_io_adds_skip_permissions_for_codex_dash_resume
     let result = restart_workspace_in_pane_with_io(
         &workspace,
         true,
+        &[],
         |command| {
             commands.push(command.to_vec());
             Ok(())
@@ -671,6 +730,7 @@ fn restart_workspace_in_pane_with_io_adds_skip_permissions_for_opencode_resume()
     let result = restart_workspace_in_pane_with_io(
         &workspace,
         true,
+        &[],
         |command| {
             commands.push(command.to_vec());
             Ok(())
@@ -738,6 +798,7 @@ fn execute_launch_request_with_result_for_mode_includes_workspace_context() {
         prompt: None,
         pre_launch_command: None,
         skip_permissions: false,
+        agent_env: Vec::new(),
         capture_cols: Some(120),
         capture_rows: Some(40),
     };
@@ -1038,6 +1099,7 @@ fn launch_plan_with_pre_launch_command_runs_before_agent() {
         prompt: None,
         pre_launch_command: Some("direnv allow".to_string()),
         skip_permissions: true,
+        agent_env: Vec::new(),
         capture_cols: None,
         capture_rows: None,
     };

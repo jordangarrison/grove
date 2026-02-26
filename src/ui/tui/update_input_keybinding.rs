@@ -32,7 +32,10 @@ impl GroveApp {
             }
             if let Some(defaults_dialog) = project_dialog.defaults_dialog.as_ref() {
                 return !defaults_dialog.base_branch.is_empty()
-                    || !defaults_dialog.setup_commands.is_empty();
+                    || !defaults_dialog.setup_commands.is_empty()
+                    || !defaults_dialog.claude_env.is_empty()
+                    || !defaults_dialog.codex_env.is_empty()
+                    || !defaults_dialog.opencode_env.is_empty();
             }
         }
 

@@ -49,6 +49,13 @@ impl GroveApp {
         }
 
         let skip_permissions = self.workspace_skip_permissions_for_workspace(&workspace);
+        let agent_env = match self.project_agent_env_for_workspace(&workspace) {
+            Ok(agent_env) => agent_env,
+            Err(error) => {
+                self.show_info_toast(format!("invalid project agent env: {error}"));
+                return;
+            }
+        };
         if !self.tmux_input.supports_background_launch() {
             let session_name = session_name_for_workspace_ref(&workspace);
             let completion = RestartAgentCompletion {
@@ -58,6 +65,7 @@ impl GroveApp {
                 result: restart_workspace_in_pane_with_io(
                     &workspace,
                     skip_permissions,
+                    &agent_env,
                     |command| self.tmux_input.execute(command),
                     |target_session, scrollback_lines, include_escape_sequences| {
                         self.tmux_input.capture_output(
@@ -74,8 +82,11 @@ impl GroveApp {
 
         self.restart_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let completion =
-                execute_restart_workspace_in_pane_with_result(&workspace, skip_permissions);
+            let completion = execute_restart_workspace_in_pane_with_result(
+                &workspace,
+                skip_permissions,
+                agent_env,
+            );
             Msg::RestartAgentCompleted(completion.into())
         }));
     }

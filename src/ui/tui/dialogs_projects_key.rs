@@ -45,7 +45,10 @@ impl GroveApp {
                     defaults_dialog.focused_field = defaults_dialog.focused_field.next();
                 }
                 ProjectDefaultsDialogField::BaseBranch
-                | ProjectDefaultsDialogField::SetupCommands => {
+                | ProjectDefaultsDialogField::SetupCommands
+                | ProjectDefaultsDialogField::ClaudeEnv
+                | ProjectDefaultsDialogField::CodexEnv
+                | ProjectDefaultsDialogField::OpenCodeEnv => {
                     defaults_dialog.focused_field = defaults_dialog.focused_field.next();
                 }
             },
@@ -55,6 +58,15 @@ impl GroveApp {
                 }
                 ProjectDefaultsDialogField::SetupCommands => {
                     defaults_dialog.setup_commands.pop();
+                }
+                ProjectDefaultsDialogField::ClaudeEnv => {
+                    defaults_dialog.claude_env.pop();
+                }
+                ProjectDefaultsDialogField::CodexEnv => {
+                    defaults_dialog.codex_env.pop();
+                }
+                ProjectDefaultsDialogField::OpenCodeEnv => {
+                    defaults_dialog.opencode_env.pop();
                 }
                 ProjectDefaultsDialogField::AutoRunSetupCommands
                 | ProjectDefaultsDialogField::SaveButton
@@ -90,6 +102,21 @@ impl GroveApp {
                     ProjectDefaultsDialogField::SetupCommands => {
                         if !character.is_control() {
                             defaults_dialog.setup_commands.push(character);
+                        }
+                    }
+                    ProjectDefaultsDialogField::ClaudeEnv => {
+                        if !character.is_control() {
+                            defaults_dialog.claude_env.push(character);
+                        }
+                    }
+                    ProjectDefaultsDialogField::CodexEnv => {
+                        if !character.is_control() {
+                            defaults_dialog.codex_env.push(character);
+                        }
+                    }
+                    ProjectDefaultsDialogField::OpenCodeEnv => {
+                        if !character.is_control() {
+                            defaults_dialog.opencode_env.push(character);
                         }
                     }
                     ProjectDefaultsDialogField::AutoRunSetupCommands

@@ -52,6 +52,18 @@ pub struct ProjectDefaults {
     pub setup_commands: Vec<String>,
     #[serde(default = "default_auto_run_setup_commands")]
     pub auto_run_setup_commands: bool,
+    #[serde(default)]
+    pub agent_env: AgentEnvDefaults,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct AgentEnvDefaults {
+    #[serde(default)]
+    pub claude: Vec<String>,
+    #[serde(default)]
+    pub codex: Vec<String>,
+    #[serde(default)]
+    pub opencode: Vec<String>,
 }
 
 const fn default_auto_run_setup_commands() -> bool {
@@ -64,6 +76,7 @@ impl Default for ProjectDefaults {
             base_branch: String::new(),
             setup_commands: Vec::new(),
             auto_run_setup_commands: default_auto_run_setup_commands(),
+            agent_env: AgentEnvDefaults::default(),
         }
     }
 }

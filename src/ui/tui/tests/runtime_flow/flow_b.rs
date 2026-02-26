@@ -1207,6 +1207,81 @@ fn restart_key_restarts_claude_agent_in_same_tmux_session() {
 }
 
 #[test]
+fn restart_key_applies_project_agent_env_defaults_before_resume() {
+    let (mut app, commands, _captures, _cursor_captures) = fixture_app_with_tmux(
+        WorkspaceStatus::Active,
+        vec![Ok("run codex resume run-1234".to_string())],
+    );
+    focus_agent_preview_tab(&mut app);
+    app.state.selected_index = 1;
+    app.state.workspaces[1].agent = AgentType::Codex;
+    app.projects[0].defaults.agent_env.codex = vec![
+        "CODEX_CONFIG_DIR=~/.codex-work".to_string(),
+        "OPENAI_API_BASE=https://api.example.com/v1".to_string(),
+    ];
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(commands.borrow().iter().any(|command| {
+        command
+            == &vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+                "export CODEX_CONFIG_DIR='~/.codex-work' OPENAI_API_BASE='https://api.example.com/v1'"
+                    .to_string(),
+                "Enter".to_string(),
+            ]
+    }));
+    assert!(commands.borrow().iter().any(|command| {
+        command
+            == &vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-a".to_string(),
+                "codex resume run-1234".to_string(),
+                "Enter".to_string(),
+            ]
+    }));
+}
+
+#[test]
+fn restart_key_rejects_invalid_project_agent_env_defaults() {
+    let (mut app, commands, _captures, _cursor_captures) = fixture_app_with_tmux(
+        WorkspaceStatus::Active,
+        vec![Ok("run codex resume run-1234".to_string())],
+    );
+    focus_agent_preview_tab(&mut app);
+    app.state.selected_index = 1;
+    app.state.workspaces[1].agent = AgentType::Codex;
+    app.projects[0].defaults.agent_env.codex = vec!["INVALID-KEY=value".to_string()];
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+    );
+
+    assert!(commands.borrow().is_empty());
+    assert!(
+        app.status_bar_line()
+            .contains("invalid project agent env: invalid env key 'INVALID-KEY'")
+    );
+}
+
+#[test]
 fn restart_key_restarts_opencode_in_same_tmux_session() {
     let (mut app, commands, _captures, _cursor_captures) = fixture_app_with_tmux(
         WorkspaceStatus::Active,

@@ -165,17 +165,30 @@ Config file path:
 
 Current config model includes:
 
-- `multiplexer` (currently `tmux`)
-- `projects` list (name + path)
+- `sidebar_width_pct`
+- `launch_skip_permissions`
+- `projects` list (`name`, `path`, `defaults`)
+- per-project `defaults.agent_env` for agent-specific env vars used at launch
 
 Example:
 
 ```toml
-multiplexer = "tmux"
+sidebar_width_pct = 33
+launch_skip_permissions = false
 
 [[projects]]
 name = "grove"
 path = "/path/to/repo"
+
+[projects.defaults]
+base_branch = "main"
+setup_commands = ["direnv allow"]
+auto_run_setup_commands = true
+
+[projects.defaults.agent_env]
+claude = ["CLAUDE_CONFIG_DIR=~/.claude-work"]
+codex = ["CODEX_CONFIG_DIR=~/.codex-work"]
+opencode = []
 ```
 
 ## Development Commands

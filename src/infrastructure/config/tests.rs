@@ -1,4 +1,6 @@
-use super::{GroveConfig, ProjectConfig, ProjectDefaults, load_from_path, save_to_path};
+use super::{
+    AgentEnvDefaults, GroveConfig, ProjectConfig, ProjectDefaults, load_from_path, save_to_path,
+};
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -42,6 +44,11 @@ fn save_and_load_round_trip() {
                     "nix develop -c just bootstrap".to_string(),
                 ],
                 auto_run_setup_commands: true,
+                agent_env: AgentEnvDefaults {
+                    claude: vec!["CLAUDE_CONFIG_DIR=~/.claude-work".to_string()],
+                    codex: vec!["CODEX_CONFIG_DIR=~/.codex-work".to_string()],
+                    opencode: Vec::new(),
+                },
             },
         }],
         attention_acks: Vec::new(),
@@ -87,6 +94,10 @@ fn load_project_without_defaults_uses_project_defaults_fallback() {
         Vec::<String>::new()
     );
     assert!(loaded.projects[0].defaults.auto_run_setup_commands);
+    assert_eq!(
+        loaded.projects[0].defaults.agent_env,
+        AgentEnvDefaults::default()
+    );
 
     let _ = fs::remove_file(path);
 }

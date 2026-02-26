@@ -66,6 +66,7 @@ pub struct LaunchRequest {
     pub prompt: Option<String>,
     pub pre_launch_command: Option<String>,
     pub skip_permissions: bool,
+    pub agent_env: Vec<(String, String)>,
     pub capture_cols: Option<u16>,
     pub capture_rows: Option<u16>,
 }
@@ -245,6 +246,7 @@ pub fn launch_request_for_workspace(
     prompt: Option<String>,
     pre_launch_command: Option<String>,
     skip_permissions: bool,
+    agent_env: Vec<(String, String)>,
     capture_cols: Option<u16>,
     capture_rows: Option<u16>,
 ) -> LaunchRequest {
@@ -256,6 +258,7 @@ pub fn launch_request_for_workspace(
         prompt,
         pre_launch_command,
         skip_permissions,
+        agent_env,
         capture_cols,
         capture_rows,
     }
@@ -436,6 +439,7 @@ pub fn build_shell_launch_plan(request: &ShellLaunchRequest) -> LaunchPlan {
         prompt: None,
         pre_launch_command: None,
         skip_permissions: false,
+        agent_env: Vec::new(),
         capture_cols: request.capture_cols,
         capture_rows: request.capture_rows,
     };
@@ -463,7 +467,7 @@ fn tmux_launch_plan(
     launch_agent_cmd: String,
 ) -> LaunchPlan {
     let session_target = session_name.clone();
-    let pre_launch_cmds = vec![
+    let mut pre_launch_cmds = vec![
         vec![
             "tmux".to_string(),
             "new-session".to_string(),
@@ -482,6 +486,16 @@ fn tmux_launch_plan(
             "10000".to_string(),
         ],
     ];
+    if let Some(agent_env_cmd) = build_agent_env_command(&request.agent_env) {
+        pre_launch_cmds.push(vec![
+            "tmux".to_string(),
+            "send-keys".to_string(),
+            "-t".to_string(),
+            session_name.clone(),
+            agent_env_cmd,
+            "Enter".to_string(),
+        ]);
+    }
     let pane_lookup_cmd = vec![
         "tmux".to_string(),
         "list-panes".to_string(),
@@ -529,6 +543,22 @@ fn tmux_launch_plan(
             }
         }
     }
+}
+
+fn build_agent_env_command(agent_env: &[(String, String)]) -> Option<String> {
+    if agent_env.is_empty() {
+        return None;
+    }
+    let exports = agent_env
+        .iter()
+        .map(|(key, value)| format!("{key}={}", shell_quote(value)))
+        .collect::<Vec<String>>()
+        .join(" ");
+    Some(format!("export {exports}"))
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
 fn launch_resize_window_command(
@@ -672,6 +702,7 @@ fn wait_for_resume_command(
 pub fn restart_workspace_in_pane_with_io(
     workspace: &Workspace,
     skip_permissions: bool,
+    agent_env: &[(String, String)],
     mut execute: impl FnMut(&[String]) -> std::io::Result<()>,
     mut capture_output: impl FnMut(&str, usize, bool) -> std::io::Result<String>,
 ) -> Result<(), String> {
@@ -679,6 +710,7 @@ pub fn restart_workspace_in_pane_with_io(
     restart_workspace_in_pane_with_io_in_home(
         workspace,
         skip_permissions,
+        agent_env,
         &mut execute,
         &mut capture_output,
         home_dir.as_deref(),
@@ -688,6 +720,7 @@ pub fn restart_workspace_in_pane_with_io(
 fn restart_workspace_in_pane_with_io_in_home(
     workspace: &Workspace,
     skip_permissions: bool,
+    agent_env: &[(String, String)],
     mut execute: impl FnMut(&[String]) -> std::io::Result<()>,
     mut capture_output: impl FnMut(&str, usize, bool) -> std::io::Result<String>,
     home_dir: Option<&Path>,
@@ -715,6 +748,10 @@ fn restart_workspace_in_pane_with_io_in_home(
                     .ok_or(error)
             },
         )?;
+    if let Some(command) = restart_agent_env_command(&session_name, agent_env) {
+        execute_command_with(command.as_slice(), |command| execute(command))
+            .map_err(|error| error.to_string())?;
+    }
     let command = restart_resume_command(
         &session_name,
         workspace.agent,
@@ -755,9 +792,25 @@ fn capture_output_with_process(
         .map_err(|error| std::io::Error::other(format!("tmux output utf8 decode failed: {error}")))
 }
 
+fn restart_agent_env_command(
+    session_name: &str,
+    agent_env: &[(String, String)],
+) -> Option<Vec<String>> {
+    let env_command = build_agent_env_command(agent_env)?;
+    Some(vec![
+        "tmux".to_string(),
+        "send-keys".to_string(),
+        "-t".to_string(),
+        session_name.to_string(),
+        env_command,
+        "Enter".to_string(),
+    ])
+}
+
 pub fn execute_restart_workspace_in_pane_with_result(
     workspace: &Workspace,
     skip_permissions: bool,
+    agent_env: Vec<(String, String)>,
 ) -> SessionExecutionResult {
     let workspace_name = workspace.name.clone();
     let workspace_path = workspace.path.clone();
@@ -765,6 +818,7 @@ pub fn execute_restart_workspace_in_pane_with_result(
     let result = restart_workspace_in_pane_with_io(
         workspace,
         skip_permissions,
+        &agent_env,
         crate::infrastructure::process::execute_command,
         capture_output_with_process,
     );

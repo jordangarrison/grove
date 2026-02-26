@@ -1,6 +1,32 @@
 use super::*;
 
 impl GroveApp {
+    pub(super) fn project_agent_env_for_workspace(
+        &self,
+        workspace: &Workspace,
+    ) -> Result<Vec<(String, String)>, String> {
+        let Some(workspace_project_path) = workspace.project_path.as_ref() else {
+            return Ok(Vec::new());
+        };
+        let Some(project) = self
+            .projects
+            .iter()
+            .find(|project| refer_to_same_location(&project.path, workspace_project_path))
+        else {
+            return Ok(Vec::new());
+        };
+        let entries = match workspace.agent {
+            AgentType::Claude => &project.defaults.agent_env.claude,
+            AgentType::Codex => &project.defaults.agent_env.codex,
+            AgentType::OpenCode => &project.defaults.agent_env.opencode,
+        };
+        parse_agent_env_vars_from_entries(entries).map(|vars| {
+            vars.into_iter()
+                .map(|entry| (entry.key, entry.value))
+                .collect()
+        })
+    }
+
     pub(super) fn workspace_skip_permissions_for_workspace(&self, workspace: &Workspace) -> bool {
         if let Some(skip_permissions) = read_workspace_skip_permissions(&workspace.path) {
             return skip_permissions;
@@ -36,12 +62,20 @@ impl GroveApp {
         if let Err(error) = self.save_runtime_config() {
             self.last_tmux_error = Some(format!("skip permissions config persist failed: {error}"));
         }
+        let agent_env = match self.project_agent_env_for_workspace(&workspace) {
+            Ok(agent_env) => agent_env,
+            Err(error) => {
+                self.show_info_toast(format!("invalid project agent env: {error}"));
+                return;
+            }
+        };
         let (capture_cols, capture_rows) = self.capture_dimensions();
         let request = launch_request_for_workspace(
             &workspace,
             prompt,
             pre_launch_command,
             skip_permissions,
+            agent_env,
             Some(capture_cols),
             Some(capture_rows),
         );

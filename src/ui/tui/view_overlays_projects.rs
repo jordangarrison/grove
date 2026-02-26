@@ -70,7 +70,7 @@ impl GroveApp {
             return;
         }
         if let Some(defaults_dialog) = dialog.defaults_dialog.as_ref() {
-            let dialog_height = 16u16;
+            let dialog_height = 20u16;
             let focused = |field| defaults_dialog.focused_field == field;
             let project_label = self
                 .projects
@@ -129,6 +129,37 @@ impl GroveApp {
                     theme.peach,
                     theme.text,
                 ),
+                modal_labeled_input_row(
+                    content_width,
+                    theme,
+                    "ClaudeEnv",
+                    defaults_dialog.claude_env.as_str(),
+                    "KEY=VALUE; KEY2=VALUE",
+                    focused(ProjectDefaultsDialogField::ClaudeEnv),
+                ),
+                modal_labeled_input_row(
+                    content_width,
+                    theme,
+                    "CodexEnv",
+                    defaults_dialog.codex_env.as_str(),
+                    "KEY=VALUE; KEY2=VALUE",
+                    focused(ProjectDefaultsDialogField::CodexEnv),
+                ),
+                modal_labeled_input_row(
+                    content_width,
+                    theme,
+                    "OpenCodeEnv",
+                    defaults_dialog.opencode_env.as_str(),
+                    "KEY=VALUE; KEY2=VALUE",
+                    focused(ProjectDefaultsDialogField::OpenCodeEnv),
+                ),
+                FtLine::from_spans(vec![FtSpan::styled(
+                    pad_or_truncate_to_display_width(
+                        "Note: env changes apply on next agent start/restart",
+                        content_width,
+                    ),
+                    Style::new().fg(theme.overlay0),
+                )]),
                 FtLine::raw(""),
                 modal_actions_row(
                     content_width,

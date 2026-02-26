@@ -60,6 +60,7 @@ pub(super) const LAZYGIT_COMMAND: &str = "lazygit";
 pub(super) const AGENT_ACTIVITY_WINDOW_FRAMES: usize = 6;
 pub(super) const LOCAL_TYPING_SUPPRESS_MS: u64 = 400;
 pub(super) const SETUP_COMMAND_SEPARATOR: char = ';';
+pub(super) const AGENT_ENV_SEPARATOR: char = ';';
 
 pub(super) fn usize_to_u64(value: usize) -> u64 {
     u64::try_from(value).unwrap_or(u64::MAX)
@@ -80,6 +81,72 @@ pub(super) fn format_setup_commands(commands: &[String]) -> String {
         .filter(|command| !command.is_empty())
         .collect::<Vec<&str>>()
         .join("; ")
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct AgentEnvVar {
+    pub(super) key: String,
+    pub(super) value: String,
+}
+
+pub(super) fn parse_agent_env_vars(raw: &str) -> Result<Vec<AgentEnvVar>, String> {
+    let mut parsed = Vec::new();
+    for segment in raw
+        .split([AGENT_ENV_SEPARATOR, '\n'])
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+    {
+        let Some((raw_key, raw_value)) = segment.split_once('=') else {
+            return Err(format!("'{segment}' must be KEY=VALUE"));
+        };
+        let key = raw_key.trim();
+        if !env_var_key_is_valid(key) {
+            return Err(format!("invalid env key '{key}'"));
+        }
+        let value = raw_value.trim();
+        if value.is_empty() {
+            return Err(format!("env '{key}' cannot have empty value"));
+        }
+        parsed.push(AgentEnvVar {
+            key: key.to_string(),
+            value: value.to_string(),
+        });
+    }
+    Ok(parsed)
+}
+
+pub(super) fn parse_agent_env_vars_from_entries(
+    entries: &[String],
+) -> Result<Vec<AgentEnvVar>, String> {
+    parse_agent_env_vars(entries.join("; ").as_str())
+}
+
+pub(super) fn format_agent_env_vars(entries: &[String]) -> String {
+    entries
+        .iter()
+        .map(|entry| entry.trim())
+        .filter(|entry| !entry.is_empty())
+        .collect::<Vec<&str>>()
+        .join("; ")
+}
+
+pub(super) fn encode_agent_env_vars(raw: &str) -> Result<Vec<String>, String> {
+    parse_agent_env_vars(raw).map(|vars| {
+        vars.into_iter()
+            .map(|entry| format!("{}={}", entry.key, entry.value))
+            .collect()
+    })
+}
+
+fn env_var_key_is_valid(key: &str) -> bool {
+    let mut chars = key.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return false;
+    }
+    chars.all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
 #[derive(Debug, Clone, Copy)]
