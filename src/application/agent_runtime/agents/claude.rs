@@ -14,13 +14,22 @@ pub(super) fn extract_resume_command(output: &str) -> Option<String> {
         }
 
         for index in 0..tokens.len().saturating_sub(2) {
-            if tokens[index] != "claude" || tokens[index + 1] != "--resume" {
+            if tokens[index] != "claude" {
                 continue;
             }
-            let Some(session_id) = super::normalize_resume_session_id(tokens[index + 2]) else {
-                continue;
-            };
-            found = Some(format!("claude --resume {session_id}"));
+
+            for resume_index in index + 1..tokens.len().saturating_sub(1) {
+                let resume_flag = tokens[resume_index];
+                if resume_flag != "--resume" && resume_flag != "resume" && resume_flag != "-r" {
+                    continue;
+                }
+
+                let Some(session_id) = super::normalize_resume_session_id(tokens[resume_index + 1])
+                else {
+                    continue;
+                };
+                found = Some(format!("claude --resume {session_id}"));
+            }
         }
     }
 

@@ -25,6 +25,28 @@ claude --resume e610b734-e6b8-4b1f-b42f-f3ddeb817467\n";
 }
 
 #[test]
+fn extract_agent_resume_command_parses_claude_resume_with_flag_before_resume() {
+    let output = "\
+Resume this session with:\n\
+claude --dangerously-skip-permissions --resume e610b734-e6b8-4b1f-b42f-f3ddeb817467\n";
+    let resume = extract_agent_resume_command(AgentType::Claude, output);
+    assert_eq!(
+        resume.as_deref(),
+        Some("claude --resume e610b734-e6b8-4b1f-b42f-f3ddeb817467")
+    );
+}
+
+#[test]
+fn extract_agent_resume_command_parses_claude_short_resume_flag() {
+    let output = "Run this next: claude -r e610b734-e6b8-4b1f-b42f-f3ddeb817467";
+    let resume = extract_agent_resume_command(AgentType::Claude, output);
+    assert_eq!(
+        resume.as_deref(),
+        Some("claude --resume e610b734-e6b8-4b1f-b42f-f3ddeb817467")
+    );
+}
+
+#[test]
 fn extract_agent_resume_command_parses_real_codex_exit_output() {
     let output = "\
 To continue this session, run codex resume 019c83c1-26c3-7fb0-bd4d-51bb9d6e7701\n";
@@ -387,6 +409,32 @@ fn restart_workspace_in_pane_with_io_returns_error_when_resume_missing() {
 
     let error = result.expect_err("missing resume command should fail");
     assert!(error.contains("resume command not found"));
+}
+
+#[test]
+fn restart_workspace_in_pane_with_io_resume_missing_error_includes_capture_excerpt() {
+    let workspace = fixture_workspace("feature-a", false);
+    let mut call_count = 0_u8;
+
+    let result = restart_workspace_in_pane_with_io(
+        &workspace,
+        false,
+        &[],
+        |_command| Ok(()),
+        |_session_name, _scrollback_lines, _include_escape_sequences| {
+            call_count = call_count.saturating_add(1);
+            if call_count == 1 {
+                return Ok("still shutting down".to_string());
+            }
+            Ok("\n\n  no resume command in output  \n  Claude exited successfully  ".to_string())
+        },
+    );
+
+    let error = result.expect_err("missing resume command should fail");
+    assert!(error.contains("resume command not found"));
+    assert!(error.contains("last_output='"));
+    assert!(error.contains("no resume command in output"));
+    assert!(error.contains("Claude exited successfully"));
 }
 
 #[test]

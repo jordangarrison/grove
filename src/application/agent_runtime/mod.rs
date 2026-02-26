@@ -30,6 +30,8 @@ const CODEX_SESSION_LOOKUP_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
 const OPENCODE_SESSION_LOOKUP_REFRESH_INTERVAL: Duration = Duration::from_millis(500);
 const RESTART_RESUME_SCROLLBACK_LINES: usize = 240;
 const RESTART_RESUME_CAPTURE_ATTEMPTS: usize = 30;
+const RESTART_RESUME_ERROR_TAIL_LINES: usize = 8;
+const RESTART_RESUME_ERROR_MAX_CHARS: usize = 320;
 #[cfg(test)]
 const RESTART_RESUME_RETRY_DELAY: Duration = Duration::from_millis(0);
 #[cfg(not(test))]
@@ -683,9 +685,11 @@ fn wait_for_resume_command(
     session_name: &str,
     capture_output: &mut impl FnMut(&str, usize, bool) -> std::io::Result<String>,
 ) -> Result<String, String> {
+    let mut last_output_excerpt = "<empty>".to_string();
     for attempt in 0..RESTART_RESUME_CAPTURE_ATTEMPTS {
         let output = capture_output(session_name, RESTART_RESUME_SCROLLBACK_LINES, false)
             .map_err(|error| error.to_string())?;
+        last_output_excerpt = restart_capture_excerpt(output.as_str());
         if let Some(command) = extract_agent_resume_command(agent, output.as_str()) {
             return Ok(command);
         }
@@ -695,8 +699,38 @@ fn wait_for_resume_command(
     }
 
     Err(format!(
-        "resume command not found in tmux output for '{session_name}'"
+        "resume command not found in tmux output for '{session_name}' after {} attempts, last_output='{last_output_excerpt}'",
+        RESTART_RESUME_CAPTURE_ATTEMPTS
     ))
+}
+
+fn restart_capture_excerpt(output: &str) -> String {
+    let mut tail = output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.split_whitespace().collect::<Vec<&str>>().join(" "))
+        .rev()
+        .take(RESTART_RESUME_ERROR_TAIL_LINES)
+        .collect::<Vec<String>>();
+    if tail.is_empty() {
+        return "<empty>".to_string();
+    }
+    tail.reverse();
+    let joined = tail.join(" | ");
+    truncate_excerpt(joined.as_str(), RESTART_RESUME_ERROR_MAX_CHARS)
+}
+
+fn truncate_excerpt(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+
+    if max_chars <= 3 {
+        return "...".chars().take(max_chars).collect();
+    }
+
+    let trimmed: String = value.chars().take(max_chars - 3).collect();
+    format!("{trimmed}...")
 }
 
 pub fn restart_workspace_in_pane_with_io(
@@ -734,8 +768,9 @@ fn restart_workspace_in_pane_with_io_in_home(
     let session_name = session_name_for_workspace_ref(workspace);
 
     for command in restart_exit_plan(&session_name, exit_input) {
-        execute_command_with(command.as_slice(), |command| execute(command))
-            .map_err(|error| error.to_string())?;
+        execute_command_with(command.as_slice(), |command| execute(command)).map_err(|error| {
+            format!("restart exit command failed for '{session_name}': {error}")
+        })?;
     }
 
     let resume_command =
@@ -750,7 +785,7 @@ fn restart_workspace_in_pane_with_io_in_home(
         )?;
     if let Some(command) = restart_agent_env_command(&session_name, agent_env) {
         execute_command_with(command.as_slice(), |command| execute(command))
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| format!("restart env apply failed for '{session_name}': {error}"))?;
     }
     let command = restart_resume_command(
         &session_name,
@@ -759,7 +794,7 @@ fn restart_workspace_in_pane_with_io_in_home(
         skip_permissions,
     );
     execute_command_with(command.as_slice(), |command| execute(command))
-        .map_err(|error| error.to_string())
+        .map_err(|error| format!("restart resume command failed for '{session_name}': {error}"))
 }
 
 fn capture_output_with_process(
