@@ -31,6 +31,7 @@ impl GroveApp {
     pub(super) fn hit_region_name(region: HitRegion) -> &'static str {
         match region {
             HitRegion::WorkspaceList => "workspace_list",
+            HitRegion::WorkspacePullRequest => "workspace_pull_request",
             HitRegion::Preview => "preview",
             HitRegion::Divider => "divider",
             HitRegion::StatusLine => "status_line",

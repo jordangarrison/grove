@@ -1,4 +1,6 @@
-use super::{AgentType, Workspace, WorkspaceStatus, WorkspaceValidationError};
+use super::{
+    AgentType, PullRequest, PullRequestStatus, Workspace, WorkspaceStatus, WorkspaceValidationError,
+};
 use std::path::PathBuf;
 
 #[test]
@@ -79,6 +81,30 @@ fn workspace_accepts_valid_values() {
     assert_eq!(workspace.base_branch.as_deref(), Some("main"));
     assert!(workspace.is_orphaned);
     assert!(!workspace.supported_agent);
+    assert!(workspace.pull_requests.is_empty());
+}
+
+#[test]
+fn workspace_accepts_pull_request_metadata() {
+    let workspace = Workspace::try_new(
+        "feature-x".to_string(),
+        PathBuf::from("/repos/grove-feature-x"),
+        "feature-x".to_string(),
+        None,
+        AgentType::Codex,
+        WorkspaceStatus::Idle,
+        false,
+    )
+    .expect("workspace should be valid")
+    .with_pull_requests(vec![PullRequest {
+        number: 42,
+        url: "https://github.com/acme/grove/pull/42".to_string(),
+        status: PullRequestStatus::Merged,
+    }]);
+
+    assert_eq!(workspace.pull_requests.len(), 1);
+    assert_eq!(workspace.pull_requests[0].number, 42);
+    assert_eq!(workspace.pull_requests[0].status, PullRequestStatus::Merged);
 }
 
 #[test]

@@ -78,6 +78,7 @@ impl GroveApp {
                 HIT_ID_DIVIDER => HitRegion::Divider,
                 HIT_ID_PREVIEW => HitRegion::Preview,
                 HIT_ID_WORKSPACE_LIST | HIT_ID_WORKSPACE_ROW => HitRegion::WorkspaceList,
+                HIT_ID_WORKSPACE_PR_LINK => HitRegion::WorkspacePullRequest,
                 HIT_ID_CREATE_DIALOG
                 | HIT_ID_LAUNCH_DIALOG
                 | HIT_ID_DELETE_DIALOG
@@ -86,7 +87,8 @@ impl GroveApp {
                 | HIT_ID_KEYBIND_HELP_DIALOG => HitRegion::Outside,
                 _ => HitRegion::Outside,
             };
-            let row_data = if id.id() == HIT_ID_WORKSPACE_ROW {
+            let row_data = if id.id() == HIT_ID_WORKSPACE_ROW || id.id() == HIT_ID_WORKSPACE_PR_LINK
+            {
                 Some(data)
             } else {
                 None

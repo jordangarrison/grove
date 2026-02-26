@@ -94,6 +94,20 @@ impl WorkspaceStatus {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PullRequestStatus {
+    Open,
+    Merged,
+    Closed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PullRequest {
+    pub number: u64,
+    pub url: String,
+    pub status: PullRequestStatus,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Workspace {
     pub name: String,
@@ -108,6 +122,7 @@ pub struct Workspace {
     pub is_main: bool,
     pub is_orphaned: bool,
     pub supported_agent: bool,
+    pub pull_requests: Vec<PullRequest>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,6 +169,7 @@ impl Workspace {
             is_main,
             is_orphaned: false,
             supported_agent: true,
+            pull_requests: Vec::new(),
         })
     }
 
@@ -175,6 +191,11 @@ impl Workspace {
 
     pub fn with_orphaned(mut self, is_orphaned: bool) -> Self {
         self.is_orphaned = is_orphaned;
+        self
+    }
+
+    pub fn with_pull_requests(mut self, pull_requests: Vec<PullRequest>) -> Self {
+        self.pull_requests = pull_requests;
         self
     }
 }
