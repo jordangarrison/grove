@@ -44,7 +44,7 @@ pub struct ProjectConfig {
     pub defaults: ProjectDefaults,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ProjectDefaults {
     #[serde(default)]
     pub base_branch: String,
@@ -64,17 +64,6 @@ pub struct AgentEnvDefaults {
     pub codex: Vec<String>,
     #[serde(default)]
     pub opencode: Vec<String>,
-}
-
-impl Default for ProjectDefaults {
-    fn default() -> Self {
-        Self {
-            base_branch: String::new(),
-            workspace_init_command: String::new(),
-            agent_env: AgentEnvDefaults::default(),
-            legacy_setup_commands: Vec::new(),
-        }
-    }
 }
 
 impl ProjectDefaults {
