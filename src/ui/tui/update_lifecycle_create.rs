@@ -70,14 +70,6 @@ impl GroveApp {
                     Value::from(usize_to_u64(dialog.project_index)),
                 ),
                 (
-                    "setup_auto_run".to_string(),
-                    Value::from(dialog.auto_run_setup_commands),
-                ),
-                (
-                    "setup_commands".to_string(),
-                    Value::from(dialog.setup_commands.clone()),
-                ),
-                (
                     "prompt_len".to_string(),
                     Value::from(usize_to_u64(dialog.start_config.prompt.len())),
                 ),
@@ -86,15 +78,11 @@ impl GroveApp {
                     Value::from(dialog.start_config.skip_permissions),
                 ),
                 (
-                    "pre_launch_len".to_string(),
-                    Value::from(usize_to_u64(dialog.start_config.pre_launch_command.len())),
+                    "init_len".to_string(),
+                    Value::from(usize_to_u64(dialog.start_config.init_command.len())),
                 ),
             ],
         );
-        let setup_template = WorkspaceSetupTemplate {
-            auto_run_setup_commands: dialog.auto_run_setup_commands,
-            commands: parse_setup_commands(&dialog.setup_commands),
-        };
         let request = CreateWorkspaceRequest {
             workspace_name: workspace_name.clone(),
             branch_mode,
@@ -115,7 +103,7 @@ impl GroveApp {
             let result = create_workspace_with_template(
                 &repo_root,
                 &request,
-                Some(&setup_template),
+                None,
                 &git,
                 &setup,
                 &setup_command,
@@ -132,7 +120,7 @@ impl GroveApp {
             let result = create_workspace_with_template(
                 &repo_root,
                 &request,
-                Some(&setup_template),
+                None,
                 &git,
                 &setup,
                 &setup_command,
@@ -155,6 +143,13 @@ impl GroveApp {
             Ok(result) => {
                 self.close_active_dialog();
                 self.clear_create_branch_picker();
+                if let Err(error) = write_workspace_init_command(
+                    &result.workspace_path,
+                    trimmed_nonempty(&start_config.init_command).as_deref(),
+                ) {
+                    self.last_tmux_error =
+                        Some(format!("init command marker persist failed: {error}"));
+                }
                 self.pending_auto_start_workspace = Some(PendingAutoStartWorkspace {
                     workspace_path: result.workspace_path.clone(),
                     start_config: start_config.clone(),

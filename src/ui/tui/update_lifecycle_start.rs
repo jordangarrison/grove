@@ -27,6 +27,26 @@ impl GroveApp {
         })
     }
 
+    pub(super) fn project_workspace_init_command_for_workspace(
+        &self,
+        workspace: &Workspace,
+    ) -> Option<String> {
+        let workspace_project_path = workspace.project_path.as_ref()?;
+        let project = self
+            .projects
+            .iter()
+            .find(|project| refer_to_same_location(&project.path, workspace_project_path))?;
+        trimmed_nonempty(project.defaults.workspace_init_command.as_str())
+    }
+
+    pub(super) fn workspace_init_command_for_workspace(
+        &self,
+        workspace: &Workspace,
+    ) -> Option<String> {
+        read_workspace_init_command(&workspace.path)
+            .or_else(|| self.project_workspace_init_command_for_workspace(workspace))
+    }
+
     pub(super) fn workspace_skip_permissions_for_workspace(&self, workspace: &Workspace) -> bool {
         if let Some(skip_permissions) = read_workspace_skip_permissions(&workspace.path) {
             return skip_permissions;
@@ -44,7 +64,7 @@ impl GroveApp {
         &mut self,
         workspace: Workspace,
         prompt: Option<String>,
-        pre_launch_command: Option<String>,
+        init_command: Option<String>,
         skip_permissions: bool,
     ) {
         if self.start_in_flight || self.restart_in_flight {
@@ -62,6 +82,9 @@ impl GroveApp {
         if let Err(error) = self.save_runtime_config() {
             self.last_tmux_error = Some(format!("skip permissions config persist failed: {error}"));
         }
+        if let Err(error) = write_workspace_init_command(&workspace.path, init_command.as_deref()) {
+            self.last_tmux_error = Some(format!("init command marker persist failed: {error}"));
+        }
         let agent_env = match self.project_agent_env_for_workspace(&workspace) {
             Ok(agent_env) => agent_env,
             Err(error) => {
@@ -70,10 +93,12 @@ impl GroveApp {
             }
         };
         let (capture_cols, capture_rows) = self.capture_dimensions();
+        let workspace_init_command =
+            init_command.or_else(|| self.workspace_init_command_for_workspace(&workspace));
         let request = launch_request_for_workspace(
             &workspace,
             prompt,
-            pre_launch_command,
+            workspace_init_command,
             skip_permissions,
             agent_env,
             Some(capture_cols),
@@ -108,7 +133,7 @@ impl GroveApp {
     pub(super) fn start_selected_workspace_agent_with_options(
         &mut self,
         prompt: Option<String>,
-        pre_launch_command: Option<String>,
+        init_command: Option<String>,
         skip_permissions: bool,
     ) {
         if self.start_in_flight || self.restart_in_flight {
@@ -123,12 +148,7 @@ impl GroveApp {
             self.show_info_toast("no workspace selected");
             return;
         };
-        self.start_workspace_agent_with_options(
-            workspace,
-            prompt,
-            pre_launch_command,
-            skip_permissions,
-        );
+        self.start_workspace_agent_with_options(workspace, prompt, init_command, skip_permissions);
     }
 
     pub(super) fn restart_workspace_agent_by_path(&mut self, workspace_path: &Path) {
@@ -144,8 +164,9 @@ impl GroveApp {
         };
 
         let prompt = read_workspace_launch_prompt(&workspace.path);
+        let init_command = self.workspace_init_command_for_workspace(&workspace);
         let skip_permissions = self.workspace_skip_permissions_for_workspace(&workspace);
-        self.start_workspace_agent_with_options(workspace, prompt, None, skip_permissions);
+        self.start_workspace_agent_with_options(workspace, prompt, init_command, skip_permissions);
     }
 
     pub(super) fn apply_start_agent_completion(&mut self, completion: StartAgentCompletion) {
@@ -208,21 +229,17 @@ impl GroveApp {
                     Value::from(dialog.start_config.skip_permissions),
                 ),
                 (
-                    "pre_launch_len".to_string(),
-                    Value::from(usize_to_u64(dialog.start_config.pre_launch_command.len())),
+                    "init_len".to_string(),
+                    Value::from(usize_to_u64(dialog.start_config.init_command.len())),
                 ),
             ],
         );
 
         let StartOptions {
             prompt,
-            pre_launch_command,
+            init_command,
             skip_permissions,
         } = dialog.start_config.parse_start_options();
-        self.start_selected_workspace_agent_with_options(
-            prompt,
-            pre_launch_command,
-            skip_permissions,
-        );
+        self.start_selected_workspace_agent_with_options(prompt, init_command, skip_permissions);
     }
 }

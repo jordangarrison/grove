@@ -176,10 +176,10 @@ where
         modal_labeled_input_row(
             content_width,
             theme,
-            "PreLaunchCmd",
-            start_config.pre_launch_command.as_str(),
-            "Runs before each agent start, e.g. direnv allow",
-            is_focused(StartAgentConfigField::PreLaunchCommand),
+            "InitCmd",
+            start_config.init_command.as_str(),
+            "Runs once per workspace start (shared across panes)",
+            is_focused(StartAgentConfigField::InitCommand),
         ),
         modal_focus_badged_row(
             content_width,

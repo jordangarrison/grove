@@ -60,14 +60,14 @@ use crate::application::preview::PreviewState;
 use crate::application::workspace_lifecycle::{
     BranchMode, CommandGitRunner, CommandSetupCommandRunner, CommandSetupScriptRunner,
     CreateWorkspaceRequest, CreateWorkspaceResult, DeleteWorkspaceRequest, MergeWorkspaceRequest,
-    UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError, WorkspaceSetupTemplate,
-    create_workspace_with_template, delete_workspace, merge_workspace, update_workspace_from_base,
+    UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError, create_workspace_with_template,
+    delete_workspace, merge_workspace, update_workspace_from_base,
     workspace_lifecycle_error_message, write_workspace_agent_marker, write_workspace_base_marker,
 };
 use crate::domain::{AgentType, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
 use crate::infrastructure::config::{
-    AgentEnvDefaults, GroveConfig, ProjectConfig, ProjectDefaults, WorkspaceAttentionAckConfig,
+    AgentEnvDefaults, GroveConfig, ProjectConfig, WorkspaceAttentionAckConfig,
 };
 use crate::infrastructure::event_log::{Event as LogEvent, EventLogger};
 use crate::ui::mouse::{clamp_sidebar_ratio, ratio_from_drag};
@@ -84,8 +84,9 @@ use crate::infrastructure::paths::refer_to_same_location;
 #[cfg(test)]
 use bootstrap_config::AppDependencies;
 use bootstrap_config::{
-    filter_branches, load_local_branches, project_display_name, read_workspace_launch_prompt,
-    read_workspace_skip_permissions, write_workspace_skip_permissions,
+    filter_branches, load_local_branches, project_display_name, read_workspace_init_command,
+    read_workspace_launch_prompt, read_workspace_skip_permissions, write_workspace_init_command,
+    write_workspace_skip_permissions,
 };
 use bootstrap_discovery::bootstrap_data_for_projects;
 mod terminal;

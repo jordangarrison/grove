@@ -39,13 +39,8 @@ impl GroveApp {
             KeyCode::Enter => match defaults_dialog.focused_field {
                 ProjectDefaultsDialogField::SaveButton => post_action = PostAction::Save,
                 ProjectDefaultsDialogField::CancelButton => post_action = PostAction::Close,
-                ProjectDefaultsDialogField::AutoRunSetupCommands => {
-                    defaults_dialog.auto_run_setup_commands =
-                        !defaults_dialog.auto_run_setup_commands;
-                    defaults_dialog.focused_field = defaults_dialog.focused_field.next();
-                }
                 ProjectDefaultsDialogField::BaseBranch
-                | ProjectDefaultsDialogField::SetupCommands
+                | ProjectDefaultsDialogField::WorkspaceInitCommand
                 | ProjectDefaultsDialogField::ClaudeEnv
                 | ProjectDefaultsDialogField::CodexEnv
                 | ProjectDefaultsDialogField::OpenCodeEnv => {
@@ -56,8 +51,8 @@ impl GroveApp {
                 ProjectDefaultsDialogField::BaseBranch => {
                     defaults_dialog.base_branch.pop();
                 }
-                ProjectDefaultsDialogField::SetupCommands => {
-                    defaults_dialog.setup_commands.pop();
+                ProjectDefaultsDialogField::WorkspaceInitCommand => {
+                    defaults_dialog.workspace_init_command.pop();
                 }
                 ProjectDefaultsDialogField::ClaudeEnv => {
                     defaults_dialog.claude_env.pop();
@@ -68,18 +63,10 @@ impl GroveApp {
                 ProjectDefaultsDialogField::OpenCodeEnv => {
                     defaults_dialog.opencode_env.pop();
                 }
-                ProjectDefaultsDialogField::AutoRunSetupCommands
-                | ProjectDefaultsDialogField::SaveButton
+                ProjectDefaultsDialogField::SaveButton
                 | ProjectDefaultsDialogField::CancelButton => {}
             },
             KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
-                if defaults_dialog.focused_field == ProjectDefaultsDialogField::AutoRunSetupCommands
-                    && (character == 'j' || character == 'k' || character == ' ')
-                {
-                    defaults_dialog.auto_run_setup_commands =
-                        !defaults_dialog.auto_run_setup_commands;
-                    return;
-                }
                 if (defaults_dialog.focused_field == ProjectDefaultsDialogField::SaveButton
                     || defaults_dialog.focused_field == ProjectDefaultsDialogField::CancelButton)
                     && (character == 'h' || character == 'l')
@@ -99,9 +86,9 @@ impl GroveApp {
                             defaults_dialog.base_branch.push(character);
                         }
                     }
-                    ProjectDefaultsDialogField::SetupCommands => {
+                    ProjectDefaultsDialogField::WorkspaceInitCommand => {
                         if !character.is_control() {
-                            defaults_dialog.setup_commands.push(character);
+                            defaults_dialog.workspace_init_command.push(character);
                         }
                     }
                     ProjectDefaultsDialogField::ClaudeEnv => {
@@ -119,8 +106,7 @@ impl GroveApp {
                             defaults_dialog.opencode_env.push(character);
                         }
                     }
-                    ProjectDefaultsDialogField::AutoRunSetupCommands
-                    | ProjectDefaultsDialogField::SaveButton
+                    ProjectDefaultsDialogField::SaveButton
                     | ProjectDefaultsDialogField::CancelButton => {}
                 }
             }

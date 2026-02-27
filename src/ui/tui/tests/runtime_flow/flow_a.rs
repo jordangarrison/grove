@@ -770,7 +770,7 @@ fn create_dialog_confirmed_event_includes_branch_payload() {
             Msg::Key(KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press)),
         );
     }
-    for _ in 0..9 {
+    for _ in 0..7 {
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -1332,8 +1332,8 @@ fn project_dialog_ctrl_e_opens_project_defaults_dialog() {
     assert_eq!(
         app.project_dialog()
             .and_then(|dialog| dialog.defaults_dialog.as_ref())
-            .map(|dialog| dialog.auto_run_setup_commands),
-        Some(true)
+            .map(|dialog| dialog.workspace_init_command.clone()),
+        Some(String::new())
     );
 }
 
@@ -1372,7 +1372,7 @@ fn project_defaults_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
         app.project_dialog()
             .and_then(|dialog| dialog.defaults_dialog.as_ref())
             .map(|dialog| dialog.focused_field),
-        Some(ProjectDefaultsDialogField::SetupCommands)
+        Some(ProjectDefaultsDialogField::WorkspaceInitCommand)
     );
     ftui::Model::update(
         &mut app,
@@ -1429,10 +1429,6 @@ fn project_defaults_dialog_save_persists_defaults() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
     );
-    ftui::Model::update(
-        &mut app,
-        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-    );
     for character in [
         'C', 'L', 'A', 'U', 'D', 'E', '_', 'C', 'O', 'N', 'F', 'I', 'G', '_', 'D', 'I', 'R', '=',
         '~', '/', '.', 'c', 'l', 'a', 'u', 'd', 'e', '-', 'w', 'o', 'r', 'k',
@@ -1481,10 +1477,9 @@ fn project_defaults_dialog_save_persists_defaults() {
 
     assert_eq!(app.projects[0].defaults.base_branch, "dev");
     assert_eq!(
-        app.projects[0].defaults.setup_commands,
-        vec!["direnv allow".to_string(), "echo ok".to_string()]
+        app.projects[0].defaults.workspace_init_command,
+        "direnv allow;echo ok".to_string()
     );
-    assert!(app.projects[0].defaults.auto_run_setup_commands);
     assert_eq!(
         app.projects[0].defaults.agent_env.claude,
         vec!["CLAUDE_CONFIG_DIR=~/.claude-work".to_string()]
@@ -1502,8 +1497,8 @@ fn project_defaults_dialog_save_persists_defaults() {
         crate::infrastructure::config::load_from_path(&app.config_path).expect("config loads");
     assert_eq!(loaded.projects[0].defaults.base_branch, "dev");
     assert_eq!(
-        loaded.projects[0].defaults.setup_commands,
-        vec!["direnv allow".to_string(), "echo ok".to_string()]
+        loaded.projects[0].defaults.workspace_init_command,
+        "direnv allow;echo ok".to_string()
     );
     assert_eq!(
         loaded.projects[0].defaults.agent_env.claude,
@@ -1523,8 +1518,7 @@ fn project_defaults_dialog_save_persists_defaults() {
 fn new_workspace_dialog_prefills_from_project_defaults() {
     let mut app = fixture_app();
     app.projects[0].defaults.base_branch = "develop".to_string();
-    app.projects[0].defaults.setup_commands = vec!["direnv allow".to_string()];
-    app.projects[0].defaults.auto_run_setup_commands = true;
+    app.projects[0].defaults.workspace_init_command = "direnv allow".to_string();
 
     ftui::Model::update(
         &mut app,
@@ -1537,13 +1531,8 @@ fn new_workspace_dialog_prefills_from_project_defaults() {
     );
     assert_eq!(
         app.create_dialog()
-            .map(|dialog| dialog.setup_commands.clone()),
+            .map(|dialog| dialog.start_config.init_command.clone()),
         Some("direnv allow".to_string())
-    );
-    assert_eq!(
-        app.create_dialog()
-            .map(|dialog| dialog.auto_run_setup_commands),
-        Some(true)
     );
 }
 
@@ -1683,10 +1672,9 @@ fn auto_start_pending_workspace_agent_uses_pending_start_config() {
     let launcher_script =
         fs::read_to_string(&launcher_path).expect("launcher script should be written");
     assert!(launcher_script.contains("fix flaky test"));
-    assert!(
-        launcher_script
-            .contains("direnv allow && codex --dangerously-bypass-approvals-and-sandbox")
-    );
+    assert!(launcher_script.contains("direnv allow"));
+    assert!(launcher_script.contains("workspace-init-"));
+    assert!(launcher_script.contains("codex --dangerously-bypass-approvals-and-sandbox"));
 
     let _ = fs::remove_dir_all(workspace_dir);
 }
@@ -2454,7 +2442,7 @@ fn start_key_uses_workspace_prompt_file_launcher_script() {
 }
 
 #[test]
-fn start_dialog_pre_launch_command_runs_before_agent() {
+fn start_dialog_init_command_runs_before_agent() {
     let (mut app, commands, _captures, _cursor_captures) =
         fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
     focus_agent_preview_tab(&mut app);
@@ -2480,17 +2468,20 @@ fn start_dialog_pre_launch_command_runs_before_agent() {
         Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
     );
 
-    assert_eq!(
-        commands.borrow().last(),
-        Some(&vec![
-            "tmux".to_string(),
-            "send-keys".to_string(),
-            "-t".to_string(),
-            "grove-ws-feature-a".to_string(),
-            "direnv allow && codex".to_string(),
-            "Enter".to_string(),
-        ])
-    );
+    let last_command = commands
+        .borrow()
+        .last()
+        .expect("last tmux command should exist")
+        .clone();
+    assert_eq!(last_command[0], "tmux");
+    assert_eq!(last_command[1], "send-keys");
+    assert_eq!(last_command[2], "-t");
+    assert_eq!(last_command[3], "grove-ws-feature-a");
+    assert_eq!(last_command[5], "Enter");
+    let launch_command = &last_command[4];
+    assert!(launch_command.contains("workspace-init-"));
+    assert!(launch_command.contains("direnv allow"));
+    assert!(launch_command.contains("codex"));
 }
 
 #[test]
@@ -2599,7 +2590,7 @@ fn start_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
     assert_eq!(
         app.launch_dialog().map(|dialog| dialog.focused_field),
         Some(LaunchDialogField::StartConfig(
-            StartAgentConfigField::PreLaunchCommand
+            StartAgentConfigField::InitCommand
         ))
     );
 

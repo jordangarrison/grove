@@ -58,7 +58,7 @@ fn launch_request_for_workspace_copies_workspace_context_and_options() {
     let request = launch_request_for_workspace(
         &workspace,
         Some("run checks".to_string()),
-        Some("direnv exec .".to_string()),
+        Some("direnv allow".to_string()),
         true,
         vec![(
             "CLAUDE_CONFIG_DIR".to_string(),
@@ -76,7 +76,10 @@ fn launch_request_for_workspace_copies_workspace_context_and_options() {
     );
     assert_eq!(request.agent, AgentType::Claude);
     assert_eq!(request.prompt.as_deref(), Some("run checks"));
-    assert_eq!(request.pre_launch_command.as_deref(), Some("direnv exec ."));
+    assert_eq!(
+        request.workspace_init_command.as_deref(),
+        Some("direnv allow")
+    );
     assert!(request.skip_permissions);
     assert_eq!(
         request.agent_env,
@@ -96,6 +99,7 @@ fn shell_launch_request_for_workspace_uses_workspace_path_and_options() {
         &workspace,
         "grove-ws-feature-git".to_string(),
         "lazygit".to_string(),
+        Some("direnv allow".to_string()),
         Some(120),
         Some(40),
     );
@@ -106,6 +110,10 @@ fn shell_launch_request_for_workspace_uses_workspace_path_and_options() {
         PathBuf::from("/repos/grove-feature")
     );
     assert_eq!(request.command, "lazygit");
+    assert_eq!(
+        request.workspace_init_command.as_deref(),
+        Some("direnv allow")
+    );
     assert_eq!(request.capture_cols, Some(120));
     assert_eq!(request.capture_rows, Some(40));
 }
@@ -116,6 +124,7 @@ fn build_shell_launch_plan_skips_send_keys_when_command_is_empty() {
         &fixture_workspace("feature", false),
         "grove-ws-feature-shell".to_string(),
         String::new(),
+        None,
         Some(120),
         Some(40),
     );
@@ -125,11 +134,61 @@ fn build_shell_launch_plan_skips_send_keys_when_command_is_empty() {
 }
 
 #[test]
+fn build_shell_launch_plan_with_workspace_init_runs_guard_when_command_is_empty() {
+    let request = shell_launch_request_for_workspace(
+        &fixture_workspace("feature", false),
+        "grove-ws-feature-shell".to_string(),
+        String::new(),
+        Some("direnv allow".to_string()),
+        Some(120),
+        Some(40),
+    );
+    let plan = build_shell_launch_plan(&request);
+
+    assert_eq!(plan.launch_cmd.len(), 6);
+    assert!(
+        plan.launch_cmd[4].contains("workspace-init-"),
+        "expected init guard command, got {}",
+        plan.launch_cmd[4]
+    );
+    assert!(
+        plan.launch_cmd[4].contains("direnv allow"),
+        "expected init command in guard, got {}",
+        plan.launch_cmd[4]
+    );
+}
+
+#[test]
+fn build_shell_launch_plan_with_direnv_init_wraps_run_command_in_direnv_exec() {
+    let request = shell_launch_request_for_workspace(
+        &fixture_workspace("feature", false),
+        "grove-ws-feature-shell".to_string(),
+        "yarn test".to_string(),
+        Some("direnv allow".to_string()),
+        Some(120),
+        Some(40),
+    );
+    let plan = build_shell_launch_plan(&request);
+
+    assert!(
+        plan.launch_cmd[4].contains("direnv exec . bash -lc"),
+        "expected direnv exec wrapper, got {}",
+        plan.launch_cmd[4]
+    );
+    assert!(
+        plan.launch_cmd[4].contains("yarn test"),
+        "expected shell command in wrapped launch, got {}",
+        plan.launch_cmd[4]
+    );
+}
+
+#[test]
 fn build_shell_launch_plan_with_capture_dimensions_resizes_before_send_keys() {
     let request = shell_launch_request_for_workspace(
         &fixture_workspace("feature", false),
         "grove-ws-feature-shell".to_string(),
         "bash".to_string(),
+        None,
         Some(120),
         Some(40),
     );
@@ -425,7 +484,7 @@ fn launch_plan_without_prompt_sends_agent_directly() {
         workspace_path: PathBuf::from("/repos/grove-auth-flow"),
         agent: AgentType::Claude,
         prompt: None,
-        pre_launch_command: None,
+        workspace_init_command: None,
         skip_permissions: true,
         agent_env: Vec::new(),
         capture_cols: None,
@@ -450,6 +509,68 @@ fn launch_plan_without_prompt_sends_agent_directly() {
 }
 
 #[test]
+fn launch_plan_with_workspace_init_wraps_agent_start_command() {
+    let request = LaunchRequest {
+        project_name: None,
+        workspace_name: "auth-flow".to_string(),
+        workspace_path: PathBuf::from("/repos/grove-auth-flow"),
+        agent: AgentType::Claude,
+        prompt: None,
+        workspace_init_command: Some("direnv allow".to_string()),
+        skip_permissions: false,
+        agent_env: Vec::new(),
+        capture_cols: None,
+        capture_rows: None,
+    };
+
+    let plan = build_launch_plan(&request);
+    assert_eq!(plan.launch_cmd.len(), 6);
+    assert!(
+        plan.launch_cmd[4].contains("workspace-init-"),
+        "expected init guard command, got {}",
+        plan.launch_cmd[4]
+    );
+    assert!(
+        plan.launch_cmd[4].contains("direnv allow"),
+        "expected init command in guard, got {}",
+        plan.launch_cmd[4]
+    );
+    assert!(
+        plan.launch_cmd[4].contains("claude"),
+        "expected agent command in guard, got {}",
+        plan.launch_cmd[4]
+    );
+    assert!(
+        plan.launch_cmd[4].contains("direnv exec . bash -lc"),
+        "expected direnv exec wrapper, got {}",
+        plan.launch_cmd[4]
+    );
+}
+
+#[test]
+fn launch_plan_with_non_direnv_init_does_not_wrap_agent_command_in_direnv_exec() {
+    let request = LaunchRequest {
+        project_name: None,
+        workspace_name: "auth-flow".to_string(),
+        workspace_path: PathBuf::from("/repos/grove-auth-flow"),
+        agent: AgentType::Claude,
+        prompt: None,
+        workspace_init_command: Some("echo init".to_string()),
+        skip_permissions: false,
+        agent_env: Vec::new(),
+        capture_cols: None,
+        capture_rows: None,
+    };
+
+    let plan = build_launch_plan(&request);
+    assert!(
+        !plan.launch_cmd[4].contains("direnv exec . bash -lc"),
+        "did not expect direnv exec wrapper, got {}",
+        plan.launch_cmd[4]
+    );
+}
+
+#[test]
 fn launch_plan_with_capture_dimensions_resizes_before_send_keys() {
     let request = LaunchRequest {
         project_name: None,
@@ -457,7 +578,7 @@ fn launch_plan_with_capture_dimensions_resizes_before_send_keys() {
         workspace_path: PathBuf::from("/repos/grove-auth-flow"),
         agent: AgentType::Claude,
         prompt: None,
-        pre_launch_command: None,
+        workspace_init_command: None,
         skip_permissions: true,
         agent_env: Vec::new(),
         capture_cols: Some(132),
@@ -489,7 +610,7 @@ fn launch_plan_with_agent_env_exports_before_agent_start() {
         workspace_path: PathBuf::from("/repos/grove-auth-flow"),
         agent: AgentType::Claude,
         prompt: None,
-        pre_launch_command: None,
+        workspace_init_command: None,
         skip_permissions: false,
         agent_env: vec![
             (
@@ -529,7 +650,7 @@ fn launch_plan_with_prompt_writes_launcher_script() {
         workspace_path: PathBuf::from("/repos/grove-db_migration"),
         agent: AgentType::Codex,
         prompt: Some("fix migration".to_string()),
-        pre_launch_command: None,
+        workspace_init_command: None,
         skip_permissions: false,
         agent_env: Vec::new(),
         capture_cols: None,

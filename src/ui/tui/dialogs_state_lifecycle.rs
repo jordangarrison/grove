@@ -3,34 +3,34 @@ use super::*;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct StartAgentConfigState {
     pub(super) prompt: String,
-    pub(super) pre_launch_command: String,
+    pub(super) init_command: String,
     pub(super) skip_permissions: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct StartOptions {
     pub(super) prompt: Option<String>,
-    pub(super) pre_launch_command: Option<String>,
+    pub(super) init_command: Option<String>,
     pub(super) skip_permissions: bool,
 }
 
 impl StartAgentConfigState {
-    pub(super) fn new(prompt: String, pre_launch_command: String, skip_permissions: bool) -> Self {
+    pub(super) fn new(prompt: String, init_command: String, skip_permissions: bool) -> Self {
         Self {
             prompt,
-            pre_launch_command,
+            init_command,
             skip_permissions,
         }
     }
 
     pub(super) fn is_input_nonempty(&self) -> bool {
-        !self.prompt.is_empty() || !self.pre_launch_command.is_empty()
+        !self.prompt.is_empty() || !self.init_command.is_empty()
     }
 
     pub(super) fn parse_start_options(&self) -> StartOptions {
         StartOptions {
             prompt: trimmed_nonempty(&self.prompt),
-            pre_launch_command: trimmed_nonempty(&self.pre_launch_command),
+            init_command: trimmed_nonempty(&self.init_command),
             skip_permissions: self.skip_permissions,
         }
     }
@@ -38,7 +38,7 @@ impl StartAgentConfigState {
     fn text_field_mut(&mut self, field: StartAgentConfigField) -> Option<&mut String> {
         match field {
             StartAgentConfigField::Prompt => Some(&mut self.prompt),
-            StartAgentConfigField::PreLaunchCommand => Some(&mut self.pre_launch_command),
+            StartAgentConfigField::InitCommand => Some(&mut self.init_command),
             StartAgentConfigField::Unsafe => None,
         }
     }
@@ -189,12 +189,12 @@ cyclic_field_nav!(pub(super) UpdateFromBaseDialogField {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum StartAgentConfigField {
     Prompt,
-    PreLaunchCommand,
+    InitCommand,
     Unsafe,
 }
 
 cyclic_field_nav!(pub(super) StartAgentConfigField {
-    Prompt, PreLaunchCommand, Unsafe,
+    Prompt, InitCommand, Unsafe,
 });
 
 impl StartAgentConfigField {
@@ -202,7 +202,7 @@ impl StartAgentConfigField {
     pub(super) fn label(self) -> &'static str {
         match self {
             Self::Prompt => "prompt",
-            Self::PreLaunchCommand => "pre_launch_command",
+            Self::InitCommand => "init_command",
             Self::Unsafe => "unsafe",
         }
     }

@@ -111,23 +111,10 @@ impl GroveApp {
                 modal_labeled_input_row(
                     content_width,
                     theme,
-                    "WsSetupCmds",
-                    defaults_dialog.setup_commands.as_str(),
-                    "one-time setup on workspace create/setup",
-                    focused(ProjectDefaultsDialogField::SetupCommands),
-                ),
-                modal_focus_badged_row(
-                    content_width,
-                    theme,
-                    "AutoRun",
-                    if defaults_dialog.auto_run_setup_commands {
-                        "on"
-                    } else {
-                        "off"
-                    },
-                    focused(ProjectDefaultsDialogField::AutoRunSetupCommands),
-                    theme.peach,
-                    theme.text,
+                    "InitCmd",
+                    defaults_dialog.workspace_init_command.as_str(),
+                    "Runs once per workspace start (agent/shell/git share)",
+                    focused(ProjectDefaultsDialogField::WorkspaceInitCommand),
                 ),
                 modal_labeled_input_row(
                     content_width,
@@ -173,7 +160,7 @@ impl GroveApp {
             lines.extend(modal_wrapped_hint_rows(
                 content_width,
                 theme,
-                "Tab/C-n next, S-Tab/C-p prev, Space toggles auto-run, Enter confirm, Esc back",
+                "Tab/C-n next, S-Tab/C-p prev, Enter confirm, Esc back",
             ));
             let body = FtText::from_lines(lines);
             let content = OverlayModalContent {

@@ -82,15 +82,11 @@ impl GroveApp {
 
         let StartOptions {
             prompt,
-            pre_launch_command,
+            init_command,
             skip_permissions,
         } = pending.start_config.parse_start_options();
         self.launch_skip_permissions = skip_permissions;
-        self.start_selected_workspace_agent_with_options(
-            prompt,
-            pre_launch_command,
-            skip_permissions,
-        );
+        self.start_selected_workspace_agent_with_options(prompt, init_command, skip_permissions);
         self.start_in_flight
     }
 

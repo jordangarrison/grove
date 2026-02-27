@@ -844,7 +844,7 @@ fn execute_launch_request_with_result_for_mode_includes_workspace_context() {
         workspace_path: PathBuf::from("/repos/project.one/worktrees/auth-flow"),
         agent: AgentType::Claude,
         prompt: None,
-        pre_launch_command: None,
+        workspace_init_command: None,
         skip_permissions: false,
         agent_env: Vec::new(),
         capture_cols: Some(120),
@@ -1138,14 +1138,14 @@ fn kill_workspace_session_commands_include_agent_git_and_shell_sessions() {
 }
 
 #[test]
-fn launch_plan_with_pre_launch_command_runs_before_agent() {
+fn launch_plan_with_workspace_init_runs_before_agent() {
     let request = LaunchRequest {
         project_name: None,
         workspace_name: "auth-flow".to_string(),
         workspace_path: PathBuf::from("/repos/grove-auth-flow"),
         agent: AgentType::Claude,
         prompt: None,
-        pre_launch_command: Some("direnv allow".to_string()),
+        workspace_init_command: Some("direnv allow".to_string()),
         skip_permissions: true,
         agent_env: Vec::new(),
         capture_cols: None,
@@ -1153,15 +1153,30 @@ fn launch_plan_with_pre_launch_command_runs_before_agent() {
     };
 
     let plan = build_launch_plan(&request);
-    assert_eq!(
-        plan.launch_cmd,
-        vec![
-            "tmux",
-            "send-keys",
-            "-t",
-            "grove-ws-auth-flow",
-            "direnv allow && claude --dangerously-skip-permissions",
-            "Enter"
-        ]
+    assert_eq!(plan.launch_cmd.len(), 6);
+    assert_eq!(plan.launch_cmd[0], "tmux");
+    assert_eq!(plan.launch_cmd[1], "send-keys");
+    assert_eq!(plan.launch_cmd[2], "-t");
+    assert_eq!(plan.launch_cmd[3], "grove-ws-auth-flow");
+    assert!(
+        plan.launch_cmd[4].contains("workspace-init-"),
+        "expected init guard command, got {}",
+        plan.launch_cmd[4]
     );
+    assert!(
+        plan.launch_cmd[4].contains("direnv allow"),
+        "expected init command in guard, got {}",
+        plan.launch_cmd[4]
+    );
+    assert!(
+        plan.launch_cmd[4].contains("claude --dangerously-skip-permissions"),
+        "expected agent command in guard, got {}",
+        plan.launch_cmd[4]
+    );
+    assert!(
+        plan.launch_cmd[4].contains("direnv exec . bash -lc"),
+        "expected direnv exec wrapper, got {}",
+        plan.launch_cmd[4]
+    );
+    assert_eq!(plan.launch_cmd[5], "Enter");
 }

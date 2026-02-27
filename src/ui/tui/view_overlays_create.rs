@@ -83,7 +83,7 @@ impl GroveApp {
 
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width("Workspace setup (create/setup)", content_width),
+                pad_or_truncate_to_display_width("Workspace setup (create)", content_width),
                 Style::new().fg(theme.overlay0),
             )]),
             FtLine::raw(""),
@@ -114,27 +114,6 @@ impl GroveApp {
                     dialog.base_branch.as_str(),
                     "current branch (fallback: main/master)",
                     focused(CreateDialogField::BaseBranch),
-                ));
-                lines.push(modal_labeled_input_row(
-                    content_width,
-                    theme,
-                    "WsSetupCmds",
-                    dialog.setup_commands.as_str(),
-                    "one-time setup on workspace create/setup",
-                    focused(CreateDialogField::SetupCommands),
-                ));
-                lines.push(modal_focus_badged_row(
-                    content_width,
-                    theme,
-                    "AutoRun",
-                    if dialog.auto_run_setup_commands {
-                        "on"
-                    } else {
-                        "off"
-                    },
-                    focused(CreateDialogField::AutoRunSetupCommands),
-                    theme.peach,
-                    theme.text,
                 ));
             }
             CreateDialogTab::PullRequest => {
@@ -231,16 +210,6 @@ impl GroveApp {
                 }
             }
         }
-        if dialog.tab == CreateDialogTab::Manual && focused(CreateDialogField::SetupCommands) {
-            lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width(
-                    "  [WsSetupCmds] ';' separated, per-workspace (not per-start)",
-                    content_width,
-                ),
-                Style::new().fg(theme.overlay0),
-            )]));
-        }
-
         lines.push(FtLine::raw(""));
         for agent in AgentType::all() {
             lines.push(agent_row(*agent));
@@ -269,7 +238,7 @@ impl GroveApp {
             cancel_focused,
         ));
         let hint_text = if dialog.tab == CreateDialogTab::Manual {
-            "Tab/C-n next, S-Tab/C-p prev, Alt+[/Alt+] switch mode, j/k adjust project/branch, Space toggles auto-run or unsafe, Enter create, Esc cancel"
+            "Tab/C-n next, S-Tab/C-p prev, Alt+[/Alt+] switch mode, j/k adjust project/branch, Space toggles unsafe, Enter create, Esc cancel"
         } else {
             "Tab/C-n next, S-Tab/C-p prev, Alt+[/Alt+] switch mode, j/k adjust project or agent, Space toggles unsafe, Enter create, Esc cancel"
         };

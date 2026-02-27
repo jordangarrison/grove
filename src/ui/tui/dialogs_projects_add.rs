@@ -369,8 +369,7 @@ impl GroveApp {
             return;
         };
         let base_branch = project.defaults.base_branch.clone();
-        let setup_commands = format_setup_commands(&project.defaults.setup_commands);
-        let auto_run_setup_commands = project.defaults.auto_run_setup_commands;
+        let workspace_init_command = project.defaults.workspace_init_command.clone();
         let claude_env = format_agent_env_vars(&project.defaults.agent_env.claude);
         let codex_env = format_agent_env_vars(&project.defaults.agent_env.codex);
         let opencode_env = format_agent_env_vars(&project.defaults.agent_env.opencode);
@@ -379,8 +378,7 @@ impl GroveApp {
             project_dialog.defaults_dialog = Some(ProjectDefaultsDialogState {
                 project_index,
                 base_branch,
-                setup_commands,
-                auto_run_setup_commands,
+                workspace_init_command,
                 claude_env,
                 codex_env,
                 opencode_env,
@@ -423,15 +421,13 @@ impl GroveApp {
                 return;
             };
 
-            project.defaults = ProjectDefaults {
-                base_branch: dialog_state.base_branch.trim().to_string(),
-                setup_commands: parse_setup_commands(&dialog_state.setup_commands),
-                auto_run_setup_commands: dialog_state.auto_run_setup_commands,
-                agent_env: AgentEnvDefaults {
-                    claude: claude_env,
-                    codex: codex_env,
-                    opencode: opencode_env,
-                },
+            project.defaults.base_branch = dialog_state.base_branch.trim().to_string();
+            project.defaults.workspace_init_command =
+                dialog_state.workspace_init_command.trim().to_string();
+            project.defaults.agent_env = AgentEnvDefaults {
+                claude: claude_env,
+                codex: codex_env,
+                opencode: opencode_env,
             };
             project.name.clone()
         };

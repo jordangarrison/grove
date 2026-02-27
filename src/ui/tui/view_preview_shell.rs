@@ -59,11 +59,11 @@ impl GroveApp {
                 }
             ));
             lines.push(format!(
-                "Pre-launch command: {}",
-                if dialog.start_config.pre_launch_command.is_empty() {
+                "Init command: {}",
+                if dialog.start_config.init_command.is_empty() {
                     "(empty)".to_string()
                 } else {
-                    dialog.start_config.pre_launch_command.clone()
+                    dialog.start_config.init_command.clone()
                 }
             ));
             lines.push(format!(

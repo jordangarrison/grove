@@ -8,8 +8,6 @@ pub(super) struct CreateDialogState {
     pub(super) project_index: usize,
     pub(super) agent: AgentType,
     pub(super) base_branch: String,
-    pub(super) setup_commands: String,
-    pub(super) auto_run_setup_commands: bool,
     pub(super) start_config: StartAgentConfigState,
     pub(super) focused_field: CreateDialogField,
 }
@@ -32,8 +30,6 @@ pub(super) enum CreateDialogField {
     PullRequestUrl,
     Project,
     BaseBranch,
-    SetupCommands,
-    AutoRunSetupCommands,
     Agent,
     StartConfig(StartAgentConfigField),
     CreateButton,
@@ -91,9 +87,7 @@ impl CreateDialogField {
             CreateDialogTab::Manual => match self {
                 Self::WorkspaceName => Self::Project,
                 Self::Project => Self::BaseBranch,
-                Self::BaseBranch => Self::SetupCommands,
-                Self::SetupCommands => Self::AutoRunSetupCommands,
-                Self::AutoRunSetupCommands => Self::Agent,
+                Self::BaseBranch => Self::Agent,
                 Self::Agent => Self::StartConfig(StartAgentConfigField::Prompt),
                 Self::StartConfig(field) => {
                     if field == StartAgentConfigField::Unsafe {
@@ -119,10 +113,7 @@ impl CreateDialogField {
                 }
                 Self::CreateButton => Self::CancelButton,
                 Self::CancelButton => Self::Project,
-                Self::WorkspaceName
-                | Self::BaseBranch
-                | Self::SetupCommands
-                | Self::AutoRunSetupCommands => Self::Project,
+                Self::WorkspaceName | Self::BaseBranch => Self::Project,
             },
         }
     }
@@ -133,9 +124,7 @@ impl CreateDialogField {
                 Self::WorkspaceName => Self::CancelButton,
                 Self::Project => Self::WorkspaceName,
                 Self::BaseBranch => Self::Project,
-                Self::SetupCommands => Self::BaseBranch,
-                Self::AutoRunSetupCommands => Self::SetupCommands,
-                Self::Agent => Self::AutoRunSetupCommands,
+                Self::Agent => Self::BaseBranch,
                 Self::StartConfig(field) => {
                     if field == StartAgentConfigField::Prompt {
                         Self::Agent
@@ -160,10 +149,7 @@ impl CreateDialogField {
                 }
                 Self::CreateButton => Self::StartConfig(StartAgentConfigField::Unsafe),
                 Self::CancelButton => Self::CreateButton,
-                Self::WorkspaceName
-                | Self::BaseBranch
-                | Self::SetupCommands
-                | Self::AutoRunSetupCommands => Self::Project,
+                Self::WorkspaceName | Self::BaseBranch => Self::Project,
             },
         }
     }
@@ -175,8 +161,6 @@ impl CreateDialogField {
             Self::PullRequestUrl => "pr_url",
             Self::Project => "project",
             Self::BaseBranch => "base_branch",
-            Self::SetupCommands => "setup_commands",
-            Self::AutoRunSetupCommands => "auto_run_setup_commands",
             Self::Agent => "agent",
             Self::StartConfig(field) => field.label(),
             Self::CreateButton => "create",

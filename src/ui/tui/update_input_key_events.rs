@@ -85,18 +85,10 @@ impl GroveApp {
                         }
                     }
                 }
-                CreateDialogField::SetupCommands => {
-                    handled = true;
-                    for character in text.chars() {
-                        if !character.is_control() {
-                            dialog.setup_commands.push(character);
-                        }
-                    }
-                }
                 CreateDialogField::StartConfig(field) => {
                     if matches!(
                         field,
-                        StartAgentConfigField::Prompt | StartAgentConfigField::PreLaunchCommand
+                        StartAgentConfigField::Prompt | StartAgentConfigField::InitCommand
                     ) {
                         handled = true;
                         for character in text.chars() {
@@ -107,7 +99,6 @@ impl GroveApp {
                     }
                 }
                 CreateDialogField::Project
-                | CreateDialogField::AutoRunSetupCommands
                 | CreateDialogField::Agent
                 | CreateDialogField::CreateButton
                 | CreateDialogField::CancelButton => {}

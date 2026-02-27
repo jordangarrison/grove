@@ -201,10 +201,12 @@ impl GroveApp {
         }
 
         let (capture_cols, capture_rows) = self.capture_dimensions();
+        let workspace_init_command = self.workspace_init_command_for_workspace(workspace);
         let launch_request = shell_launch_request_for_workspace(
             workspace,
             session_name.clone(),
             command,
+            workspace_init_command,
             Some(capture_cols),
             Some(capture_rows),
         );

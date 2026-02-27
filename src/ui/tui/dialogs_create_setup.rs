@@ -47,17 +47,11 @@ impl GroveApp {
         Some(base_branch.to_string())
     }
 
-    fn project_default_setup_commands(&self, project_index: usize) -> String {
+    fn project_default_workspace_init_command(&self, project_index: usize) -> String {
         let Some(project) = self.projects.get(project_index) else {
             return String::new();
         };
-        format_setup_commands(&project.defaults.setup_commands)
-    }
-
-    fn project_default_auto_run_setup_commands(&self, project_index: usize) -> bool {
-        self.projects
-            .get(project_index)
-            .is_none_or(|project| project.defaults.auto_run_setup_commands)
+        project.defaults.workspace_init_command.clone()
     }
 
     pub(super) fn apply_create_dialog_project_defaults(&mut self, project_index: usize) {
@@ -68,14 +62,12 @@ impl GroveApp {
                     .map(|dialog| dialog.base_branch.clone())
             })
             .unwrap_or_else(|| "main".to_string());
-        let setup_commands = self.project_default_setup_commands(project_index);
-        let auto_run_setup_commands = self.project_default_auto_run_setup_commands(project_index);
+        let workspace_init_command = self.project_default_workspace_init_command(project_index);
 
         if let Some(dialog) = self.create_dialog_mut() {
             dialog.project_index = project_index;
             dialog.base_branch = base_branch.clone();
-            dialog.setup_commands = setup_commands;
-            dialog.auto_run_setup_commands = auto_run_setup_commands;
+            dialog.start_config.init_command = workspace_init_command;
         }
 
         self.refresh_create_dialog_branch_candidates(base_branch);
@@ -114,8 +106,7 @@ impl GroveApp {
             .state
             .selected_workspace()
             .map_or(AgentType::Claude, |workspace| workspace.agent);
-        let setup_commands = self.project_default_setup_commands(project_index);
-        let auto_run_setup_commands = self.project_default_auto_run_setup_commands(project_index);
+        let workspace_init_command = self.project_default_workspace_init_command(project_index);
         self.set_create_dialog(CreateDialogState {
             tab: CreateDialogTab::Manual,
             workspace_name: String::new(),
@@ -123,11 +114,9 @@ impl GroveApp {
             project_index,
             agent: default_agent,
             base_branch: selected_base_branch.clone(),
-            setup_commands,
-            auto_run_setup_commands,
             start_config: StartAgentConfigState::new(
                 String::new(),
-                String::new(),
+                workspace_init_command,
                 self.launch_skip_permissions,
             ),
             focused_field: CreateDialogField::first_for_tab(CreateDialogTab::Manual),

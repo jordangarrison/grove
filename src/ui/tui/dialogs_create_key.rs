@@ -39,7 +39,6 @@ impl GroveApp {
                     ConfirmCreate,
                     CancelDialog,
                     AdvanceField,
-                    ToggleAutoRunAndAdvance,
                 }
 
                 let action = self
@@ -47,14 +46,10 @@ impl GroveApp {
                     .map(|dialog| match dialog.focused_field {
                         CreateDialogField::CreateButton => EnterAction::ConfirmCreate,
                         CreateDialogField::CancelButton => EnterAction::CancelDialog,
-                        CreateDialogField::AutoRunSetupCommands => {
-                            EnterAction::ToggleAutoRunAndAdvance
-                        }
                         CreateDialogField::WorkspaceName
                         | CreateDialogField::PullRequestUrl
                         | CreateDialogField::Project
                         | CreateDialogField::BaseBranch
-                        | CreateDialogField::SetupCommands
                         | CreateDialogField::Agent
                         | CreateDialogField::StartConfig(_) => EnterAction::AdvanceField,
                     });
@@ -67,12 +62,6 @@ impl GroveApp {
                         self.clear_create_branch_picker();
                     }
                     Some(EnterAction::AdvanceField) => {
-                        self.create_dialog_focus_next();
-                    }
-                    Some(EnterAction::ToggleAutoRunAndAdvance) => {
-                        if let Some(dialog) = self.create_dialog_mut() {
-                            dialog.auto_run_setup_commands = !dialog.auto_run_setup_commands;
-                        }
                         self.create_dialog_focus_next();
                     }
                     None => {}
@@ -103,11 +92,6 @@ impl GroveApp {
                     Self::select_previous_create_dialog_agent(dialog);
                 }
                 if let Some(dialog) = self.create_dialog_mut()
-                    && dialog.focused_field == CreateDialogField::AutoRunSetupCommands
-                {
-                    dialog.auto_run_setup_commands = !dialog.auto_run_setup_commands;
-                }
-                if let Some(dialog) = self.create_dialog_mut()
                     && dialog.focused_field
                         == CreateDialogField::StartConfig(StartAgentConfigField::Unsafe)
                 {
@@ -133,11 +117,6 @@ impl GroveApp {
                     && dialog.focused_field == CreateDialogField::Agent
                 {
                     Self::select_next_create_dialog_agent(dialog);
-                }
-                if let Some(dialog) = self.create_dialog_mut()
-                    && dialog.focused_field == CreateDialogField::AutoRunSetupCommands
-                {
-                    dialog.auto_run_setup_commands = !dialog.auto_run_setup_commands;
                 }
                 if let Some(dialog) = self.create_dialog_mut()
                     && dialog.focused_field
@@ -167,14 +146,10 @@ impl GroveApp {
                             dialog.base_branch.pop();
                             refresh_base_branch = true;
                         }
-                        CreateDialogField::SetupCommands => {
-                            dialog.setup_commands.pop();
-                        }
                         CreateDialogField::StartConfig(field) => {
                             dialog.start_config.backspace(field);
                         }
                         CreateDialogField::Project
-                        | CreateDialogField::AutoRunSetupCommands
                         | CreateDialogField::Agent
                         | CreateDialogField::CreateButton
                         | CreateDialogField::CancelButton => {}
@@ -224,12 +199,6 @@ impl GroveApp {
                         }
                         return;
                     }
-                    if dialog.focused_field == CreateDialogField::AutoRunSetupCommands
-                        && (character == 'j' || character == 'k' || character == ' ')
-                    {
-                        dialog.auto_run_setup_commands = !dialog.auto_run_setup_commands;
-                        return;
-                    }
                     if dialog.focused_field
                         == CreateDialogField::StartConfig(StartAgentConfigField::Unsafe)
                         && (character == 'j' || character == 'k' || character == ' ')
@@ -270,21 +239,14 @@ impl GroveApp {
                                 refresh_base_branch = true;
                             }
                         }
-                        CreateDialogField::SetupCommands => {
-                            if !character.is_control() {
-                                dialog.setup_commands.push(character);
-                            }
-                        }
                         CreateDialogField::StartConfig(field) => match field {
-                            StartAgentConfigField::Prompt
-                            | StartAgentConfigField::PreLaunchCommand => {
+                            StartAgentConfigField::Prompt | StartAgentConfigField::InitCommand => {
                                 if !character.is_control() {
                                     dialog.start_config.push_char(field, character);
                                 }
                             }
                             StartAgentConfigField::Unsafe => {}
                         },
-                        CreateDialogField::AutoRunSetupCommands => {}
                         CreateDialogField::Agent => {}
                         CreateDialogField::CreateButton | CreateDialogField::CancelButton => {}
                     }

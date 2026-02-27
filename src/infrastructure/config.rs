@@ -49,11 +49,11 @@ pub struct ProjectDefaults {
     #[serde(default)]
     pub base_branch: String,
     #[serde(default)]
-    pub setup_commands: Vec<String>,
-    #[serde(default = "default_auto_run_setup_commands")]
-    pub auto_run_setup_commands: bool,
+    pub workspace_init_command: String,
     #[serde(default)]
     pub agent_env: AgentEnvDefaults,
+    #[serde(default, rename = "setup_commands", skip_serializing)]
+    legacy_setup_commands: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -66,18 +66,31 @@ pub struct AgentEnvDefaults {
     pub opencode: Vec<String>,
 }
 
-const fn default_auto_run_setup_commands() -> bool {
-    true
-}
-
 impl Default for ProjectDefaults {
     fn default() -> Self {
         Self {
             base_branch: String::new(),
-            setup_commands: Vec::new(),
-            auto_run_setup_commands: default_auto_run_setup_commands(),
+            workspace_init_command: String::new(),
             agent_env: AgentEnvDefaults::default(),
+            legacy_setup_commands: Vec::new(),
         }
+    }
+}
+
+impl ProjectDefaults {
+    fn normalize_legacy_fields(&mut self) {
+        if self.workspace_init_command.trim().is_empty() {
+            let migrated = self
+                .legacy_setup_commands
+                .iter()
+                .map(String::as_str)
+                .map(str::trim)
+                .find(|command| !command.is_empty())
+                .unwrap_or_default()
+                .to_string();
+            self.workspace_init_command = migrated;
+        }
+        self.legacy_setup_commands.clear();
     }
 }
 
@@ -114,7 +127,12 @@ pub fn load_from_path(path: &Path) -> Result<GroveConfig, String> {
         Err(error) => return Err(format!("config read failed: {error}")),
     };
 
-    toml::from_str::<GroveConfig>(&raw).map_err(|error| format!("config parse failed: {error}"))
+    let mut config = toml::from_str::<GroveConfig>(&raw)
+        .map_err(|error| format!("config parse failed: {error}"))?;
+    for project in &mut config.projects {
+        project.defaults.normalize_legacy_fields();
+    }
+    Ok(config)
 }
 
 pub fn save_to_path(path: &Path, config: &GroveConfig) -> Result<(), String> {

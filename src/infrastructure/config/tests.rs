@@ -39,16 +39,13 @@ fn save_and_load_round_trip() {
             path: PathBuf::from("/repos/grove"),
             defaults: ProjectDefaults {
                 base_branch: "develop".to_string(),
-                setup_commands: vec![
-                    "direnv allow".to_string(),
-                    "nix develop -c just bootstrap".to_string(),
-                ],
-                auto_run_setup_commands: true,
+                workspace_init_command: "direnv exec . true".to_string(),
                 agent_env: AgentEnvDefaults {
                     claude: vec!["CLAUDE_CONFIG_DIR=~/.claude-work".to_string()],
                     codex: vec!["CODEX_CONFIG_DIR=~/.codex-work".to_string()],
                     opencode: Vec::new(),
                 },
+                ..ProjectDefaults::default()
             },
         }],
         attention_acks: Vec::new(),
@@ -89,14 +86,29 @@ fn load_project_without_defaults_uses_project_defaults_fallback() {
     assert_eq!(loaded.attention_acks, Vec::new());
     assert!(!loaded.launch_skip_permissions);
     assert_eq!(loaded.projects[0].defaults.base_branch, "");
-    assert_eq!(
-        loaded.projects[0].defaults.setup_commands,
-        Vec::<String>::new()
-    );
-    assert!(loaded.projects[0].defaults.auto_run_setup_commands);
+    assert_eq!(loaded.projects[0].defaults.workspace_init_command, "");
     assert_eq!(
         loaded.projects[0].defaults.agent_env,
         AgentEnvDefaults::default()
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn load_project_with_legacy_setup_commands_migrates_first_to_workspace_init_command() {
+    let path = unique_temp_path("legacy-setup-migration");
+    fs::write(
+        &path,
+        "[[projects]]\nname = \"grove\"\npath = \"/repos/grove\"\n[projects.defaults]\nsetup_commands = [\"\", \"direnv allow\", \"nix develop -c true\"]\n",
+    )
+    .expect("fixture should write");
+
+    let loaded = load_from_path(&path).expect("legacy setup should load");
+    assert_eq!(loaded.projects.len(), 1);
+    assert_eq!(
+        loaded.projects[0].defaults.workspace_init_command,
+        "direnv allow"
     );
 
     let _ = fs::remove_file(path);

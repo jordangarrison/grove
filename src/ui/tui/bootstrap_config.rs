@@ -94,6 +94,43 @@ pub(super) fn read_workspace_launch_prompt(workspace_path: &Path) -> Option<Stri
     Some(trimmed.to_string())
 }
 
+pub(super) fn read_workspace_init_command(workspace_path: &Path) -> Option<String> {
+    let raw = fs::read_to_string(workspace_path.join(WORKSPACE_INIT_COMMAND_FILENAME)).ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    Some(trimmed.to_string())
+}
+
+pub(super) fn write_workspace_init_command(
+    workspace_path: &Path,
+    init_command: Option<&str>,
+) -> Result<(), String> {
+    let marker_path = workspace_path.join(WORKSPACE_INIT_COMMAND_FILENAME);
+    let Some(parent) = marker_path.parent() else {
+        return Err(format!(
+            "workspace init marker has no parent: {}",
+            marker_path.display()
+        ));
+    };
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("create marker directory failed: {error}"))?;
+    let trimmed = init_command.map(str::trim).unwrap_or_default();
+    if trimmed.is_empty() {
+        if marker_path.exists() {
+            fs::remove_file(&marker_path)
+                .map_err(|error| format!("remove init marker failed: {error}"))?;
+        }
+        return Ok(());
+    }
+
+    fs::write(&marker_path, format!("{trimmed}\n"))
+        .map_err(|error| format!("write marker failed: {error}"))?;
+    Ok(())
+}
+
 pub(super) fn read_workspace_skip_permissions(workspace_path: &Path) -> Option<bool> {
     let raw = fs::read_to_string(workspace_path.join(WORKSPACE_SKIP_PERMISSIONS_FILENAME)).ok()?;
     match raw.trim() {

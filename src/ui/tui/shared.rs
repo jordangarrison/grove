@@ -25,6 +25,7 @@ use ftui::PackedRgba;
 use ftui::core::geometry::Rect;
 
 pub(super) const WORKSPACE_LAUNCH_PROMPT_FILENAME: &str = ".grove/prompt";
+pub(super) const WORKSPACE_INIT_COMMAND_FILENAME: &str = ".grove/init_command";
 pub(super) const WORKSPACE_SKIP_PERMISSIONS_FILENAME: &str = ".grove/skip_permissions";
 pub(super) const HEADER_HEIGHT: u16 = 1;
 pub(super) const STATUS_HEIGHT: u16 = 1;
@@ -61,7 +62,6 @@ pub(super) const PREVIEW_POLL_IN_FLIGHT_TICK_MS: u64 = 20;
 pub(super) const LAZYGIT_COMMAND: &str = "lazygit";
 pub(super) const AGENT_ACTIVITY_WINDOW_FRAMES: usize = 6;
 pub(super) const LOCAL_TYPING_SUPPRESS_MS: u64 = 400;
-pub(super) const SETUP_COMMAND_SEPARATOR: char = ';';
 pub(super) const AGENT_ENV_SEPARATOR: char = ';';
 
 pub(super) fn usize_to_u64(value: usize) -> u64 {
@@ -82,23 +82,6 @@ pub(super) fn decode_workspace_pr_hit_data(data: u64) -> Option<(usize, usize)> 
     let mask = u64::from(u32::MAX);
     let pull_request = usize::try_from(data & mask).ok()?;
     Some((workspace, pull_request))
-}
-
-pub(super) fn parse_setup_commands(raw: &str) -> Vec<String> {
-    raw.split(SETUP_COMMAND_SEPARATOR)
-        .map(str::trim)
-        .filter(|command| !command.is_empty())
-        .map(str::to_string)
-        .collect()
-}
-
-pub(super) fn format_setup_commands(commands: &[String]) -> String {
-    commands
-        .iter()
-        .map(|command| command.trim())
-        .filter(|command| !command.is_empty())
-        .collect::<Vec<&str>>()
-        .join("; ")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

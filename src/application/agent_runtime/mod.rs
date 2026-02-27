@@ -66,7 +66,7 @@ pub struct LaunchRequest {
     pub workspace_path: PathBuf,
     pub agent: AgentType,
     pub prompt: Option<String>,
-    pub pre_launch_command: Option<String>,
+    pub workspace_init_command: Option<String>,
     pub skip_permissions: bool,
     pub agent_env: Vec<(String, String)>,
     pub capture_cols: Option<u16>,
@@ -101,6 +101,7 @@ pub struct ShellLaunchRequest {
     pub session_name: String,
     pub workspace_path: PathBuf,
     pub command: String,
+    pub workspace_init_command: Option<String>,
     pub capture_cols: Option<u16>,
     pub capture_rows: Option<u16>,
 }
@@ -246,7 +247,7 @@ pub fn workspace_can_stop_agent(workspace: Option<&Workspace>) -> bool {
 pub fn launch_request_for_workspace(
     workspace: &Workspace,
     prompt: Option<String>,
-    pre_launch_command: Option<String>,
+    workspace_init_command: Option<String>,
     skip_permissions: bool,
     agent_env: Vec<(String, String)>,
     capture_cols: Option<u16>,
@@ -258,7 +259,7 @@ pub fn launch_request_for_workspace(
         workspace_path: workspace.path.clone(),
         agent: workspace.agent,
         prompt,
-        pre_launch_command,
+        workspace_init_command,
         skip_permissions,
         agent_env,
         capture_cols,
@@ -270,6 +271,7 @@ pub fn shell_launch_request_for_workspace(
     workspace: &Workspace,
     session_name: String,
     command: String,
+    workspace_init_command: Option<String>,
     capture_cols: Option<u16>,
     capture_rows: Option<u16>,
 ) -> ShellLaunchRequest {
@@ -277,6 +279,7 @@ pub fn shell_launch_request_for_workspace(
         session_name,
         workspace_path: workspace.path.clone(),
         command,
+        workspace_init_command,
         capture_cols,
         capture_rows,
     }
@@ -415,12 +418,11 @@ pub fn build_launch_plan(request: &LaunchRequest) -> LaunchPlan {
         &request.workspace_name,
     );
     let agent_cmd = build_agent_command(request.agent, request.skip_permissions);
-    let pre_launch_command = request
-        .pre_launch_command
-        .as_deref()
-        .and_then(trimmed_nonempty);
-    let launch_agent_cmd =
-        launch_command_with_pre_launch(&agent_cmd, pre_launch_command.as_deref());
+    let launch_agent_cmd = launch_command_with_workspace_init(
+        &request.workspace_path,
+        agent_cmd,
+        request.workspace_init_command.as_deref(),
+    );
     let mut plan = tmux_launch_plan(request, session_name, launch_agent_cmd);
     if let Some(resize_cmd) = launch_resize_window_command(
         &plan.session_name,
@@ -433,13 +435,18 @@ pub fn build_launch_plan(request: &LaunchRequest) -> LaunchPlan {
 }
 
 pub fn build_shell_launch_plan(request: &ShellLaunchRequest) -> LaunchPlan {
+    let wrapped_command = launch_command_with_workspace_init(
+        &request.workspace_path,
+        request.command.clone(),
+        request.workspace_init_command.as_deref(),
+    );
     let shared = LaunchRequest {
         project_name: None,
         workspace_name: request.session_name.clone(),
         workspace_path: request.workspace_path.clone(),
         agent: AgentType::Codex,
         prompt: None,
-        pre_launch_command: None,
+        workspace_init_command: request.workspace_init_command.clone(),
         skip_permissions: false,
         agent_env: Vec::new(),
         capture_cols: request.capture_cols,
@@ -448,7 +455,7 @@ pub fn build_shell_launch_plan(request: &ShellLaunchRequest) -> LaunchPlan {
     let mut plan = tmux_launch_plan(
         &shared,
         request.session_name.clone(),
-        request.command.clone(),
+        wrapped_command.clone(),
     );
     if let Some(resize_cmd) = launch_resize_window_command(
         &plan.session_name,
@@ -457,7 +464,7 @@ pub fn build_shell_launch_plan(request: &ShellLaunchRequest) -> LaunchPlan {
     ) {
         plan.pre_launch_cmds.push(resize_cmd);
     }
-    if request.command.trim().is_empty() {
+    if wrapped_command.trim().is_empty() {
         plan.launch_cmd = Vec::new();
     }
     plan
@@ -1134,11 +1141,77 @@ pub(crate) fn trimmed_nonempty(value: &str) -> Option<String> {
     Some(trimmed.to_string())
 }
 
-fn launch_command_with_pre_launch(agent_command: &str, pre_launch_command: Option<&str>) -> String {
-    match pre_launch_command {
-        Some(pre_launch) => format!("{pre_launch} && {agent_command}"),
-        None => agent_command.to_string(),
+fn launch_command_with_workspace_init(
+    workspace_path: &Path,
+    command: String,
+    workspace_init_command: Option<&str>,
+) -> String {
+    let Some(init_command) = workspace_init_command.and_then(trimmed_nonempty) else {
+        return command;
+    };
+    let run_command = trimmed_nonempty(&command).map(|command| {
+        if init_command_mentions_direnv(init_command.as_str()) {
+            return direnv_exec_wrapped_command(command.as_str());
+        }
+
+        command
+    });
+    let mut script = workspace_init_guard_script(workspace_path, init_command.as_str());
+    if let Some(run_command) = run_command {
+        script.push('\n');
+        script.push_str(run_command.as_str());
     }
+    format!("bash -lc {}", shell_quote(script.as_str()))
+}
+
+fn init_command_mentions_direnv(command: &str) -> bool {
+    command
+        .split(|character: char| {
+            !(character.is_ascii_alphanumeric() || character == '_' || character == '-')
+        })
+        .any(|token| token.eq_ignore_ascii_case("direnv"))
+}
+
+fn direnv_exec_wrapped_command(command: &str) -> String {
+    format!("direnv exec . bash -lc {}", shell_quote(command))
+}
+
+fn workspace_init_guard_script(workspace_path: &Path, workspace_init_command: &str) -> String {
+    let command_hash = workspace_init_command_hash(workspace_init_command);
+    let grove_dir = workspace_path.join(".grove");
+    let lock_dir = grove_dir.join(format!("workspace-init-{command_hash}.lock"));
+    let stamp_file = grove_dir.join(format!("workspace-init-{command_hash}.done"));
+    let quoted_grove_dir = shell_quote(grove_dir.to_string_lossy().as_ref());
+    let quoted_lock_dir = shell_quote(lock_dir.to_string_lossy().as_ref());
+    let quoted_stamp_file = shell_quote(stamp_file.to_string_lossy().as_ref());
+    format!(
+        "mkdir -p {quoted_grove_dir}
+if [ ! -f {quoted_stamp_file} ]; then
+  while ! mkdir {quoted_lock_dir} 2>/dev/null; do sleep 0.1; done
+  trap 'rmdir {quoted_lock_dir} 2>/dev/null || true' EXIT
+  if [ ! -f {quoted_stamp_file} ]; then
+    {workspace_init_command}
+    init_status=$?
+    if [ \"$init_status\" -ne 0 ]; then
+      exit \"$init_status\"
+    fi
+    : > {quoted_stamp_file}
+  fi
+fi"
+    )
+}
+
+fn workspace_init_command_hash(command: &str) -> String {
+    const FNV_OFFSET_BASIS: u64 = 14_695_981_039_346_656_037;
+    const FNV_PRIME: u64 = 1_099_511_628_211;
+
+    let mut hash = FNV_OFFSET_BASIS;
+    for byte in command.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+
+    format!("{hash:016x}")
 }
 
 pub(crate) fn detect_waiting_prompt(output: &str) -> Option<String> {

@@ -29,8 +29,7 @@ pub(super) struct ProjectAddDialogState {
 pub(super) struct ProjectDefaultsDialogState {
     pub(super) project_index: usize,
     pub(super) base_branch: String,
-    pub(super) setup_commands: String,
-    pub(super) auto_run_setup_commands: bool,
+    pub(super) workspace_init_command: String,
     pub(super) claude_env: String,
     pub(super) codex_env: String,
     pub(super) opencode_env: String,
@@ -48,8 +47,7 @@ pub(super) enum ProjectAddDialogField {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ProjectDefaultsDialogField {
     BaseBranch,
-    SetupCommands,
-    AutoRunSetupCommands,
+    WorkspaceInitCommand,
     ClaudeEnv,
     CodexEnv,
     OpenCodeEnv,
@@ -62,7 +60,7 @@ cyclic_field_nav!(pub(super) ProjectAddDialogField {
 });
 
 cyclic_field_nav!(pub(super) ProjectDefaultsDialogField {
-    BaseBranch, SetupCommands, AutoRunSetupCommands, ClaudeEnv, CodexEnv, OpenCodeEnv, SaveButton, CancelButton,
+    BaseBranch, WorkspaceInitCommand, ClaudeEnv, CodexEnv, OpenCodeEnv, SaveButton, CancelButton,
 });
 
 #[derive(Debug, Clone, PartialEq, Eq)]

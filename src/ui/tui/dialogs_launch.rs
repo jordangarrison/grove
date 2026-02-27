@@ -82,8 +82,7 @@ impl GroveApp {
                     }
                     match dialog.focused_field {
                         LaunchDialogField::StartConfig(field) => match field {
-                            StartAgentConfigField::Prompt
-                            | StartAgentConfigField::PreLaunchCommand => {
+                            StartAgentConfigField::Prompt | StartAgentConfigField::InitCommand => {
                                 if !character.is_control() {
                                     dialog.start_config.push_char(field, character);
                                 }
@@ -126,11 +125,12 @@ impl GroveApp {
         }
 
         let prompt = read_workspace_launch_prompt(&workspace.path).unwrap_or_default();
+        let init_command = self.workspace_init_command_for_workspace(&workspace);
         let skip_permissions = self.workspace_skip_permissions_for_workspace(&workspace);
         self.set_launch_dialog(LaunchDialogState {
             start_config: StartAgentConfigState::new(
                 prompt.clone(),
-                String::new(),
+                init_command.clone().unwrap_or_default(),
                 skip_permissions,
             ),
             focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
@@ -148,7 +148,10 @@ impl GroveApp {
                     "skip_permissions".to_string(),
                     Value::from(skip_permissions),
                 ),
-                ("pre_launch_len".to_string(), Value::from(0_u64)),
+                (
+                    "init_len".to_string(),
+                    Value::from(usize_to_u64(init_command.unwrap_or_default().len())),
+                ),
             ],
         );
         self.last_tmux_error = None;

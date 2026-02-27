@@ -442,26 +442,12 @@ fn create_dialog_j_and_k_on_agent_field_toggle_agent() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
     );
-    ftui::Model::update(
-        &mut app,
-        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-    );
-    ftui::Model::update(
-        &mut app,
-        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-    );
-    ftui::Model::update(
-        &mut app,
-        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-    );
-    ftui::Model::update(
-        &mut app,
-        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-    );
-    ftui::Model::update(
-        &mut app,
-        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-    );
+    for _ in 0..3 {
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+        );
+    }
     ftui::Model::update(
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
@@ -523,7 +509,7 @@ fn create_dialog_ctrl_n_and_ctrl_p_follow_tab_navigation() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
     );
-    for _ in 0..5 {
+    for _ in 0..3 {
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -590,7 +576,7 @@ fn create_dialog_ctrl_n_and_ctrl_p_move_focus_from_base_branch() {
     );
     assert_eq!(
         app.create_dialog().map(|dialog| dialog.focused_field),
-        Some(CreateDialogField::SetupCommands)
+        Some(CreateDialogField::Agent)
     );
     ftui::Model::update(
         &mut app,
@@ -652,7 +638,7 @@ fn create_dialog_base_branch_dropdown_selects_with_enter() {
     );
     assert_eq!(
         app.create_dialog().map(|dialog| dialog.focused_field),
-        Some(CreateDialogField::SetupCommands)
+        Some(CreateDialogField::Agent)
     );
 }
 
@@ -691,7 +677,7 @@ fn create_dialog_enter_without_name_shows_validation_toast() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
     );
-    for _ in 0..9 {
+    for _ in 0..7 {
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -714,7 +700,7 @@ fn create_dialog_enter_on_cancel_closes_modal() {
         &mut app,
         Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
     );
-    for _ in 0..10 {
+    for _ in 0..8 {
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
