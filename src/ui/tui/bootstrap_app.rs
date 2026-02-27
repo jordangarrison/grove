@@ -160,6 +160,8 @@ impl GroveApp {
             event_log,
             last_hit_grid: RefCell::new(None),
             sidebar_list_state: RefCell::new(VirtualizedListState::new().with_overscan(0)),
+            last_sidebar_mouse_scroll_at: None,
+            last_sidebar_mouse_scroll_delta: 0,
             next_tick_due_at: None,
             next_tick_interval_ms: None,
             next_poll_due_at: None,

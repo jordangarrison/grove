@@ -312,6 +312,8 @@ struct GroveApp {
     event_log: Box<dyn EventLogger>,
     last_hit_grid: RefCell<Option<HitGrid>>,
     sidebar_list_state: RefCell<VirtualizedListState>,
+    last_sidebar_mouse_scroll_at: Option<Instant>,
+    last_sidebar_mouse_scroll_delta: i8,
     next_tick_due_at: Option<Instant>,
     next_tick_interval_ms: Option<u64>,
     next_poll_due_at: Option<Instant>,

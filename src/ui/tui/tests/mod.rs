@@ -3164,4 +3164,64 @@ fn mouse_wheel_on_sidebar_moves_workspace_selection() {
     assert_eq!(app.state.selected_index, 0);
 }
 
+#[test]
+fn sidebar_mouse_wheel_burst_same_direction_is_debounced() {
+    let mut app = fixture_app();
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+    let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
+    let x = sidebar_inner.x.saturating_add(1);
+    let y = sidebar_inner.y.saturating_add(1);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Resize {
+            width: 100,
+            height: 40,
+        },
+    );
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(MouseEventKind::ScrollDown, x, y)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(MouseEventKind::ScrollDown, x, y)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(MouseEventKind::ScrollDown, x, y)),
+    );
+
+    assert_eq!(app.state.selected_index, 1);
+}
+
+#[test]
+fn sidebar_mouse_wheel_allows_fast_direction_change() {
+    let mut app = fixture_app();
+    let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
+    let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
+    let x = sidebar_inner.x.saturating_add(1);
+    let y = sidebar_inner.y.saturating_add(1);
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Resize {
+            width: 100,
+            height: 40,
+        },
+    );
+
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(MouseEventKind::ScrollDown, x, y)),
+    );
+    ftui::Model::update(
+        &mut app,
+        Msg::Mouse(MouseEvent::new(MouseEventKind::ScrollUp, x, y)),
+    );
+
+    assert_eq!(app.state.selected_index, 0);
+}
+
 mod runtime_flow;

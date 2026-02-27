@@ -3,6 +3,7 @@ use super::*;
 impl GroveApp {
     const PREVIEW_MOUSE_SCROLL_LINES: i32 = 3;
     const SIDEBAR_MOUSE_SCROLL_WORKSPACES: usize = 1;
+    const SIDEBAR_MOUSE_SCROLL_DEBOUNCE_MS: u64 = 50;
     const CREATE_DIALOG_TAB_ROW_OFFSET: u16 = 2;
 
     fn preview_tab_at_pointer(&self, x: u16, y: u16) -> Option<PreviewTab> {
@@ -209,6 +210,20 @@ impl GroveApp {
         }
     }
 
+    fn should_handle_sidebar_mouse_scroll(&mut self, delta: i8, now: Instant) -> bool {
+        if let Some(last_scroll_at) = self.last_sidebar_mouse_scroll_at
+            && self.last_sidebar_mouse_scroll_delta == delta
+            && now.saturating_duration_since(last_scroll_at)
+                < Duration::from_millis(Self::SIDEBAR_MOUSE_SCROLL_DEBOUNCE_MS)
+        {
+            return false;
+        }
+
+        self.last_sidebar_mouse_scroll_at = Some(now);
+        self.last_sidebar_mouse_scroll_delta = delta;
+        true
+    }
+
     pub(super) fn handle_mouse_event(&mut self, mouse_event: MouseEvent) {
         if let Some(state) = self.interactive.as_mut() {
             state.note_mouse_event(Instant::now());
@@ -334,8 +349,10 @@ impl GroveApp {
                     } else {
                         reduce(&mut self.state, Action::EnterListMode);
                     }
-                    for _ in 0..Self::SIDEBAR_MOUSE_SCROLL_WORKSPACES {
-                        self.move_selection(Action::MoveSelectionUp);
+                    if self.should_handle_sidebar_mouse_scroll(-1, Instant::now()) {
+                        for _ in 0..Self::SIDEBAR_MOUSE_SCROLL_WORKSPACES {
+                            self.move_selection(Action::MoveSelectionUp);
+                        }
                     }
                 } else if matches!(region, HitRegion::Preview) {
                     self.state.mode = UiMode::Preview;
@@ -352,8 +369,10 @@ impl GroveApp {
                     } else {
                         reduce(&mut self.state, Action::EnterListMode);
                     }
-                    for _ in 0..Self::SIDEBAR_MOUSE_SCROLL_WORKSPACES {
-                        self.move_selection(Action::MoveSelectionDown);
+                    if self.should_handle_sidebar_mouse_scroll(1, Instant::now()) {
+                        for _ in 0..Self::SIDEBAR_MOUSE_SCROLL_WORKSPACES {
+                            self.move_selection(Action::MoveSelectionDown);
+                        }
                     }
                 } else if matches!(region, HitRegion::Preview) {
                     self.state.mode = UiMode::Preview;
