@@ -276,16 +276,17 @@ mod tests {
         )
         .expect("workspace should be valid");
 
-        let workspace_with_empty_branch = Workspace::try_new(
+        let mut workspace_with_empty_branch = Workspace::try_new(
             "empty".to_string(),
             std::path::PathBuf::from("/repos/grove-empty"),
-            "".to_string(),
+            "placeholder".to_string(),
             Some(1_700_000_100),
             crate::domain::AgentType::Codex,
             crate::domain::WorkspaceStatus::Idle,
             false,
         )
         .expect("workspace should be valid");
+        workspace_with_empty_branch.branch = String::new();
 
         let branches = collect_unique_workspace_branches(&[
             main_workspace,
