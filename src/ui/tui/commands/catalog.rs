@@ -49,6 +49,12 @@ pub(super) struct PaletteCommandSpec {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct HelpHintSpec {
+    pub(super) context: HelpHintContext,
+    pub(super) label: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum HelpHintContext {
     Global,
     Workspace,
@@ -92,6 +98,13 @@ pub(super) struct KeybindingSpec {
     pub(super) scope: KeybindingScope,
     pub(super) code: KeyCodeMatch,
     pub(super) modifiers: KeyModifiersMatch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct UiCommandMeta {
+    pub(super) palette: Option<PaletteCommandSpec>,
+    pub(super) help_hints: &'static [HelpHintSpec],
+    pub(super) keybindings: &'static [KeybindingSpec],
 }
 
 impl KeyCodeMatch {
@@ -204,317 +217,7 @@ impl UiCommand {
     }
 
     pub(super) fn keybindings(self) -> &'static [KeybindingSpec] {
-        match self {
-            UiCommand::ToggleFocus => &[
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Tab,
-                    modifiers: KeyModifiersMatch::Any,
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Char('h'),
-                    modifiers: KeyModifiersMatch::Any,
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Char('l'),
-                    modifiers: KeyModifiersMatch::Any,
-                },
-            ],
-            UiCommand::ToggleSidebar => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::Char('\\'),
-                modifiers: KeyModifiersMatch::Any,
-            }],
-            UiCommand::OpenPreview => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::Enter,
-                modifiers: KeyModifiersMatch::Any,
-            }],
-            UiCommand::EnterInteractive => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::Enter,
-                modifiers: KeyModifiersMatch::Any,
-            }],
-            UiCommand::FocusPreview => &[],
-            UiCommand::FocusList => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::Escape,
-                modifiers: KeyModifiersMatch::Any,
-            }],
-            UiCommand::MoveSelectionUp => &[
-                KeybindingSpec {
-                    scope: KeybindingScope::GlobalNavigation,
-                    code: KeyCodeMatch::Char('k'),
-                    modifiers: KeyModifiersMatch::Contains(Modifiers::ALT),
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::GlobalNavigation,
-                    code: KeyCodeMatch::Char('K'),
-                    modifiers: KeyModifiersMatch::Contains(Modifiers::ALT),
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Char('k'),
-                    modifiers: KeyModifiersMatch::Any,
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Up,
-                    modifiers: KeyModifiersMatch::Any,
-                },
-            ],
-            UiCommand::MoveSelectionDown => &[
-                KeybindingSpec {
-                    scope: KeybindingScope::GlobalNavigation,
-                    code: KeyCodeMatch::Char('j'),
-                    modifiers: KeyModifiersMatch::Contains(Modifiers::ALT),
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::GlobalNavigation,
-                    code: KeyCodeMatch::Char('J'),
-                    modifiers: KeyModifiersMatch::Contains(Modifiers::ALT),
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Char('j'),
-                    modifiers: KeyModifiersMatch::Any,
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Down,
-                    modifiers: KeyModifiersMatch::Any,
-                },
-            ],
-            UiCommand::ScrollUp => &[
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Char('k'),
-                    modifiers: KeyModifiersMatch::Any,
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Up,
-                    modifiers: KeyModifiersMatch::Any,
-                },
-            ],
-            UiCommand::ScrollDown => &[
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Char('j'),
-                    modifiers: KeyModifiersMatch::Any,
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Down,
-                    modifiers: KeyModifiersMatch::Any,
-                },
-            ],
-            UiCommand::PageUp => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::PageUp,
-                modifiers: KeyModifiersMatch::Any,
-            }],
-            UiCommand::PageDown => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::PageDown,
-                modifiers: KeyModifiersMatch::Any,
-            }],
-            UiCommand::ScrollBottom => &[
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Char('G'),
-                    modifiers: KeyModifiersMatch::Any,
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::End,
-                    modifiers: KeyModifiersMatch::Any,
-                },
-            ],
-            UiCommand::PreviousTab => &[
-                KeybindingSpec {
-                    scope: KeybindingScope::GlobalNavigation,
-                    code: KeyCodeMatch::Char('['),
-                    modifiers: KeyModifiersMatch::Contains(Modifiers::ALT),
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Char('['),
-                    modifiers: KeyModifiersMatch::Any,
-                },
-            ],
-            UiCommand::NextTab => &[
-                KeybindingSpec {
-                    scope: KeybindingScope::GlobalNavigation,
-                    code: KeyCodeMatch::Char(']'),
-                    modifiers: KeyModifiersMatch::Contains(Modifiers::ALT),
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Char(']'),
-                    modifiers: KeyModifiersMatch::Any,
-                },
-            ],
-            UiCommand::ResizeSidebarNarrower => &[
-                KeybindingSpec {
-                    scope: KeybindingScope::GlobalNavigation,
-                    code: KeyCodeMatch::Char('b'),
-                    modifiers: KeyModifiersMatch::Contains(Modifiers::ALT),
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::GlobalNavigation,
-                    code: KeyCodeMatch::Char('B'),
-                    modifiers: KeyModifiersMatch::Contains(Modifiers::ALT),
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::GlobalNavigation,
-                    code: KeyCodeMatch::Char('h'),
-                    modifiers: KeyModifiersMatch::Contains(Modifiers::ALT),
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::GlobalNavigation,
-                    code: KeyCodeMatch::Char('H'),
-                    modifiers: KeyModifiersMatch::Contains(Modifiers::ALT),
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::GlobalNavigation,
-                    code: KeyCodeMatch::Left,
-                    modifiers: KeyModifiersMatch::Contains(Modifiers::ALT),
-                },
-            ],
-            UiCommand::ResizeSidebarWider => &[
-                KeybindingSpec {
-                    scope: KeybindingScope::GlobalNavigation,
-                    code: KeyCodeMatch::Char('f'),
-                    modifiers: KeyModifiersMatch::Contains(Modifiers::ALT),
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::GlobalNavigation,
-                    code: KeyCodeMatch::Char('F'),
-                    modifiers: KeyModifiersMatch::Contains(Modifiers::ALT),
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::GlobalNavigation,
-                    code: KeyCodeMatch::Char('l'),
-                    modifiers: KeyModifiersMatch::Contains(Modifiers::ALT),
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::GlobalNavigation,
-                    code: KeyCodeMatch::Char('L'),
-                    modifiers: KeyModifiersMatch::Contains(Modifiers::ALT),
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::GlobalNavigation,
-                    code: KeyCodeMatch::Right,
-                    modifiers: KeyModifiersMatch::Contains(Modifiers::ALT),
-                },
-            ],
-            UiCommand::NewWorkspace => &[
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Char('n'),
-                    modifiers: KeyModifiersMatch::Any,
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Char('N'),
-                    modifiers: KeyModifiersMatch::Any,
-                },
-            ],
-            UiCommand::EditWorkspace => &[
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Char('e'),
-                    modifiers: KeyModifiersMatch::Any,
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Char('E'),
-                    modifiers: KeyModifiersMatch::Any,
-                },
-            ],
-            UiCommand::StartAgent => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::Char('s'),
-                modifiers: KeyModifiersMatch::Any,
-            }],
-            UiCommand::StopAgent => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::Char('x'),
-                modifiers: KeyModifiersMatch::Any,
-            }],
-            UiCommand::RestartAgent => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::Char('r'),
-                modifiers: KeyModifiersMatch::Any,
-            }],
-            UiCommand::DeleteWorkspace => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::Char('D'),
-                modifiers: KeyModifiersMatch::Any,
-            }],
-            UiCommand::MergeWorkspace => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::Char('m'),
-                modifiers: KeyModifiersMatch::Any,
-            }],
-            UiCommand::UpdateFromBase => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::Char('u'),
-                modifiers: KeyModifiersMatch::Any,
-            }],
-            UiCommand::RefreshWorkspaces => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::Char('R'),
-                modifiers: KeyModifiersMatch::Any,
-            }],
-            UiCommand::OpenProjects => &[
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Char('p'),
-                    modifiers: KeyModifiersMatch::Any,
-                },
-                KeybindingSpec {
-                    scope: KeybindingScope::NonInteractive,
-                    code: KeyCodeMatch::Char('P'),
-                    modifiers: KeyModifiersMatch::Any,
-                },
-            ],
-            UiCommand::ReorderProjects => &[],
-            UiCommand::DeleteProject => &[],
-            UiCommand::OpenSettings => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::Char('S'),
-                modifiers: KeyModifiersMatch::Any,
-            }],
-            UiCommand::ToggleMouseCapture => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::Char('M'),
-                modifiers: KeyModifiersMatch::Any,
-            }],
-            UiCommand::ToggleUnsafe => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::Char('!'),
-                modifiers: KeyModifiersMatch::Any,
-            }],
-            UiCommand::OpenHelp => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::Char('?'),
-                modifiers: KeyModifiersMatch::Any,
-            }],
-            UiCommand::OpenCommandPalette => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::CtrlChar('k'),
-                modifiers: KeyModifiersMatch::Any,
-            }],
-            UiCommand::Quit => &[KeybindingSpec {
-                scope: KeybindingScope::NonInteractive,
-                code: KeyCodeMatch::Char('q'),
-                modifiers: KeyModifiersMatch::None,
-            }],
-        }
+        self.meta().keybindings
     }
 
     pub(super) fn matches_keybinding(self, key_event: &KeyEvent, scope: KeybindingScope) -> bool {
@@ -525,7 +228,7 @@ impl UiCommand {
 
     pub(super) fn from_palette_id(id: &str) -> Option<Self> {
         for command in Self::all() {
-            if let Some(spec) = command.palette_spec()
+            if let Some(spec) = command.meta().palette
                 && spec.id == id
             {
                 return Some(*command);

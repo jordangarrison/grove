@@ -14,6 +14,8 @@ mod app;
 mod commands;
 #[path = "commands/help.rs"]
 mod commands_hints;
+#[path = "commands/meta.rs"]
+mod commands_meta;
 #[path = "commands/palette.rs"]
 mod commands_palette;
 #[path = "dialogs/dialogs.rs"]
@@ -2567,6 +2569,16 @@ mod tests {
     }
 
     #[test]
+    fn ui_command_registry_covers_every_command() {
+        let mut meta_count = 0;
+        for command in UiCommand::all() {
+            let _ = command.meta();
+            meta_count += 1;
+        }
+        assert_eq!(meta_count, UiCommand::all().len());
+    }
+
+    #[test]
     fn ui_command_help_hint_labels_match_context_command_lists() {
         let contexts = [
             HelpHintContext::Global,
@@ -2591,6 +2603,51 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn ui_command_help_hints_have_unique_contexts_per_command() {
+        for command in UiCommand::all() {
+            let help_hints = command.meta().help_hints;
+            for (index, left) in help_hints.iter().enumerate() {
+                for right in help_hints.iter().skip(index + 1) {
+                    assert_ne!(
+                        left.context, right.context,
+                        "duplicate help hint context {:?} for command {:?}",
+                        left.context, command
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn ui_command_metadata_counts_match_expected_snapshot() {
+        assert_eq!(
+            UiCommand::all()
+                .iter()
+                .filter(|command| command.meta().palette.is_some())
+                .count(),
+            33
+        );
+        assert_eq!(UiCommand::help_hints_for(HelpHintContext::Global).len(), 12);
+        assert_eq!(
+            UiCommand::help_hints_for(HelpHintContext::Workspace).len(),
+            10
+        );
+        assert_eq!(UiCommand::help_hints_for(HelpHintContext::List).len(), 1);
+        assert_eq!(
+            UiCommand::help_hints_for(HelpHintContext::PreviewAgent).len(),
+            9
+        );
+        assert_eq!(
+            UiCommand::help_hints_for(HelpHintContext::PreviewShell).len(),
+            6
+        );
+        assert_eq!(
+            UiCommand::help_hints_for(HelpHintContext::PreviewGit).len(),
+            3
+        );
     }
 
     #[test]
