@@ -50,16 +50,74 @@ fn is_safe_text_character(character: char) -> bool {
 }
 
 pub(crate) fn strip_mouse_fragments(input: &str) -> String {
-    let mut cleaned = input.to_string();
+    let cleaned = strip_mouse_mode_sequences(input);
+    strip_partial_mouse_sequences(&cleaned)
+}
 
-    for mode in [1000u16, 1002, 1003, 1005, 1006, 1015, 2004] {
-        cleaned = cleaned.replace(&format!("\u{1b}[?{mode}h"), "");
-        cleaned = cleaned.replace(&format!("\u{1b}[?{mode}l"), "");
-        cleaned = cleaned.replace(&format!("[?{mode}h"), "");
-        cleaned = cleaned.replace(&format!("[?{mode}l"), "");
+const MOUSE_MODE_SEQUENCES: [&[u8]; 28] = [
+    b"\x1b[?1000h",
+    b"\x1b[?1000l",
+    b"[?1000h",
+    b"[?1000l",
+    b"\x1b[?1002h",
+    b"\x1b[?1002l",
+    b"[?1002h",
+    b"[?1002l",
+    b"\x1b[?1003h",
+    b"\x1b[?1003l",
+    b"[?1003h",
+    b"[?1003l",
+    b"\x1b[?1005h",
+    b"\x1b[?1005l",
+    b"[?1005h",
+    b"[?1005l",
+    b"\x1b[?1006h",
+    b"\x1b[?1006l",
+    b"[?1006h",
+    b"[?1006l",
+    b"\x1b[?1015h",
+    b"\x1b[?1015l",
+    b"[?1015h",
+    b"[?1015l",
+    b"\x1b[?2004h",
+    b"\x1b[?2004l",
+    b"[?2004h",
+    b"[?2004l",
+];
+
+fn strip_mouse_mode_sequences(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut output = Vec::with_capacity(bytes.len());
+    let mut index = 0usize;
+
+    while index < bytes.len() {
+        if let Some(end) = parse_mouse_mode_sequence_end(bytes, index) {
+            index = end;
+            continue;
+        }
+
+        output.push(bytes[index]);
+        index = index.saturating_add(1);
     }
 
-    strip_partial_mouse_sequences(&cleaned)
+    String::from_utf8(output).unwrap_or_default()
+}
+
+fn parse_mouse_mode_sequence_end(bytes: &[u8], start: usize) -> Option<usize> {
+    if bytes
+        .get(start)
+        .is_none_or(|byte| *byte != b'[' && *byte != b'\x1b')
+    {
+        return None;
+    }
+
+    for pattern in MOUSE_MODE_SEQUENCES {
+        if bytes[start..].starts_with(pattern) {
+            return Some(start.saturating_add(pattern.len()));
+        }
+    }
+
+    None
 }
 
 fn strip_non_sgr_control_sequences(input: &str) -> String {
@@ -100,32 +158,33 @@ fn strip_non_sgr_control_sequences(input: &str) -> String {
 }
 
 fn strip_sgr_sequences(input: &str) -> String {
-    let mut cleaned = String::with_capacity(input.len());
-    let mut chars = input.chars().peekable();
+    let bytes = input.as_bytes();
+    let mut output = Vec::with_capacity(bytes.len());
+    let mut index = 0usize;
 
-    while let Some(character) = chars.next() {
-        if character == '\u{1b}' {
-            if chars.next_if_eq(&'[').is_some() {
-                let mut did_end = false;
-                for value in chars.by_ref() {
-                    if ('\u{40}'..='\u{7e}').contains(&value) {
-                        did_end = true;
+    while index < bytes.len() {
+        if bytes[index] == b'\x1b' {
+            if bytes.get(index.saturating_add(1)) == Some(&b'[') {
+                index = index.saturating_add(2);
+                while index < bytes.len() {
+                    let value = bytes[index];
+                    index = index.saturating_add(1);
+                    if (b'@'..=b'~').contains(&value) {
                         break;
                     }
                 }
-                if did_end {
-                    continue;
-                }
+                continue;
             }
+
+            index = index.saturating_add(1);
             continue;
         }
 
-        if is_safe_text_character(character) {
-            cleaned.push(character);
-        }
+        output.push(bytes[index]);
+        index = index.saturating_add(1);
     }
 
-    cleaned
+    String::from_utf8(output).unwrap_or_default()
 }
 
 fn consume_csi_sequence<I>(chars: &mut std::iter::Peekable<I>, buffer: &mut String) -> Option<char>

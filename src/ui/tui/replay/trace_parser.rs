@@ -6,7 +6,7 @@ pub(crate) fn parse_replay_trace(path: &Path) -> io::Result<ReplayTrace> {
     let mut bootstrap = None;
     let mut messages = Vec::new();
     let mut states = HashMap::new();
-    let mut frame_hashes: HashMap<u64, VecDeque<u64>> = HashMap::new();
+    let mut frame_samples: HashMap<u64, VecDeque<ReplayFrameSample>> = HashMap::new();
 
     for (index, line) in raw.lines().enumerate() {
         let line_number = index.saturating_add(1);
@@ -118,13 +118,33 @@ pub(crate) fn parse_replay_trace(path: &Path) -> io::Result<ReplayTrace> {
             if replay_seq == 0 {
                 continue;
             }
-            let Some(frame_hash) = parsed.data.get("frame_hash").and_then(Value::as_u64) else {
+            let Some(hash) = parsed.data.get("frame_hash").and_then(Value::as_u64) else {
                 continue;
             };
-            frame_hashes
+            let Some(width) = parsed
+                .data
+                .get("width")
+                .and_then(Value::as_u64)
+                .and_then(|value| u16::try_from(value).ok())
+            else {
+                continue;
+            };
+            let Some(height) = parsed
+                .data
+                .get("height")
+                .and_then(Value::as_u64)
+                .and_then(|value| u16::try_from(value).ok())
+            else {
+                continue;
+            };
+            frame_samples
                 .entry(replay_seq)
                 .or_default()
-                .push_back(frame_hash);
+                .push_back(ReplayFrameSample {
+                    hash,
+                    width,
+                    height,
+                });
         }
     }
 
@@ -147,6 +167,6 @@ pub(crate) fn parse_replay_trace(path: &Path) -> io::Result<ReplayTrace> {
         bootstrap,
         messages,
         states,
-        frame_hashes,
+        frame_samples,
     })
 }

@@ -336,6 +336,13 @@ mod tests {
         }
 
         #[test]
+        fn capture_change_strips_sgr_and_preserves_unicode_text() {
+            let raw = "start🙂\u{1b}[31m中\u{1b}[0mend\n";
+            let change = evaluate_capture_change(None, raw);
+            assert_eq!(change.cleaned_output, "start🙂中end\n");
+        }
+
+        #[test]
         fn capture_change_strips_terminal_control_bytes() {
             let raw = "A\u{000e}B\u{000f}C\r\n";
             let change = evaluate_capture_change(None, raw);

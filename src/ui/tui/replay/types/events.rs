@@ -3,13 +3,20 @@ struct ReplayTrace {
     bootstrap: ReplayBootstrapSnapshot,
     messages: Vec<ReplayTraceMessage>,
     states: HashMap<u64, ReplayStateSnapshot>,
-    frame_hashes: HashMap<u64, VecDeque<u64>>,
+    frame_samples: HashMap<u64, VecDeque<ReplayFrameSample>>,
 }
 
 #[derive(Debug, Clone)]
 struct ReplayTraceMessage {
     seq: u64,
     msg: ReplayMsg,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ReplayFrameSample {
+    hash: u64,
+    width: u16,
+    height: u16,
 }
 
 #[derive(Debug, Deserialize)]

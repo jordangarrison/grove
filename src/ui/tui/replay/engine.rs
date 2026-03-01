@@ -5,6 +5,7 @@ use super::*;
 pub fn replay_debug_record(path: &Path, options: &ReplayOptions) -> io::Result<ReplayOutcome> {
     let trace = parse_replay_trace(path)?;
     let mut app = app_from_bootstrap(&trace.bootstrap);
+    let _ = Model::init(&mut app);
     let mut states_compared = 0usize;
     let mut frames_compared = 0usize;
     let mut snapshot_steps = Vec::new();
@@ -37,17 +38,24 @@ pub fn replay_debug_record(path: &Path, options: &ReplayOptions) -> io::Result<R
             states_compared = states_compared.saturating_add(1);
         }
 
+        if let Some(expected_frames) = trace.frame_samples.get(&message.seq)
+            && let Some(expected_frame) = expected_frames.front().copied()
+        {
+            app.viewport_width = expected_frame.width.max(1);
+            app.viewport_height = expected_frame.height.max(1);
+        }
+
         let actual_frame_hash = render_frame_hash(&app);
         if !options.invariant_only
-            && let Some(expected_hashes) = trace.frame_hashes.get(&message.seq)
-            && let Some(expected_hash) = expected_hashes.front().copied()
+            && let Some(expected_frames) = trace.frame_samples.get(&message.seq)
+            && let Some(expected_frame) = expected_frames.front().copied()
         {
-            if actual_frame_hash != expected_hash {
+            if actual_frame_hash != expected_frame.hash {
                 return Err(io::Error::other(format!(
                     "frame hash mismatch at seq {} ({}): expected {}, got {}",
                     message.seq,
                     message.msg.kind_name(),
-                    expected_hash,
+                    expected_frame.hash,
                     actual_frame_hash
                 )));
             }
