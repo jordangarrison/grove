@@ -6809,7 +6809,7 @@ mod tests {
             }
 
             #[test]
-            fn preview_output_rows_do_not_force_theme_background_for_agent_tab() {
+            fn preview_output_rows_use_theme_background_for_agent_tab() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 app.state.selected_index = 0;
@@ -6834,10 +6834,10 @@ mod tests {
                     let Some(cell) = frame.buffer.get(far_right_x, output_y) else {
                         panic!("output row cell should be rendered");
                     };
-                    assert_ne!(
+                    assert_eq!(
                         cell.bg,
                         ui_theme().base,
-                        "agent tab should not force theme background at ({far_right_x},{output_y})",
+                        "agent tab should use theme background at ({far_right_x},{output_y})",
                     );
                 });
             }
