@@ -4,6 +4,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rusqlite::{Connection, OpenFlags};
+use serde::Deserialize;
 
 use crate::domain::WorkspaceStatus;
 
@@ -25,6 +26,19 @@ struct SessionLookupCacheEntry {
 struct SessionMetadata {
     session_id: String,
     time_updated_ms: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MessageRole {
+    Assistant,
+    User,
+    Other,
+}
+
+#[derive(Debug, Deserialize)]
+struct MessageData<'a> {
+    #[serde(borrow)]
+    role: Option<&'a str>,
 }
 
 fn session_lookup_cache() -> &'static Mutex<HashMap<SessionLookupKey, SessionLookupCacheEntry>> {
@@ -99,10 +113,10 @@ pub(super) fn detect_session_status_in_home(
     }
 
     let (_, role, _) = get_last_message_entry(&database_path, &session.session_id)?;
-    match role.as_str() {
-        "assistant" => Some(WorkspaceStatus::Waiting),
-        "user" => Some(WorkspaceStatus::Active),
-        _ => None,
+    match role {
+        MessageRole::Assistant => Some(WorkspaceStatus::Waiting),
+        MessageRole::User => Some(WorkspaceStatus::Active),
+        MessageRole::Other => None,
     }
 }
 
@@ -114,7 +128,7 @@ pub(super) fn latest_attention_marker_in_home(
     let session = find_session_for_path_cached(&database_path, workspace_path)?;
     let (message_id, role, message_updated_ms) =
         get_last_message_entry(&database_path, &session.session_id)?;
-    if role != "assistant" {
+    if role != MessageRole::Assistant {
         return None;
     }
 
@@ -238,7 +252,10 @@ fn find_session_for_path(database_path: &Path, workspace_path: &Path) -> Option<
     None
 }
 
-fn get_last_message_entry(database_path: &Path, session_id: &str) -> Option<(String, String, i64)> {
+fn get_last_message_entry(
+    database_path: &Path,
+    session_id: &str,
+) -> Option<(String, MessageRole, i64)> {
     let connection = open_database(database_path)?;
     let mut statement = connection
         .prepare(
@@ -253,11 +270,7 @@ fn get_last_message_entry(database_path: &Path, session_id: &str) -> Option<(Str
             Ok((message_id, data, updated_ms))
         })
         .ok()?;
-    let value: serde_json::Value = serde_json::from_str(&row.1).ok()?;
-    let role = value
-        .get("role")
-        .and_then(serde_json::Value::as_str)?
-        .to_string();
+    let role = parse_message_role(&row.1)?;
     Some((row.0, role, row.2))
 }
 
@@ -277,6 +290,18 @@ fn is_timestamp_recently_updated_ms(updated_ms: i64, threshold: Duration) -> boo
         return false;
     };
     now_ms.saturating_sub(updated_ms).max(0) < threshold_ms
+}
+
+fn parse_message_role(data: &str) -> Option<MessageRole> {
+    let parsed = serde_json::from_str::<MessageData<'_>>(data).ok()?;
+    let role = parsed.role?;
+    if role == "assistant" {
+        return Some(MessageRole::Assistant);
+    }
+    if role == "user" {
+        return Some(MessageRole::User);
+    }
+    Some(MessageRole::Other)
 }
 
 #[cfg(test)]

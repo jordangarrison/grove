@@ -1,0 +1,105 @@
+{
+  "generated_at_unix_secs": 1772416183,
+  "package_version": "0.1.0",
+  "config": {
+    "warmup_runs": 2,
+    "measured_runs": 15,
+    "workspace_counts": [
+      10,
+      100,
+      500
+    ]
+  },
+  "cases": [
+    {
+      "workspace_count": 10,
+      "discovery": {
+        "warmup_runs": 2,
+        "measured_runs": 15,
+        "min_ms": 0.054419,
+        "p50_ms": 0.057749,
+        "p95_ms": 0.079513,
+        "max_ms": 0.079513,
+        "mean_ms": 0.059706799999999983
+      },
+      "status_target_generation": {
+        "warmup_runs": 2,
+        "measured_runs": 15,
+        "min_ms": 0.005045999999999999,
+        "p50_ms": 0.006535,
+        "p95_ms": 0.025186,
+        "max_ms": 0.025186,
+        "mean_ms": 0.0075421333333333335
+      },
+      "sort_update_pipeline": {
+        "warmup_runs": 2,
+        "measured_runs": 15,
+        "min_ms": 16.924255,
+        "p50_ms": 17.693667,
+        "p95_ms": 18.901034,
+        "max_ms": 18.901034,
+        "mean_ms": 17.707595866666665
+      }
+    },
+    {
+      "workspace_count": 100,
+      "discovery": {
+        "warmup_runs": 2,
+        "measured_runs": 15,
+        "min_ms": 0.6042219999999999,
+        "p50_ms": 0.64085,
+        "p95_ms": 0.658278,
+        "max_ms": 0.658278,
+        "mean_ms": 0.6347573999999999
+      },
+      "status_target_generation": {
+        "warmup_runs": 2,
+        "measured_runs": 15,
+        "min_ms": 0.057896,
+        "p50_ms": 0.0613,
+        "p95_ms": 0.06234,
+        "max_ms": 0.06234,
+        "mean_ms": 0.06104653333333333
+      },
+      "sort_update_pipeline": {
+        "warmup_runs": 2,
+        "measured_runs": 15,
+        "min_ms": 342.918545,
+        "p50_ms": 352.63125,
+        "p95_ms": 407.85632,
+        "max_ms": 407.85632,
+        "mean_ms": 359.80124979999994
+      }
+    },
+    {
+      "workspace_count": 500,
+      "discovery": {
+        "warmup_runs": 2,
+        "measured_runs": 15,
+        "min_ms": 3.2248289999999997,
+        "p50_ms": 3.316901,
+        "p95_ms": 3.4486410000000003,
+        "max_ms": 3.4486410000000003,
+        "mean_ms": 3.3324640666666667
+      },
+      "status_target_generation": {
+        "warmup_runs": 2,
+        "measured_runs": 15,
+        "min_ms": 0.29742,
+        "p50_ms": 0.30105699999999996,
+        "p95_ms": 0.30457999999999996,
+        "max_ms": 0.30457999999999996,
+        "mean_ms": 0.3008702666666666
+      },
+      "sort_update_pipeline": {
+        "warmup_runs": 2,
+        "measured_runs": 15,
+        "min_ms": 1845.9166890000001,
+        "p50_ms": 1946.944514,
+        "p95_ms": 2073.642087,
+        "max_ms": 2073.642087,
+        "mean_ms": 1954.5291183333331
+      }
+    }
+  ]
+}

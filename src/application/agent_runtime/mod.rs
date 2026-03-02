@@ -38,7 +38,7 @@ pub use polling::{
     poll_interval, workspace_should_poll_status, workspace_status_session_target,
     workspace_status_targets_for_polling, workspace_status_targets_for_polling_with_live_preview,
 };
-pub use reconciliation::reconcile_with_sessions;
+pub use reconciliation::{reconcile_with_sessions, reconcile_with_sessions_owned};
 #[cfg(test)]
 use restart::restart_workspace_in_pane_with_io_in_home;
 pub use restart::{

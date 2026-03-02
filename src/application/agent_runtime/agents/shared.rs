@@ -203,9 +203,12 @@ pub(super) fn get_last_message_marker_jsonl(
 }
 
 pub(super) fn cwd_matches(cwd: &Path, workspace_path: &Path) -> bool {
-    let cwd = match absolute_path(cwd) {
-        Some(path) => path,
-        None => return false,
+    if cwd.is_absolute() {
+        return cwd == workspace_path || cwd.starts_with(workspace_path);
+    }
+
+    let Some(cwd) = absolute_path(cwd) else {
+        return false;
     };
     cwd == workspace_path || cwd.starts_with(workspace_path)
 }

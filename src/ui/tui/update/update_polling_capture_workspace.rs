@@ -2,8 +2,6 @@ use super::update_prelude::*;
 
 impl GroveApp {
     pub(super) fn apply_workspace_status_capture(&mut self, capture: WorkspaceStatusCapture) {
-        let processing_started_at = Instant::now();
-        let supported_agent = capture.supported_agent;
         let Some(workspace_index) = self
             .state
             .workspaces
@@ -12,6 +10,16 @@ impl GroveApp {
         else {
             return;
         };
+        self.apply_workspace_status_capture_at_index(capture, workspace_index);
+    }
+
+    pub(super) fn apply_workspace_status_capture_at_index(
+        &mut self,
+        capture: WorkspaceStatusCapture,
+        workspace_index: usize,
+    ) {
+        let processing_started_at = Instant::now();
+        let supported_agent = capture.supported_agent;
 
         match capture.result {
             Ok(output) => {

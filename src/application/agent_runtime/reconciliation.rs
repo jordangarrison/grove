@@ -11,11 +11,21 @@ pub fn reconcile_with_sessions(
     running_sessions: &HashSet<String>,
     previously_running_workspace_names: &HashSet<String>,
 ) -> ReconciliationResult {
-    let mut mapped_workspaces = Vec::with_capacity(workspaces.len());
-    let mut matched_sessions = HashSet::new();
+    reconcile_with_sessions_owned(
+        workspaces.to_vec(),
+        running_sessions,
+        previously_running_workspace_names,
+    )
+}
 
-    for workspace in workspaces {
-        let mut updated = workspace.clone();
+pub fn reconcile_with_sessions_owned(
+    mut workspaces: Vec<Workspace>,
+    running_sessions: &HashSet<String>,
+    previously_running_workspace_names: &HashSet<String>,
+) -> ReconciliationResult {
+    let mut matched_sessions = HashSet::with_capacity(running_sessions.len());
+
+    for workspace in &mut workspaces {
         let session_name = session_name_for_workspace_in_project(
             workspace.project_name.as_deref(),
             &workspace.name,
@@ -23,30 +33,28 @@ pub fn reconcile_with_sessions(
         let has_live_session = running_sessions.contains(&session_name);
         if has_live_session {
             matched_sessions.insert(session_name);
-            updated.status = detect_status(
+            workspace.status = detect_status(
                 "",
                 SessionActivity::Active,
                 workspace.is_main,
                 true,
-                updated.supported_agent,
+                workspace.supported_agent,
             );
-            updated.is_orphaned = false;
+            workspace.is_orphaned = false;
         } else {
-            updated.status = detect_status(
+            workspace.status = detect_status(
                 "",
                 SessionActivity::Idle,
                 workspace.is_main,
                 false,
-                updated.supported_agent,
+                workspace.supported_agent,
             );
-            updated.is_orphaned = if workspace.is_main {
+            workspace.is_orphaned = if workspace.is_main {
                 false
             } else {
                 previously_running_workspace_names.contains(&workspace.name)
             };
         }
-
-        mapped_workspaces.push(updated);
     }
 
     let mut orphaned_sessions: Vec<String> = running_sessions
@@ -57,7 +65,7 @@ pub fn reconcile_with_sessions(
     orphaned_sessions.sort();
 
     ReconciliationResult {
-        workspaces: mapped_workspaces,
+        workspaces,
         orphaned_sessions,
     }
 }

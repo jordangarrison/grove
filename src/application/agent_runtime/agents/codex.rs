@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
 
+use serde::Deserialize;
+
 use crate::domain::WorkspaceStatus;
 
 use super::shared;
@@ -25,6 +27,36 @@ struct SessionLookupCacheEntry {
 struct MessageStatusCacheEntry {
     modified_at: SystemTime,
     status: Option<WorkspaceStatus>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SessionMetaLine<'a> {
+    #[serde(borrow, rename = "type")]
+    line_type: &'a str,
+    #[serde(borrow)]
+    payload: Option<SessionMetaPayload<'a>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SessionMetaPayload<'a> {
+    #[serde(borrow)]
+    cwd: Option<&'a str>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResponseItemLine<'a> {
+    #[serde(borrow, rename = "type")]
+    line_type: &'a str,
+    #[serde(borrow)]
+    payload: Option<ResponsePayload<'a>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResponsePayload<'a> {
+    #[serde(borrow, rename = "type")]
+    payload_type: Option<&'a str>,
+    #[serde(borrow)]
+    role: Option<&'a str>,
 }
 
 fn session_lookup_cache() -> &'static Mutex<HashMap<SessionLookupKey, SessionLookupCacheEntry>> {
@@ -218,16 +250,16 @@ fn find_session_for_path(sessions_dir: &Path, workspace_path: &Path) -> Option<P
                 continue;
             }
 
-            let metadata = match entry.metadata() {
-                Ok(metadata) => metadata,
-                Err(_) => continue,
-            };
             let Some(cwd) = get_session_cwd(&path) else {
                 continue;
             };
             if !shared::cwd_matches(&cwd, workspace_path) {
                 continue;
             }
+            let metadata = match entry.metadata() {
+                Ok(metadata) => metadata,
+                Err(_) => continue,
+            };
             let modified = match metadata.modified() {
                 Ok(modified) => modified,
                 Err(_) => continue,
@@ -250,17 +282,9 @@ fn get_session_cwd(path: &Path) -> Option<PathBuf> {
     let file = File::open(path).ok()?;
     let reader = BufReader::new(file);
     for line in reader.lines().map_while(Result::ok) {
-        let value: serde_json::Value = match serde_json::from_str(&line) {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-        if value.get("type").and_then(|value| value.as_str()) != Some("session_meta") {
+        let Some(cwd) = parse_session_meta_cwd(&line) else {
             continue;
-        }
-        let cwd = value
-            .get("payload")
-            .and_then(|payload| payload.get("cwd"))
-            .and_then(|cwd| cwd.as_str())?;
+        };
         return Some(PathBuf::from(cwd));
     }
     None
@@ -273,26 +297,7 @@ fn get_last_message_status(path: &Path) -> Option<WorkspaceStatus> {
         if trimmed.is_empty() {
             continue;
         }
-        let value: serde_json::Value = match serde_json::from_str(trimmed) {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-        if value.get("type").and_then(|value| value.as_str()) != Some("response_item") {
-            continue;
-        }
-        if value
-            .get("payload")
-            .and_then(|payload| payload.get("type"))
-            .and_then(|value| value.as_str())
-            != Some("message")
-        {
-            continue;
-        }
-        match value
-            .get("payload")
-            .and_then(|payload| payload.get("role"))
-            .and_then(|value| value.as_str())
-        {
+        match parse_response_message_role(trimmed) {
             Some("assistant") => return Some(WorkspaceStatus::Waiting),
             Some("user") => return Some(WorkspaceStatus::Active),
             _ => continue,
@@ -308,26 +313,7 @@ fn get_last_message_marker(path: &Path) -> Option<(bool, String)> {
         if trimmed.is_empty() {
             continue;
         }
-        let value: serde_json::Value = match serde_json::from_str(trimmed) {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-        if value.get("type").and_then(|value| value.as_str()) != Some("response_item") {
-            continue;
-        }
-        if value
-            .get("payload")
-            .and_then(|payload| payload.get("type"))
-            .and_then(|value| value.as_str())
-            != Some("message")
-        {
-            continue;
-        }
-        match value
-            .get("payload")
-            .and_then(|payload| payload.get("role"))
-            .and_then(|value| value.as_str())
-        {
+        match parse_response_message_role(trimmed) {
             Some("assistant") => {
                 let marker = shared::marker_for_session_line(path, trimmed)?;
                 return Some((true, marker));
@@ -341,6 +327,26 @@ fn get_last_message_marker(path: &Path) -> Option<(bool, String)> {
     }
 
     None
+}
+
+fn parse_session_meta_cwd(line: &str) -> Option<&str> {
+    let parsed = serde_json::from_str::<SessionMetaLine<'_>>(line).ok()?;
+    if parsed.line_type != "session_meta" {
+        return None;
+    }
+    parsed.payload.and_then(|payload| payload.cwd)
+}
+
+fn parse_response_message_role(line: &str) -> Option<&str> {
+    let parsed = serde_json::from_str::<ResponseItemLine<'_>>(line).ok()?;
+    if parsed.line_type != "response_item" {
+        return None;
+    }
+    let payload = parsed.payload?;
+    if payload.payload_type != Some("message") {
+        return None;
+    }
+    payload.role
 }
 
 #[cfg(test)]

@@ -152,14 +152,11 @@ impl GroveApp {
         self.polling.agent_activity_frames.clear();
     }
 
-    fn workspace_status_tracking_key(workspace_path: &Path) -> String {
-        workspace_path.to_string_lossy().to_string()
-    }
-
     pub(super) fn clear_status_tracking_for_workspace_path(&mut self, workspace_path: &Path) {
-        let key = Self::workspace_status_tracking_key(workspace_path);
-        self.polling.workspace_status_digests.remove(&key);
-        self.polling.workspace_output_changing.remove(&key);
+        self.polling.workspace_status_digests.remove(workspace_path);
+        self.polling
+            .workspace_output_changing
+            .remove(workspace_path);
     }
 
     pub(super) fn clear_status_tracking(&mut self) {
@@ -172,23 +169,21 @@ impl GroveApp {
         workspace_path: &Path,
         output: &str,
     ) -> (bool, String) {
-        let key = Self::workspace_status_tracking_key(workspace_path);
-        let previous_digest = self.polling.workspace_status_digests.get(&key);
+        let previous_digest = self.polling.workspace_status_digests.get(workspace_path);
         let change = evaluate_capture_change(previous_digest, output);
         self.polling
             .workspace_status_digests
-            .insert(key.clone(), change.digest);
+            .insert(workspace_path.to_path_buf(), change.digest);
         self.polling
             .workspace_output_changing
-            .insert(key, change.changed_cleaned);
+            .insert(workspace_path.to_path_buf(), change.changed_cleaned);
         (change.changed_cleaned, change.cleaned_output)
     }
 
     fn workspace_output_changing(&self, workspace_path: &Path) -> bool {
-        let key = Self::workspace_status_tracking_key(workspace_path);
         self.polling
             .workspace_output_changing
-            .get(&key)
+            .get(workspace_path)
             .copied()
             .unwrap_or(false)
     }

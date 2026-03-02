@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::application::agent_runtime::reconciliation::reconcile_with_sessions;
+use crate::application::agent_runtime::reconciliation::reconcile_with_sessions_owned;
 use crate::infrastructure::adapters::{
     BootstrapData, DiscoveryState, GitAdapter, MultiplexerAdapter, SystemAdapter, bootstrap_data,
 };
@@ -19,8 +19,8 @@ pub(crate) fn discover_bootstrap_data(
     }
 
     let running_sessions = multiplexer.running_sessions();
-    let reconciled =
-        reconcile_with_sessions(&bootstrap.workspaces, &running_sessions, &HashSet::new());
+    let workspaces = std::mem::take(&mut bootstrap.workspaces);
+    let reconciled = reconcile_with_sessions_owned(workspaces, &running_sessions, &HashSet::new());
     bootstrap.workspaces = reconciled.workspaces;
     bootstrap
 }

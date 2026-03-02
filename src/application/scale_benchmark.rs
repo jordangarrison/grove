@@ -70,6 +70,8 @@ struct FlowStats {
     min_ms: f64,
     p50_ms: f64,
     p95_ms: f64,
+    #[serde(default)]
+    p99_ms: f64,
     max_ms: f64,
     mean_ms: f64,
 }
@@ -234,8 +236,8 @@ fn print_human_report(report: &ScaleBenchmarkReport, warnings: &[String]) {
 
 fn print_flow_line(name: &str, stats: &FlowStats) {
     println!(
-        "  {:<14} p50={:>8.3}ms p95={:>8.3}ms min={:>8.3}ms max={:>8.3}ms mean={:>8.3}ms",
-        name, stats.p50_ms, stats.p95_ms, stats.min_ms, stats.max_ms, stats.mean_ms
+        "  {:<14} p50={:>8.3}ms p95={:>8.3}ms p99={:>8.3}ms min={:>8.3}ms max={:>8.3}ms mean={:>8.3}ms",
+        name, stats.p50_ms, stats.p95_ms, stats.p99_ms, stats.min_ms, stats.max_ms, stats.mean_ms
     );
 }
 
@@ -312,6 +314,22 @@ fn compare_against_baseline(
                     allowed_p95
                 ));
             }
+
+            if baseline_flow.p99_ms > 0.0 {
+                let allowed_p99 =
+                    baseline_flow.p99_ms * (100.0 + severe_regression_pct as f64) / 100.0;
+                if current_flow.p99_ms > allowed_p99 {
+                    warnings.push(format!(
+                        "N={} flow={} p99 {:.3}ms exceeded baseline {:.3}ms (+{}%, allowed {:.3}ms)",
+                        current_case.workspace_count,
+                        flow_name,
+                        current_flow.p99_ms,
+                        baseline_flow.p99_ms,
+                        severe_regression_pct,
+                        allowed_p99
+                    ));
+                }
+            }
         }
     }
     warnings
@@ -372,6 +390,7 @@ impl FlowStats {
         let max_ms = sorted.last().copied().unwrap_or(0.0);
         let p50_ms = percentile_ms(&sorted, 0.50);
         let p95_ms = percentile_ms(&sorted, 0.95);
+        let p99_ms = percentile_ms(&sorted, 0.99);
 
         Self {
             warmup_runs,
@@ -379,6 +398,7 @@ impl FlowStats {
             min_ms,
             p50_ms,
             p95_ms,
+            p99_ms,
             max_ms,
             mean_ms,
         }
@@ -607,6 +627,7 @@ mod tests {
             min_ms: p50_ms,
             p50_ms,
             p95_ms,
+            p99_ms: p95_ms,
             max_ms: p95_ms,
             mean_ms: p50_ms,
         }
@@ -627,6 +648,7 @@ mod tests {
         assert_eq!(stats.min_ms, 1.0);
         assert_eq!(stats.p50_ms, 3.0);
         assert_eq!(stats.p95_ms, 5.0);
+        assert_eq!(stats.p99_ms, 5.0);
         assert_eq!(stats.max_ms, 5.0);
     }
 

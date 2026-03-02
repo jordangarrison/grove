@@ -199,8 +199,21 @@ impl GroveApp {
             }
         }
 
+        let workspace_index_by_path = self
+            .state
+            .workspaces
+            .iter()
+            .enumerate()
+            .map(|(index, workspace)| (workspace.path.clone(), index))
+            .collect::<std::collections::HashMap<_, _>>();
         for status_capture in completion.workspace_status_captures {
-            self.apply_workspace_status_capture(status_capture);
+            let Some(workspace_index) = workspace_index_by_path
+                .get(status_capture.workspace_path.as_path())
+                .copied()
+            else {
+                continue;
+            };
+            self.apply_workspace_status_capture_at_index(status_capture, workspace_index);
         }
         if !had_live_capture
             && self
