@@ -50,8 +50,32 @@ fn is_safe_text_character(character: char) -> bool {
 }
 
 pub(crate) fn strip_mouse_fragments(input: &str) -> String {
-    let cleaned = strip_mouse_mode_sequences(input);
-    strip_partial_mouse_sequences(&cleaned)
+    let bytes = input.as_bytes();
+    let mut output = Vec::with_capacity(bytes.len());
+    let mut index = 0usize;
+
+    while index < bytes.len() {
+        let byte = bytes[index];
+
+        if matches!(byte, b'[' | b'\x1b')
+            && let Some(end) = parse_mouse_mode_sequence_end(bytes, index)
+        {
+            index = end;
+            continue;
+        }
+
+        if matches!(byte, b'[' | b'M' | b'm')
+            && let Some(end) = parse_mouse_fragment_end(bytes, index)
+        {
+            index = end;
+            continue;
+        }
+
+        output.push(byte);
+        index = index.saturating_add(1);
+    }
+
+    String::from_utf8(output).unwrap_or_default()
 }
 
 const MOUSE_MODE_SEQUENCES: [&[u8]; 28] = [
@@ -84,27 +108,6 @@ const MOUSE_MODE_SEQUENCES: [&[u8]; 28] = [
     b"[?2004h",
     b"[?2004l",
 ];
-
-fn strip_mouse_mode_sequences(input: &str) -> String {
-    let bytes = input.as_bytes();
-    let mut output = Vec::with_capacity(bytes.len());
-    let mut index = 0usize;
-
-    while index < bytes.len() {
-        let byte = bytes[index];
-        if matches!(byte, b'[' | b'\x1b')
-            && let Some(end) = parse_mouse_mode_sequence_end(bytes, index)
-        {
-            index = end;
-            continue;
-        }
-
-        output.push(byte);
-        index = index.saturating_add(1);
-    }
-
-    String::from_utf8(output).unwrap_or_default()
-}
 
 fn parse_mouse_mode_sequence_end(bytes: &[u8], start: usize) -> Option<usize> {
     if bytes
@@ -227,27 +230,6 @@ fn strip_non_sgr_control_sequences(input: &str) -> (String, String) {
     }
 
     (render_output, cleaned_without_sgr)
-}
-
-fn strip_partial_mouse_sequences(input: &str) -> String {
-    let bytes = input.as_bytes();
-    let mut output: Vec<u8> = Vec::with_capacity(bytes.len());
-    let mut index = 0usize;
-
-    while index < bytes.len() {
-        let byte = bytes[index];
-        if matches!(byte, b'[' | b'M' | b'm')
-            && let Some(end) = parse_mouse_fragment_end(bytes, index)
-        {
-            index = end;
-            continue;
-        }
-
-        output.push(byte);
-        index += 1;
-    }
-
-    String::from_utf8(output).unwrap_or_default()
 }
 
 fn parse_mouse_fragment_end(bytes: &[u8], start: usize) -> Option<usize> {

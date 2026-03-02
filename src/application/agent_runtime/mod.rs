@@ -383,6 +383,12 @@ mod tests {
         }
 
         #[test]
+        fn strip_mouse_fragments_removes_modes_and_partials_in_single_input() {
+            let raw = "A\u{1b}[?1002hB[<65;107;16MC";
+            assert_eq!(strip_mouse_fragments(raw), "ABC");
+        }
+
+        #[test]
         fn strip_mouse_fragments_preserves_non_mouse_candidate_prefixes() {
             assert_eq!(strip_mouse_fragments("Mnot-mouse"), "Mnot-mouse");
             assert_eq!(strip_mouse_fragments("text [<x;1;2"), "text [<x;1;2");
