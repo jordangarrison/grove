@@ -14,6 +14,11 @@ pub(crate) struct CliArgs {
     pub(crate) replay_snapshot_path: Option<PathBuf>,
     pub(crate) replay_emit_test_name: Option<String>,
     pub(crate) replay_invariant_only: bool,
+    pub(crate) benchmark_scale: bool,
+    pub(crate) benchmark_json_output: bool,
+    pub(crate) benchmark_baseline_path: Option<PathBuf>,
+    pub(crate) benchmark_write_baseline_path: Option<PathBuf>,
+    pub(crate) benchmark_warn_regression_pct: Option<u64>,
 }
 
 pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io::Result<CliArgs> {
@@ -38,6 +43,12 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io:
                 cli.debug_record = true;
             }
             "replay" => {
+                if cli.benchmark_scale {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "replay cannot be combined with benchmark-scale",
+                    ));
+                }
                 let Some(path) = args.next() else {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
@@ -45,6 +56,15 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io:
                     ));
                 };
                 cli.replay_trace_path = Some(PathBuf::from(path));
+            }
+            "benchmark-scale" => {
+                if cli.replay_trace_path.is_some() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "benchmark-scale cannot be combined with replay",
+                    ));
+                }
+                cli.benchmark_scale = true;
             }
             "--snapshot" => {
                 let Some(path) = args.next() else {
@@ -67,6 +87,48 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io:
             "--invariant-only" => {
                 cli.replay_invariant_only = true;
             }
+            "--json" => {
+                cli.benchmark_json_output = true;
+            }
+            "--baseline" => {
+                let Some(path) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--baseline requires a file path",
+                    ));
+                };
+                cli.benchmark_baseline_path = Some(PathBuf::from(path));
+            }
+            "--write-baseline" => {
+                let Some(path) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--write-baseline requires a file path",
+                    ));
+                };
+                cli.benchmark_write_baseline_path = Some(PathBuf::from(path));
+            }
+            "--warn-regression-pct" => {
+                let Some(value) = args.next() else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--warn-regression-pct requires a positive integer",
+                    ));
+                };
+                let parsed = value.parse::<u64>().map_err(|error| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("--warn-regression-pct must be an integer: {error}"),
+                    )
+                })?;
+                if parsed == 0 {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "--warn-regression-pct must be greater than zero",
+                    ));
+                }
+                cli.benchmark_warn_regression_pct = Some(parsed);
+            }
             _ => {}
         }
     }
@@ -79,6 +141,18 @@ pub(crate) fn parse_cli_args(args: impl IntoIterator<Item = String>) -> std::io:
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "replay flags require `replay <trace-path>`",
+        ));
+    }
+
+    if !cli.benchmark_scale
+        && (cli.benchmark_json_output
+            || cli.benchmark_baseline_path.is_some()
+            || cli.benchmark_write_baseline_path.is_some()
+            || cli.benchmark_warn_regression_pct.is_some())
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "benchmark flags require `benchmark-scale`",
         ));
     }
 
@@ -133,6 +207,19 @@ pub(crate) fn ensure_event_log_parent_directory(path: &Path) -> std::io::Result<
 
 pub fn run(args: impl IntoIterator<Item = String>) -> std::io::Result<()> {
     let cli = parse_cli_args(args)?;
+
+    if cli.benchmark_scale {
+        let options = crate::application::scale_benchmark::ScaleBenchmarkOptions {
+            json_output: cli.benchmark_json_output,
+            baseline_path: cli.benchmark_baseline_path,
+            write_baseline_path: cli.benchmark_write_baseline_path,
+            severe_regression_pct: cli.benchmark_warn_regression_pct.unwrap_or(
+                crate::application::scale_benchmark::ScaleBenchmarkOptions::default()
+                    .severe_regression_pct,
+            ),
+        };
+        return crate::application::scale_benchmark::run_scale_benchmark(options);
+    }
 
     if let Some(trace_path) = cli.replay_trace_path.as_ref() {
         if let Some(name) = cli.replay_emit_test_name.as_deref() {
@@ -210,6 +297,11 @@ mod tests {
                 replay_snapshot_path: None,
                 replay_emit_test_name: None,
                 replay_invariant_only: false,
+                benchmark_scale: false,
+                benchmark_json_output: false,
+                benchmark_baseline_path: None,
+                benchmark_write_baseline_path: None,
+                benchmark_warn_regression_pct: None,
             }
         );
     }
@@ -235,6 +327,11 @@ mod tests {
                 replay_snapshot_path: None,
                 replay_emit_test_name: None,
                 replay_invariant_only: false,
+                benchmark_scale: false,
+                benchmark_json_output: false,
+                benchmark_baseline_path: None,
+                benchmark_write_baseline_path: None,
+                benchmark_warn_regression_pct: None,
             }
         );
     }
@@ -262,6 +359,11 @@ mod tests {
                 replay_snapshot_path: Some(PathBuf::from("/tmp/replay-snapshot.json")),
                 replay_emit_test_name: Some("flow-a".to_string()),
                 replay_invariant_only: true,
+                benchmark_scale: false,
+                benchmark_json_output: false,
+                benchmark_baseline_path: None,
+                benchmark_write_baseline_path: None,
+                benchmark_warn_regression_pct: None,
             }
         );
     }
@@ -270,6 +372,57 @@ mod tests {
     fn cli_parser_rejects_replay_flags_without_replay_subcommand() {
         let error = parse_cli_args(vec!["--snapshot".to_string(), "/tmp/out.json".to_string()])
             .expect_err("replay-only flags without replay should fail");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn cli_parser_reads_benchmark_scale_options() {
+        let parsed = parse_cli_args(vec![
+            "benchmark-scale".to_string(),
+            "--json".to_string(),
+            "--baseline".to_string(),
+            "/tmp/baseline.json".to_string(),
+            "--write-baseline".to_string(),
+            "/tmp/new-baseline.json".to_string(),
+            "--warn-regression-pct".to_string(),
+            "25".to_string(),
+        ])
+        .expect("benchmark arguments should parse");
+
+        assert_eq!(
+            parsed,
+            CliArgs {
+                print_hello: false,
+                event_log_path: None,
+                debug_record: false,
+                replay_trace_path: None,
+                replay_snapshot_path: None,
+                replay_emit_test_name: None,
+                replay_invariant_only: false,
+                benchmark_scale: true,
+                benchmark_json_output: true,
+                benchmark_baseline_path: Some(PathBuf::from("/tmp/baseline.json")),
+                benchmark_write_baseline_path: Some(PathBuf::from("/tmp/new-baseline.json")),
+                benchmark_warn_regression_pct: Some(25),
+            }
+        );
+    }
+
+    #[test]
+    fn cli_parser_rejects_benchmark_flags_without_benchmark_subcommand() {
+        let error = parse_cli_args(vec!["--json".to_string()])
+            .expect_err("benchmark flags without benchmark command should fail");
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn cli_parser_rejects_benchmark_and_replay_combination() {
+        let error = parse_cli_args(vec![
+            "benchmark-scale".to_string(),
+            "replay".to_string(),
+            "/tmp/trace.jsonl".to_string(),
+        ])
+        .expect_err("benchmark and replay should not combine");
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
     }
 

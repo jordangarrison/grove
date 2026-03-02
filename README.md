@@ -201,6 +201,11 @@ Inside Grove:
 - `replay <trace-path> --invariant-only`, replay with state/invariant checks only
 - `replay <trace-path> --snapshot <path>`, write replay snapshot JSON
 - `replay <trace-path> --emit-test <name>`, copy trace into `tests/fixtures/replay/<name>.jsonl`
+- `benchmark-scale`, run workspace scale benchmark harness (`N=10,100,500`)
+- `benchmark-scale --json`, emit machine-readable benchmark output
+- `benchmark-scale --write-baseline <path>`, write benchmark JSON baseline
+- `benchmark-scale --baseline <path>`, compare current results against a baseline and warn on severe p95 regressions
+- `benchmark-scale --warn-regression-pct <N>`, adjust severe regression threshold percent (default 35)
 
 Example:
 
@@ -216,10 +221,19 @@ cargo run -- replay .grove/debug-record-*.jsonl --snapshot .grove/replay-snapsho
 
 # promote a trace into a fixture input
 cargo run -- replay .grove/debug-record-*.jsonl --emit-test flow-a
+
+# run workspace scale benchmarks and write baseline JSON
+cargo run -- benchmark-scale --write-baseline .grove/workspace-scale-baseline.json
+
+# compare against previous baseline
+cargo run -- benchmark-scale --baseline .grove/workspace-scale-baseline.json
 ```
 
 Detailed replay workflow:
 - [docs/debug-replay.md](docs/debug-replay.md)
+
+Workspace scale benchmark details:
+- [docs/workspace-scale-benchmarks.md](docs/workspace-scale-benchmarks.md)
 
 ## Configuration
 

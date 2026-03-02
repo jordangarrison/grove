@@ -11,10 +11,10 @@ mod parser;
 #[path = "adapters/workspace.rs"]
 mod workspace;
 
-#[cfg(test)]
 use parser::{parse_branch_activity, parse_worktree_porcelain};
+use workspace::build_workspaces;
 #[cfg(test)]
-use workspace::{build_workspaces, workspace_name_from_path};
+use workspace::workspace_name_from_path;
 
 const TMUX_SESSION_PREFIX: &str = "grove-ws-";
 
@@ -85,6 +85,17 @@ pub(crate) fn bootstrap_data(
             discovery_state: DiscoveryState::Error(error.message()),
         },
     }
+}
+
+pub(crate) fn benchmark_discovery_from_synthetic_fixture(
+    porcelain_worktrees: &str,
+    branch_activity: &str,
+    repo_root: &Path,
+    repo_name: &str,
+) -> Result<Vec<Workspace>, GitAdapterError> {
+    let activity_by_branch = parse_branch_activity(branch_activity);
+    let parsed_worktrees = parse_worktree_porcelain(porcelain_worktrees)?;
+    build_workspaces(&parsed_worktrees, repo_root, repo_name, &activity_by_branch)
 }
 
 #[derive(Debug, Clone, Default)]
