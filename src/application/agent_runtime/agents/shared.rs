@@ -203,14 +203,33 @@ pub(super) fn get_last_message_marker_jsonl(
 }
 
 pub(super) fn cwd_matches(cwd: &Path, workspace_path: &Path) -> bool {
-    if cwd.is_absolute() {
-        return cwd == workspace_path || cwd.starts_with(workspace_path);
+    let cwd = if cwd.is_absolute() {
+        cwd.to_path_buf()
+    } else {
+        let Some(cwd) = absolute_path(cwd) else {
+            return false;
+        };
+        cwd
+    };
+
+    if cwd == workspace_path {
+        return true;
     }
 
-    let Some(cwd) = absolute_path(cwd) else {
+    if cwd.is_absolute()
+        && workspace_path.is_absolute()
+        && let (Some(cwd_str), Some(workspace_str)) = (cwd.to_str(), workspace_path.to_str())
+        && !(workspace_str.len() > 1 && workspace_str.ends_with('/'))
+        && let Some(remainder) = cwd_str.strip_prefix(workspace_str)
+    {
+        return remainder.is_empty() || remainder.starts_with('/');
+    }
+
+    if !cwd.is_absolute() {
         return false;
-    };
-    cwd == workspace_path || cwd.starts_with(workspace_path)
+    }
+
+    cwd.starts_with(workspace_path)
 }
 
 pub(super) fn prune_by_oldest<K, V, T, C, O>(
@@ -242,5 +261,29 @@ pub(super) fn prune_by_oldest<K, V, T, C, O>(
     entries.sort_by(|left, right| left.0.cmp(&right.0));
     for (_, key) in entries.into_iter().take(overflow) {
         cache.remove(&key);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::cwd_matches;
+
+    #[test]
+    fn cwd_matches_accepts_equal_or_descendant_paths() {
+        assert!(cwd_matches(Path::new("/tmp/repo"), Path::new("/tmp/repo")));
+        assert!(cwd_matches(
+            Path::new("/tmp/repo/workspace"),
+            Path::new("/tmp/repo")
+        ));
+    }
+
+    #[test]
+    fn cwd_matches_rejects_non_component_prefixes() {
+        assert!(!cwd_matches(
+            Path::new("/tmp/repository"),
+            Path::new("/tmp/repo")
+        ));
     }
 }
