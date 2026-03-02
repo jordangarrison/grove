@@ -29,6 +29,13 @@ struct MessageStatusCacheEntry {
     status: Option<WorkspaceStatus>,
 }
 
+#[derive(Debug, Clone)]
+struct SessionCwdCacheEntry {
+    cached_at: Instant,
+    modified_at: SystemTime,
+    cwd: Option<PathBuf>,
+}
+
 #[derive(Debug, Deserialize)]
 struct SessionMetaLine<'a> {
     #[serde(borrow, rename = "type")]
@@ -67,6 +74,11 @@ fn session_lookup_cache() -> &'static Mutex<HashMap<SessionLookupKey, SessionLoo
 
 fn message_status_cache() -> &'static Mutex<HashMap<PathBuf, MessageStatusCacheEntry>> {
     static CACHE: OnceLock<Mutex<HashMap<PathBuf, MessageStatusCacheEntry>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn session_cwd_cache() -> &'static Mutex<HashMap<PathBuf, SessionCwdCacheEntry>> {
+    static CACHE: OnceLock<Mutex<HashMap<PathBuf, SessionCwdCacheEntry>>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -220,6 +232,9 @@ fn reset_caches_for_test() {
     if let Ok(mut cache) = message_status_cache().lock() {
         cache.clear();
     }
+    if let Ok(mut cache) = session_cwd_cache().lock() {
+        cache.clear();
+    }
 }
 
 fn find_session_for_path(sessions_dir: &Path, workspace_path: &Path) -> Option<PathBuf> {
@@ -250,12 +265,6 @@ fn find_session_for_path(sessions_dir: &Path, workspace_path: &Path) -> Option<P
                 continue;
             }
 
-            let Some(cwd) = get_session_cwd(&path) else {
-                continue;
-            };
-            if !shared::cwd_matches(&cwd, workspace_path) {
-                continue;
-            }
             let metadata = match entry.metadata() {
                 Ok(metadata) => metadata,
                 Err(_) => continue,
@@ -264,6 +273,13 @@ fn find_session_for_path(sessions_dir: &Path, workspace_path: &Path) -> Option<P
                 Ok(modified) => modified,
                 Err(_) => continue,
             };
+
+            let Some(cwd) = get_session_cwd_cached(&path, modified) else {
+                continue;
+            };
+            if !shared::cwd_matches(&cwd, workspace_path) {
+                continue;
+            }
             let replace = match best_time {
                 Some(current_best) => modified > current_best,
                 None => true,
@@ -276,6 +292,37 @@ fn find_session_for_path(sessions_dir: &Path, workspace_path: &Path) -> Option<P
     }
 
     best_path
+}
+
+fn get_session_cwd_cached(path: &Path, modified_at: SystemTime) -> Option<PathBuf> {
+    if let Ok(cache) = session_cwd_cache().lock()
+        && let Some(entry) = cache.get(path)
+        && entry.modified_at == modified_at
+    {
+        return entry.cwd.clone();
+    }
+
+    let cwd = get_session_cwd(path);
+    if let Ok(mut cache) = session_cwd_cache().lock() {
+        let cached_at = Instant::now();
+        cache.insert(
+            path.to_path_buf(),
+            SessionCwdCacheEntry {
+                cached_at,
+                modified_at,
+                cwd: cwd.clone(),
+            },
+        );
+        shared::prune_by_oldest(
+            &mut cache,
+            super::super::SESSION_LOOKUP_CACHE_MAX_ENTRIES,
+            Some(super::super::SESSION_LOOKUP_EVICTION_TTL),
+            |entry| entry.cached_at,
+            |entry| entry.cached_at,
+        );
+    }
+
+    cwd
 }
 
 fn get_session_cwd(path: &Path) -> Option<PathBuf> {
@@ -512,5 +559,33 @@ mod tests {
             .expect("message status cache lock should succeed");
         assert!(cache.contains_key(&session_a));
         assert!(cache.contains_key(&session_b));
+    }
+
+    #[test]
+    fn session_cwd_cache_reloads_when_file_modification_changes() {
+        reset_caches_for_test();
+        let root = unique_test_dir("codex-cwd-cache");
+        let workspace_a = root.join("workspace-a");
+        let workspace_b = root.join("workspace-b");
+        fs::create_dir_all(&workspace_a).expect("workspace-a should exist");
+        fs::create_dir_all(&workspace_b).expect("workspace-b should exist");
+        let session_file = root.join("session.jsonl");
+        write_codex_session_file(&session_file, &workspace_a);
+
+        let modified_a = fs::metadata(&session_file)
+            .and_then(|metadata| metadata.modified())
+            .expect("modified time should be available");
+        let cached_a = get_session_cwd_cached(&session_file, modified_a)
+            .expect("cwd should be cached for first version");
+        assert_eq!(cached_a, workspace_a);
+
+        std::thread::sleep(Duration::from_millis(10));
+        write_codex_session_file(&session_file, &workspace_b);
+        let modified_b = fs::metadata(&session_file)
+            .and_then(|metadata| metadata.modified())
+            .expect("modified time should be available");
+        let cached_b = get_session_cwd_cached(&session_file, modified_b)
+            .expect("cwd should refresh after modification");
+        assert_eq!(cached_b, workspace_b);
     }
 }
