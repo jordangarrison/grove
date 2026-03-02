@@ -372,6 +372,7 @@ mod tests {
         fn strip_mouse_fragments_removes_terminal_modes_and_preserves_normal_brackets() {
             assert_eq!(strip_mouse_fragments("value[?1002h"), "value");
             assert_eq!(strip_mouse_fragments("keep [test]"), "keep [test]");
+            assert_eq!(strip_mouse_fragments("value[?9999h"), "value[?9999h");
         }
 
         #[test]

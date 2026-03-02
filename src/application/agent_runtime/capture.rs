@@ -91,12 +91,15 @@ fn strip_mouse_mode_sequences(input: &str) -> String {
     let mut index = 0usize;
 
     while index < bytes.len() {
-        if let Some(end) = parse_mouse_mode_sequence_end(bytes, index) {
+        let byte = bytes[index];
+        if matches!(byte, b'[' | b'\x1b')
+            && let Some(end) = parse_mouse_mode_sequence_end(bytes, index)
+        {
             index = end;
             continue;
         }
 
-        output.push(bytes[index]);
+        output.push(byte);
         index = index.saturating_add(1);
     }
 
