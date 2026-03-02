@@ -18,8 +18,8 @@ pub(crate) fn evaluate_capture_change(
     previous: Option<&OutputDigest>,
     raw_output: &str,
 ) -> CaptureChange {
-    let render_output = strip_non_sgr_control_sequences(raw_output);
-    let cleaned_output = strip_mouse_fragments(&strip_sgr_sequences(&render_output));
+    let (render_output, cleaned_without_sgr) = strip_non_sgr_control_sequences(raw_output);
+    let cleaned_output = strip_mouse_fragments(&cleaned_without_sgr);
     let digest = OutputDigest {
         raw_hash: content_hash(raw_output),
         raw_len: raw_output.len(),
@@ -123,8 +123,9 @@ fn parse_mouse_mode_sequence_end(bytes: &[u8], start: usize) -> Option<usize> {
     None
 }
 
-fn strip_non_sgr_control_sequences(input: &str) -> String {
-    let mut cleaned = String::with_capacity(input.len());
+fn strip_non_sgr_control_sequences(input: &str) -> (String, String) {
+    let mut render_output = String::with_capacity(input.len());
+    let mut cleaned_without_sgr = String::with_capacity(input.len());
     let bytes = input.as_bytes();
     let mut index = 0usize;
 
@@ -134,7 +135,8 @@ fn strip_non_sgr_control_sequences(input: &str) -> String {
             if byte.is_ascii() {
                 let character = char::from(byte);
                 if is_safe_text_character(character) {
-                    cleaned.push(character);
+                    render_output.push(character);
+                    cleaned_without_sgr.push(character);
                 }
                 index = index.saturating_add(1);
                 continue;
@@ -144,7 +146,8 @@ fn strip_non_sgr_control_sequences(input: &str) -> String {
                 break;
             };
             if is_safe_text_character(character) {
-                cleaned.push(character);
+                render_output.push(character);
+                cleaned_without_sgr.push(character);
             }
             index = index.saturating_add(character.len_utf8());
             continue;
@@ -162,7 +165,7 @@ fn strip_non_sgr_control_sequences(input: &str) -> String {
                     scan = scan.saturating_add(1);
                     if (b'@'..=b'~').contains(&final_byte) {
                         if final_byte == b'm' {
-                            cleaned.push_str(&input[index..scan]);
+                            render_output.push_str(&input[index..scan]);
                         }
                         index = scan;
                         break;
@@ -223,37 +226,7 @@ fn strip_non_sgr_control_sequences(input: &str) -> String {
         }
     }
 
-    cleaned
-}
-
-fn strip_sgr_sequences(input: &str) -> String {
-    let bytes = input.as_bytes();
-    let mut output = Vec::with_capacity(bytes.len());
-    let mut index = 0usize;
-
-    while index < bytes.len() {
-        if bytes[index] == b'\x1b' {
-            if bytes.get(index.saturating_add(1)) == Some(&b'[') {
-                index = index.saturating_add(2);
-                while index < bytes.len() {
-                    let value = bytes[index];
-                    index = index.saturating_add(1);
-                    if (b'@'..=b'~').contains(&value) {
-                        break;
-                    }
-                }
-                continue;
-            }
-
-            index = index.saturating_add(1);
-            continue;
-        }
-
-        output.push(bytes[index]);
-        index = index.saturating_add(1);
-    }
-
-    String::from_utf8(output).unwrap_or_default()
+    (render_output, cleaned_without_sgr)
 }
 
 fn strip_partial_mouse_sequences(input: &str) -> String {

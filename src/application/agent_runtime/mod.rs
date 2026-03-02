@@ -333,6 +333,7 @@ mod tests {
             let raw = "A\u{1b}[31mB\u{1b}[39m C\u{1b}]0;title\u{7}\n";
             let change = evaluate_capture_change(None, raw);
             assert_eq!(change.cleaned_output, "AB C\n");
+            assert_eq!(change.render_output, "A\u{1b}[31mB\u{1b}[39m C\n");
         }
 
         #[test]
