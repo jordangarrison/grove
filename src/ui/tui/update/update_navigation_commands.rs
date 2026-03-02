@@ -164,9 +164,7 @@ impl GroveApp {
                 self.open_edit_dialog();
             }
             UiCommand::StartAgent => {
-                if self.preview_agent_tab_is_focused() {
-                    self.open_start_dialog();
-                }
+                self.open_start_dialog();
             }
             UiCommand::StopAgent => {
                 self.open_stop_dialog();

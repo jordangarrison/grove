@@ -4465,7 +4465,7 @@ mod tests {
             }
 
             #[test]
-            fn start_key_noop_when_agent_tab_not_focused() {
+            fn start_key_opens_dialog_when_agent_tab_not_focused() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
                 app.state.selected_index = 1;
@@ -4475,7 +4475,7 @@ mod tests {
                     Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
                 );
 
-                assert!(app.launch_dialog().is_none());
+                assert!(app.launch_dialog().is_some());
                 assert!(commands.borrow().is_empty());
             }
 
