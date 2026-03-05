@@ -285,7 +285,7 @@ pub(crate) fn trimmed_nonempty(value: &str) -> Option<String> {
 }
 
 fn launch_command_with_workspace_init(
-    workspace_path: &Path,
+    _workspace_path: &Path,
     command: String,
     workspace_init_command: Option<&str>,
 ) -> String {
@@ -299,7 +299,7 @@ fn launch_command_with_workspace_init(
 
         command
     });
-    let mut script = workspace_init_guard_script(workspace_path, init_command.as_str());
+    let mut script = init_command;
     if let Some(run_command) = run_command {
         script.push('\n');
         script.push_str(run_command.as_str());
@@ -317,62 +317,6 @@ fn init_command_mentions_direnv(command: &str) -> bool {
 
 fn direnv_exec_wrapped_command(command: &str) -> String {
     format!("direnv exec . bash -lc {}", shell_quote(command))
-}
-
-fn workspace_init_guard_script(workspace_path: &Path, workspace_init_command: &str) -> String {
-    let command_hash = workspace_init_command_hash(workspace_init_command);
-    let grove_dir = workspace_path.join(".grove");
-    let lock_dir = grove_dir.join(format!("workspace-init-{command_hash}.lock"));
-    let stamp_file = grove_dir.join(format!("workspace-init-{command_hash}.done"));
-    let quoted_grove_dir = shell_quote(grove_dir.to_string_lossy().as_ref());
-    let quoted_lock_dir = shell_quote(lock_dir.to_string_lossy().as_ref());
-    let quoted_stamp_file = shell_quote(stamp_file.to_string_lossy().as_ref());
-    format!(
-        "lock_stale_checks=0
-mkdir -p {quoted_grove_dir}
-if [ ! -f {quoted_stamp_file} ]; then
-  while ! mkdir {quoted_lock_dir} 2>/dev/null; do
-    lock_pid=\"\"
-    if [ -f {quoted_lock_dir}/pid ]; then
-      lock_pid=\"$(cat {quoted_lock_dir}/pid 2>/dev/null || true)\"
-    fi
-    if [ -n \"$lock_pid\" ] && kill -0 \"$lock_pid\" 2>/dev/null; then
-      lock_stale_checks=0
-      sleep 0.1
-      continue
-    fi
-    lock_stale_checks=$((lock_stale_checks + 1))
-    if [ \"$lock_stale_checks\" -ge 20 ]; then
-      rm -rf {quoted_lock_dir} 2>/dev/null || true
-      lock_stale_checks=0
-    fi
-    sleep 0.1
-  done
-  echo \"$$\" > {quoted_lock_dir}/pid
-  trap 'rm -f {quoted_lock_dir}/pid; rmdir {quoted_lock_dir} 2>/dev/null || true' EXIT
-  if [ ! -f {quoted_stamp_file} ]; then
-    {workspace_init_command}
-    init_status=$?
-    if [ \"$init_status\" -ne 0 ]; then
-      exit \"$init_status\"
-    fi
-    : > {quoted_stamp_file}
-  fi
-fi"
-    )
-}
-
-fn workspace_init_command_hash(command: &str) -> String {
-    const FNV_OFFSET_BASIS: u64 = 14_695_981_039_346_656_037;
-    const FNV_PRIME: u64 = 1_099_511_628_211;
-
-    let mut hash = FNV_OFFSET_BASIS;
-    for byte in command.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-
-    format!("{hash:016x}")
 }
 
 fn build_launcher_script(agent_cmd: &str, prompt: &str, launcher_path: &Path) -> String {

@@ -154,13 +154,7 @@ impl GroveApp {
                     self.session.last_tmux_error =
                         Some(format!("init command marker persist failed: {error}"));
                 }
-                self.dialogs.pending_auto_start_workspace = Some(PendingAutoStartWorkspace {
-                    workspace_path: result.workspace_path.clone(),
-                    start_config: start_config.clone(),
-                });
                 self.launch_skip_permissions = start_config.skip_permissions;
-                self.session.pending_auto_launch_shell_workspace_path =
-                    Some(result.workspace_path.clone());
                 self.refresh_workspaces(Some(result.workspace_path));
                 self.state.mode = UiMode::List;
                 self.state.focus = PaneFocus::WorkspaceList;
