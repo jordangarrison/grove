@@ -671,6 +671,24 @@ impl WorkspaceTabsState {
         tab_id
     }
 
+    pub(super) fn insert_restored_tab(&mut self, tab: WorkspaceTab) -> bool {
+        if tab.kind == WorkspaceTabKind::Home {
+            return false;
+        }
+        if self.tab_by_id(tab.id).is_some() {
+            return false;
+        }
+        if tab.kind == WorkspaceTabKind::Git && self.find_kind(WorkspaceTabKind::Git).is_some() {
+            return false;
+        }
+
+        self.next_seq = self.next_seq.max(tab.id.saturating_add(1));
+        self.tabs.push(tab);
+        self.tabs
+            .sort_by_key(|entry| (entry.kind != WorkspaceTabKind::Home, entry.id));
+        true
+    }
+
     pub(super) fn close_tab(&mut self, tab_id: u64) -> Option<WorkspaceTab> {
         let index = self.tabs.iter().position(|tab| tab.id == tab_id)?;
         if self.tabs[index].kind == WorkspaceTabKind::Home {

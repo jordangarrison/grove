@@ -464,6 +464,47 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
+    struct RestoreMetadataTmuxInput {
+        rows: String,
+    }
+
+    impl TmuxInput for RestoreMetadataTmuxInput {
+        fn execute(&self, _command: &[String]) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn capture_output(
+            &self,
+            _target_session: &str,
+            _scrollback_lines: usize,
+            _include_escape_sequences: bool,
+        ) -> std::io::Result<String> {
+            Ok(String::new())
+        }
+
+        fn capture_cursor_metadata(&self, _target_session: &str) -> std::io::Result<String> {
+            Ok("1 0 0 120 40".to_string())
+        }
+
+        fn resize_session(
+            &self,
+            _target_session: &str,
+            _target_width: u16,
+            _target_height: u16,
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn paste_buffer(&self, _target_session: &str, _text: &str) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn list_sessions_with_tab_metadata(&self) -> std::io::Result<String> {
+            Ok(self.rows.clone())
+        }
+    }
+
     fn fixture_bootstrap(status: WorkspaceStatus) -> BootstrapData {
         let mut main_workspace = Workspace::try_new(
             "grove".to_string(),
@@ -791,6 +832,56 @@ mod tests {
                 debug_record_start_ts: None,
             },
         )
+    }
+
+    #[test]
+    fn startup_restores_workspace_tabs_from_tmux_metadata() {
+        let rows = "\
+grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n\
+grove-ws-feature-a-shell-1\t/repos/grove-feature-a\tshell\tShell 1\t\t10\n\
+grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
+        let app = GroveApp::from_parts_with_clipboard_and_projects(
+            fixture_bootstrap(WorkspaceStatus::Idle),
+            fixture_projects(),
+            AppDependencies {
+                tmux_input: Box::new(RestoreMetadataTmuxInput {
+                    rows: rows.to_string(),
+                }),
+                clipboard: test_clipboard(),
+                config_path: unique_config_path("restore-tabs"),
+                event_log: Box::new(NullEventLogger),
+                debug_record_start_ts: None,
+            },
+        );
+
+        let workspace_path = PathBuf::from("/repos/grove-feature-a");
+        let tabs = app
+            .workspace_tabs
+            .get(workspace_path.as_path())
+            .expect("feature workspace tabs should exist");
+        assert_eq!(
+            tabs.tabs
+                .iter()
+                .map(|tab| tab.kind)
+                .collect::<Vec<WorkspaceTabKind>>(),
+            vec![
+                WorkspaceTabKind::Home,
+                WorkspaceTabKind::Agent,
+                WorkspaceTabKind::Shell,
+                WorkspaceTabKind::Git,
+            ],
+        );
+        assert_eq!(
+            tabs.tabs
+                .iter()
+                .filter_map(|tab| tab.session_name.clone())
+                .collect::<Vec<String>>(),
+            vec![
+                "grove-ws-feature-a-agent-1".to_string(),
+                "grove-ws-feature-a-shell-1".to_string(),
+                "grove-ws-feature-a-git".to_string(),
+            ],
+        );
     }
 
     fn with_rendered_frame(

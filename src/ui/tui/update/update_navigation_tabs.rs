@@ -1,5 +1,21 @@
 use super::update_prelude::*;
 
+const TMUX_TAB_METADATA_WORKSPACE_PATH_KEY: &str = "@grove_workspace_path";
+const TMUX_TAB_METADATA_KIND_KEY: &str = "@grove_tab_kind";
+const TMUX_TAB_METADATA_TITLE_KEY: &str = "@grove_tab_title";
+const TMUX_TAB_METADATA_AGENT_KEY: &str = "@grove_tab_agent";
+const TMUX_TAB_METADATA_ID_KEY: &str = "@grove_tab_id";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RestoredTmuxTabMetadata {
+    session_name: String,
+    workspace_path: PathBuf,
+    kind: WorkspaceTabKind,
+    title: String,
+    agent_type: Option<AgentType>,
+    tab_id: u64,
+}
+
 impl GroveApp {
     pub(super) fn sync_workspace_tab_maps(&mut self) {
         let workspace_paths = self
@@ -22,6 +38,139 @@ impl GroveApp {
             self.last_agent_selection
                 .entry(workspace.path.clone())
                 .or_insert(workspace.agent);
+        }
+
+        self.sync_preview_tab_from_active_workspace_tab();
+    }
+
+    pub(super) fn rebuild_workspace_tabs_from_tmux_metadata(&mut self) {
+        let previous_last_agent = self.last_agent_selection.clone();
+        self.workspace_tabs = self
+            .state
+            .workspaces
+            .iter()
+            .map(|workspace| (workspace.path.clone(), WorkspaceTabsState::new()))
+            .collect::<std::collections::HashMap<PathBuf, WorkspaceTabsState>>();
+        self.last_agent_selection = self
+            .state
+            .workspaces
+            .iter()
+            .map(|workspace| {
+                (
+                    workspace.path.clone(),
+                    previous_last_agent
+                        .get(workspace.path.as_path())
+                        .copied()
+                        .unwrap_or(workspace.agent),
+                )
+            })
+            .collect::<std::collections::HashMap<PathBuf, AgentType>>();
+        self.session.agent_sessions = SessionTracker::default();
+        self.session.shell_sessions = SessionTracker::default();
+        self.session.lazygit_sessions = SessionTracker::default();
+
+        let metadata_rows = match self.tmux_input.list_sessions_with_tab_metadata() {
+            Ok(rows) => rows,
+            Err(error) => {
+                self.log_event_with_fields(
+                    "tab_restore",
+                    "session_query_failed",
+                    [("error".to_string(), Value::from(error.to_string()))],
+                );
+                self.sync_preview_tab_from_active_workspace_tab();
+                return;
+            }
+        };
+
+        for row in metadata_rows.lines() {
+            if trimmed_nonempty(row).is_none() {
+                continue;
+            }
+            let metadata = match Self::parse_tmux_tab_metadata_row(row) {
+                Ok(parsed) => parsed,
+                Err(reason) => {
+                    self.log_event_with_fields(
+                        "tab_restore",
+                        "metadata_ignored",
+                        [
+                            ("reason".to_string(), Value::from(reason)),
+                            ("row".to_string(), Value::from(row.to_string())),
+                        ],
+                    );
+                    continue;
+                }
+            };
+
+            let Some(workspace_path) = self
+                .state
+                .workspaces
+                .iter()
+                .find(|workspace| workspace.path == metadata.workspace_path)
+                .map(|workspace| workspace.path.clone())
+            else {
+                self.log_event_with_fields(
+                    "tab_restore",
+                    "metadata_ignored",
+                    [
+                        (
+                            "reason".to_string(),
+                            Value::from("workspace_not_found".to_string()),
+                        ),
+                        ("session".to_string(), Value::from(metadata.session_name)),
+                    ],
+                );
+                continue;
+            };
+
+            let restored_tab = WorkspaceTab {
+                id: metadata.tab_id,
+                kind: metadata.kind,
+                title: metadata.title,
+                session_name: Some(metadata.session_name.clone()),
+                agent_type: metadata.agent_type,
+                state: WorkspaceTabRuntimeState::Running,
+            };
+            let inserted = self
+                .workspace_tabs
+                .get_mut(workspace_path.as_path())
+                .is_some_and(|tabs| tabs.insert_restored_tab(restored_tab));
+            if !inserted {
+                self.log_event_with_fields(
+                    "tab_restore",
+                    "metadata_ignored",
+                    [
+                        (
+                            "reason".to_string(),
+                            Value::from("tab_insert_rejected".to_string()),
+                        ),
+                        ("session".to_string(), Value::from(metadata.session_name)),
+                    ],
+                );
+                continue;
+            }
+
+            if let Some(agent_type) = metadata.agent_type {
+                self.last_agent_selection
+                    .insert(workspace_path.clone(), agent_type);
+            }
+            match metadata.kind {
+                WorkspaceTabKind::Agent => {
+                    self.session
+                        .agent_sessions
+                        .mark_ready(metadata.session_name);
+                }
+                WorkspaceTabKind::Shell => {
+                    self.session
+                        .shell_sessions
+                        .mark_ready(metadata.session_name);
+                }
+                WorkspaceTabKind::Git => {
+                    self.session
+                        .lazygit_sessions
+                        .mark_ready(metadata.session_name);
+                }
+                WorkspaceTabKind::Home => {}
+            }
         }
 
         self.sync_preview_tab_from_active_workspace_tab();
@@ -169,6 +318,140 @@ impl GroveApp {
         Some((workspace_path, selected_tab_id))
     }
 
+    fn tab_kind_marker(kind: WorkspaceTabKind) -> &'static str {
+        match kind {
+            WorkspaceTabKind::Home => "home",
+            WorkspaceTabKind::Agent => "agent",
+            WorkspaceTabKind::Shell => "shell",
+            WorkspaceTabKind::Git => "git",
+        }
+    }
+
+    fn parse_tab_kind_marker(raw: &str) -> Option<WorkspaceTabKind> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "agent" => Some(WorkspaceTabKind::Agent),
+            "shell" => Some(WorkspaceTabKind::Shell),
+            "git" => Some(WorkspaceTabKind::Git),
+            "home" => Some(WorkspaceTabKind::Home),
+            _ => None,
+        }
+    }
+
+    fn parse_tmux_tab_metadata_row(row: &str) -> Result<RestoredTmuxTabMetadata, String> {
+        let segments = row.split('\t').collect::<Vec<&str>>();
+        if segments.len() != 6 {
+            return Err("expected six tab metadata fields".to_string());
+        }
+
+        let session_name =
+            trimmed_nonempty(segments[0]).ok_or_else(|| "missing session name".to_string())?;
+        let workspace_path_raw =
+            trimmed_nonempty(segments[1]).ok_or_else(|| "missing workspace path".to_string())?;
+        let workspace_path = PathBuf::from(workspace_path_raw);
+        let kind = Self::parse_tab_kind_marker(segments[2])
+            .ok_or_else(|| "invalid tab kind".to_string())?;
+        if kind == WorkspaceTabKind::Home {
+            return Err("home tab metadata is invalid".to_string());
+        }
+        let title = trimmed_nonempty(segments[3]).ok_or_else(|| "missing tab title".to_string())?;
+        let agent_type = if kind == WorkspaceTabKind::Agent {
+            let agent_raw =
+                trimmed_nonempty(segments[4]).ok_or_else(|| "missing agent type".to_string())?;
+            Some(
+                AgentType::from_marker(agent_raw.as_str())
+                    .ok_or_else(|| "invalid agent type".to_string())?,
+            )
+        } else {
+            None
+        };
+        let tab_id = segments[5]
+            .trim()
+            .parse::<u64>()
+            .map_err(|_| "invalid tab id".to_string())?;
+        if tab_id == 0 {
+            return Err("invalid tab id".to_string());
+        }
+
+        Ok(RestoredTmuxTabMetadata {
+            session_name,
+            workspace_path,
+            kind,
+            title,
+            agent_type,
+            tab_id,
+        })
+    }
+
+    fn write_tab_tmux_metadata(&mut self, workspace_path: &Path, tab: &WorkspaceTab) {
+        let Some(session_name) = tab.session_name.as_deref() else {
+            return;
+        };
+        let workspace_path_value = workspace_path.to_string_lossy().to_string();
+        let kind_value = Self::tab_kind_marker(tab.kind).to_string();
+        let title_value = tab.title.clone();
+        let agent_value = tab
+            .agent_type
+            .map(|agent| agent.marker().to_string())
+            .unwrap_or_default();
+        let tab_id_value = tab.id.to_string();
+        let commands = vec![
+            vec![
+                "tmux".to_string(),
+                "set-option".to_string(),
+                "-t".to_string(),
+                session_name.to_string(),
+                TMUX_TAB_METADATA_WORKSPACE_PATH_KEY.to_string(),
+                workspace_path_value,
+            ],
+            vec![
+                "tmux".to_string(),
+                "set-option".to_string(),
+                "-t".to_string(),
+                session_name.to_string(),
+                TMUX_TAB_METADATA_KIND_KEY.to_string(),
+                kind_value,
+            ],
+            vec![
+                "tmux".to_string(),
+                "set-option".to_string(),
+                "-t".to_string(),
+                session_name.to_string(),
+                TMUX_TAB_METADATA_TITLE_KEY.to_string(),
+                title_value,
+            ],
+            vec![
+                "tmux".to_string(),
+                "set-option".to_string(),
+                "-t".to_string(),
+                session_name.to_string(),
+                TMUX_TAB_METADATA_AGENT_KEY.to_string(),
+                agent_value,
+            ],
+            vec![
+                "tmux".to_string(),
+                "set-option".to_string(),
+                "-t".to_string(),
+                session_name.to_string(),
+                TMUX_TAB_METADATA_ID_KEY.to_string(),
+                tab_id_value,
+            ],
+        ];
+
+        for command in commands {
+            if let Err(error) = self.execute_tmux_command(command.as_slice()) {
+                self.log_event_with_fields(
+                    "tab_restore",
+                    "metadata_write_failed",
+                    [
+                        ("session".to_string(), Value::from(session_name.to_string())),
+                        ("error".to_string(), Value::from(error.to_string())),
+                    ],
+                );
+                break;
+            }
+        }
+    }
+
     pub(super) fn open_or_focus_git_tab(&mut self) {
         let Some((_, tab_id)) = self.ensure_selected_workspace_tab_kind(WorkspaceTabKind::Git)
         else {
@@ -179,6 +462,11 @@ impl GroveApp {
         let _ = self.ensure_lazygit_session_for_selected_workspace();
         if let Some(tab) = self.selected_active_tab_mut() {
             tab.state = WorkspaceTabRuntimeState::Running;
+        }
+        if let Some(workspace_path) = self.selected_workspace_path()
+            && let Some(tab) = self.selected_active_tab().cloned()
+        {
+            self.write_tab_tmux_metadata(workspace_path.as_path(), &tab);
         }
         self.poll_preview();
     }
@@ -250,6 +538,14 @@ impl GroveApp {
         }
         self.session.shell_sessions.mark_ready(session_name);
         self.set_tab_state_by_id(&workspace.path, tab_id, WorkspaceTabRuntimeState::Running);
+        if let Some(tab) = self
+            .workspace_tabs
+            .get(workspace.path.as_path())
+            .and_then(|tabs| tabs.tab_by_id(tab_id))
+            .cloned()
+        {
+            self.write_tab_tmux_metadata(workspace.path.as_path(), &tab);
+        }
         self.session.last_tmux_error = None;
         self.poll_preview();
     }
@@ -348,6 +644,14 @@ impl GroveApp {
         }
         self.session.agent_sessions.mark_ready(session_name);
         self.set_tab_state_by_id(&workspace.path, tab_id, WorkspaceTabRuntimeState::Running);
+        if let Some(tab) = self
+            .workspace_tabs
+            .get(workspace.path.as_path())
+            .and_then(|tabs| tabs.tab_by_id(tab_id))
+            .cloned()
+        {
+            self.write_tab_tmux_metadata(workspace.path.as_path(), &tab);
+        }
         self.session.last_tmux_error = None;
         self.poll_preview();
         Ok(())

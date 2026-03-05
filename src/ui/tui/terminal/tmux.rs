@@ -20,6 +20,9 @@ pub(in crate::ui::tui) trait TmuxInput {
         target_height: u16,
     ) -> std::io::Result<()>;
     fn paste_buffer(&self, target_session: &str, text: &str) -> std::io::Result<()>;
+    fn list_sessions_with_tab_metadata(&self) -> std::io::Result<String> {
+        Ok(String::new())
+    }
 
     fn supports_background_send(&self) -> bool {
         false
@@ -67,6 +70,10 @@ impl TmuxInput for CommandTmuxInput {
         Self::paste_target_session_buffer(target_session, text)
     }
 
+    fn list_sessions_with_tab_metadata(&self) -> std::io::Result<String> {
+        Self::list_sessions_with_tab_metadata_output()
+    }
+
     fn supports_background_send(&self) -> bool {
         true
     }
@@ -81,6 +88,27 @@ impl TmuxInput for CommandTmuxInput {
 }
 
 impl CommandTmuxInput {
+    fn list_sessions_with_tab_metadata_output() -> std::io::Result<String> {
+        let output = std::process::Command::new("tmux")
+            .args([
+                "list-sessions",
+                "-F",
+                "#{session_name}\t#{@grove_workspace_path}\t#{@grove_tab_kind}\t#{@grove_tab_title}\t#{@grove_tab_agent}\t#{@grove_tab_id}",
+            ])
+            .output()?;
+
+        if !output.status.success() {
+            let stderr = stderr_trimmed(&output);
+            return Err(std::io::Error::other(format!(
+                "tmux list-sessions failed: {stderr}"
+            )));
+        }
+
+        String::from_utf8(output.stdout).map_err(|error| {
+            std::io::Error::other(format!("tmux list-sessions utf8 decode failed: {error}"))
+        })
+    }
+
     fn capture_pane_args(
         target_session: &str,
         scrollback_lines: usize,

@@ -235,6 +235,7 @@ impl GroveApp {
             last_sidebar_mouse_scroll_delta: 0,
         };
         app.sync_workspace_tab_maps();
+        app.rebuild_workspace_tabs_from_tmux_metadata();
         app.reconcile_workspace_attention_tracking();
         app.refresh_preview_summary();
         app
