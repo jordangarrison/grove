@@ -433,38 +433,6 @@ mod tests {
     }
 
     #[test]
-    fn build_workspaces_ignores_agent_markers() {
-        let temp = TestDir::new("build-main-agent");
-        let main_root = temp.path.join("grove");
-        let managed = temp.path.join("grove-feature-a");
-
-        fs::create_dir_all(&main_root).expect("main should exist");
-        fs::create_dir_all(&managed).expect("managed should exist");
-        fs::create_dir_all(main_root.join(".grove")).expect(".grove should exist");
-        fs::create_dir_all(managed.join(".grove")).expect(".grove should exist");
-        fs::write(main_root.join(".grove/agent"), "codex\n")
-            .expect("main agent marker should exist");
-        fs::write(managed.join(".grove/agent"), "opencode\n").expect("agent marker should exist");
-        fs::write(managed.join(".grove/base"), "main\n").expect("base marker should exist");
-
-        let parsed = parse_worktree_porcelain(&format!(
-                "worktree {}\nHEAD 1\nbranch refs/heads/main\n\nworktree {}\nHEAD 2\nbranch refs/heads/feature-a\n",
-                main_root.display(),
-                managed.display(),
-            ))
-            .expect("porcelain should parse");
-
-        let workspaces = build_workspaces(&parsed, Path::new(&main_root), "grove", &HashMap::new())
-            .expect("workspace build should succeed");
-
-        assert_eq!(workspaces.len(), 2);
-        assert_eq!(workspaces[0].name, "grove");
-        assert_eq!(workspaces[0].agent, AgentType::Claude);
-        assert_eq!(workspaces[0].status, WorkspaceStatus::Main);
-        assert_eq!(workspaces[1].agent, AgentType::Claude);
-    }
-
-    #[test]
     fn workspace_name_from_path_strips_repo_prefix_for_non_main_worktrees() {
         let derived = workspace_name_from_path(Path::new("/repos/grove-feature-a"), "grove", false);
         assert_eq!(derived, "feature-a");

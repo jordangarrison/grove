@@ -482,7 +482,6 @@ impl SyntheticScaleFixture {
         let repo_name = "grove".to_string();
         let repo_root = root.join(&repo_name);
         fs::create_dir_all(repo_root.join(".grove"))?;
-        fs::write(repo_root.join(".grove/agent"), "claude\n")?;
 
         let mut porcelain_worktrees = String::new();
         append_worktree_block(&mut porcelain_worktrees, repo_root.as_path(), Some("main"));
@@ -499,10 +498,6 @@ impl SyntheticScaleFixture {
             let branch_name = workspace_name.clone();
             let workspace_directory = root.join(format!("{repo_name}-{workspace_name}"));
             fs::create_dir_all(workspace_directory.join(".grove"))?;
-            fs::write(
-                workspace_directory.join(".grove/agent"),
-                synthetic_agent_marker(index),
-            )?;
             fs::write(workspace_directory.join(".grove/base"), "main\n")?;
 
             append_worktree_block(
@@ -589,14 +584,6 @@ fn append_worktree_block(buffer: &mut String, path: &Path, branch: Option<&str>)
         buffer.push_str("detached\n");
     }
     buffer.push('\n');
-}
-
-fn synthetic_agent_marker(index: usize) -> &'static str {
-    match index % 3 {
-        0 => "claude\n",
-        1 => "codex\n",
-        _ => "opencode\n",
-    }
 }
 
 fn synthetic_status_output(index: usize) -> String {

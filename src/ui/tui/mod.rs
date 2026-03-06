@@ -920,6 +920,54 @@ grove-ws-feature-a-git\t/repos/grove-feature-a\tgit\tGit\t\t11\n";
         );
     }
 
+    #[test]
+    fn startup_ignores_malformed_tmux_tab_metadata_rows() {
+        let rows = "\
+invalid-row\n\
+grove-ws-feature-a-home\t/repos/grove-feature-a\thome\tHome\t\t7\n\
+grove-ws-missing-agent-1\t/repos/unknown\tagent\tCodex 1\tcodex\t8\n\
+grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
+        let app = GroveApp::from_parts_with_clipboard_and_projects(
+            fixture_bootstrap(WorkspaceStatus::Idle),
+            fixture_projects(),
+            AppDependencies {
+                tmux_input: Box::new(RestoreMetadataTmuxInput {
+                    rows: rows.to_string(),
+                }),
+                clipboard: test_clipboard(),
+                config_path: unique_config_path("restore-tabs-malformed"),
+                event_log: Box::new(NullEventLogger),
+                debug_record_start_ts: None,
+            },
+        );
+
+        let workspace_path = PathBuf::from("/repos/grove-feature-a");
+        let tabs = app
+            .workspace_tabs
+            .get(workspace_path.as_path())
+            .expect("feature workspace tabs should exist");
+        assert_eq!(
+            tabs.tabs
+                .iter()
+                .map(|tab| tab.kind)
+                .collect::<Vec<WorkspaceTabKind>>(),
+            vec![WorkspaceTabKind::Home, WorkspaceTabKind::Agent],
+        );
+        assert_eq!(
+            tabs.tabs
+                .iter()
+                .filter_map(|tab| tab.session_name.clone())
+                .collect::<Vec<String>>(),
+            vec!["grove-ws-feature-a-agent-1".to_string(),],
+        );
+        assert_eq!(
+            app.last_agent_selection
+                .get(workspace_path.as_path())
+                .copied(),
+            Some(AgentType::Codex),
+        );
+    }
+
     fn with_rendered_frame(
         app: &GroveApp,
         width: u16,
