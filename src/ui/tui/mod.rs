@@ -650,6 +650,51 @@ mod tests {
         app.sync_preview_tab_from_active_workspace_tab();
     }
 
+    fn insert_running_agent_tab(
+        app: &mut GroveApp,
+        workspace_index: usize,
+        session_name: &str,
+        title: &str,
+    ) -> u64 {
+        let Some(workspace) = app.state.workspaces.get(workspace_index).cloned() else {
+            return 0;
+        };
+        let Some(tabs) = app.workspace_tabs.get_mut(workspace.path.as_path()) else {
+            return 0;
+        };
+        tabs.insert_tab_adjacent(WorkspaceTab {
+            id: 0,
+            kind: WorkspaceTabKind::Agent,
+            title: title.to_string(),
+            session_name: Some(session_name.to_string()),
+            agent_type: Some(workspace.agent),
+            state: WorkspaceTabRuntimeState::Running,
+        })
+    }
+
+    fn insert_shell_tab(
+        app: &mut GroveApp,
+        workspace_index: usize,
+        session_name: &str,
+        title: &str,
+        state: WorkspaceTabRuntimeState,
+    ) -> u64 {
+        let Some(workspace) = app.state.workspaces.get(workspace_index).cloned() else {
+            return 0;
+        };
+        let Some(tabs) = app.workspace_tabs.get_mut(workspace.path.as_path()) else {
+            return 0;
+        };
+        tabs.insert_tab_adjacent(WorkspaceTab {
+            id: 0,
+            kind: WorkspaceTabKind::Shell,
+            title: title.to_string(),
+            session_name: Some(session_name.to_string()),
+            agent_type: None,
+            state,
+        })
+    }
+
     fn force_tick_due(app: &mut GroveApp) {
         let now = Instant::now();
         app.polling.next_tick_due_at = Some(now);
@@ -8506,6 +8551,69 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             }
 
             #[test]
+            fn async_preview_status_targets_use_other_running_agent_tab_when_live_session_selected()
+            {
+                let mut app = fixture_background_app(WorkspaceStatus::Active);
+                app.state.selected_index = 1;
+                let workspace_path = PathBuf::from("/repos/grove-feature-a");
+                let first_session = "grove-ws-feature-a-agent-1".to_string();
+                let second_session = "grove-ws-feature-a-agent-2".to_string();
+                let _first_tab_id =
+                    insert_running_agent_tab(&mut app, 1, first_session.as_str(), "Codex 1");
+                let second_tab_id =
+                    insert_running_agent_tab(&mut app, 1, second_session.as_str(), "Codex 2");
+                app.session.agent_sessions.mark_ready(first_session.clone());
+                app.session
+                    .agent_sessions
+                    .mark_ready(second_session.clone());
+                if let Some(tabs) = app.workspace_tabs.get_mut(workspace_path.as_path()) {
+                    tabs.active_tab_id = second_tab_id;
+                }
+                app.sync_preview_tab_from_active_workspace_tab();
+
+                let live_preview = app.prepare_live_preview_session();
+                let targets = app.status_poll_targets_for_async_preview(live_preview.as_ref());
+
+                assert_eq!(
+                    live_preview
+                        .as_ref()
+                        .map(|target| target.session_name.as_str()),
+                    Some(second_session.as_str())
+                );
+                assert_eq!(targets.len(), 1);
+                assert_eq!(targets[0].workspace_name, "feature-a");
+                assert_eq!(targets[0].session_name, first_session);
+            }
+
+            #[test]
+            fn refresh_preview_summary_uses_active_shell_tab_session_state() {
+                let mut app = fixture_app();
+                app.state.selected_index = 1;
+                let workspace_path = PathBuf::from("/repos/grove-feature-a");
+                let shell_session = "grove-ws-feature-a-shell-2".to_string();
+                let shell_tab_id = insert_shell_tab(
+                    &mut app,
+                    1,
+                    shell_session.as_str(),
+                    "Shell 2",
+                    WorkspaceTabRuntimeState::Starting,
+                );
+                if let Some(tabs) = app.workspace_tabs.get_mut(workspace_path.as_path()) {
+                    tabs.active_tab_id = shell_tab_id;
+                }
+                app.session.shell_sessions.mark_failed(shell_session);
+                app.sync_preview_tab_from_active_workspace_tab();
+
+                app.refresh_preview_summary();
+
+                assert!(
+                    app.preview.lines.first().is_some_and(|line| {
+                        line.contains("Shell session failed for feature-a.")
+                    })
+                );
+            }
+
+            #[test]
             fn prepare_live_preview_session_launches_shell_from_list_mode() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
@@ -9081,6 +9189,77 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             }
 
             #[test]
+            fn preview_poll_non_selected_missing_session_with_other_agent_tab_keeps_workspace_running()
+             {
+                let mut app = fixture_app();
+                app.state.selected_index = 0;
+                app.state.workspaces[1].status = WorkspaceStatus::Active;
+                app.state.workspaces[1].is_orphaned = false;
+                let workspace_path = PathBuf::from("/repos/grove-feature-a");
+                let missing_session = "grove-ws-feature-a-agent-1".to_string();
+                let remaining_session = "grove-ws-feature-a-agent-2".to_string();
+                let _missing_tab_id =
+                    insert_running_agent_tab(&mut app, 1, missing_session.as_str(), "Codex 1");
+                let remaining_tab_id =
+                    insert_running_agent_tab(&mut app, 1, remaining_session.as_str(), "Codex 2");
+                app.session
+                    .agent_sessions
+                    .mark_ready(missing_session.clone());
+                app.session
+                    .agent_sessions
+                    .mark_ready(remaining_session.clone());
+                if let Some(tabs) = app.workspace_tabs.get_mut(workspace_path.as_path()) {
+                    tabs.active_tab_id = remaining_tab_id;
+                }
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::PreviewPollCompleted(PreviewPollCompletion {
+                        generation: 1,
+                        live_capture: None,
+                        cursor_capture: None,
+                        workspace_status_captures: vec![WorkspaceStatusCapture {
+                            workspace_name: "feature-a".to_string(),
+                            workspace_path: workspace_path.clone(),
+                            session_name: missing_session.clone(),
+                            supported_agent: true,
+                            capture_ms: 1,
+                            result: Err(
+                                "tmux capture-pane failed for 'grove-ws-feature-a-agent-1': can't find pane"
+                                    .to_string(),
+                            ),
+                        }],
+                    }),
+                );
+
+                assert_eq!(app.state.workspaces[1].status, WorkspaceStatus::Active);
+                assert!(!app.state.workspaces[1].is_orphaned);
+                assert!(!app.session.agent_sessions.ready.contains(&missing_session));
+                assert!(
+                    app.session
+                        .agent_sessions
+                        .ready
+                        .contains(&remaining_session)
+                );
+                let tabs = app
+                    .workspace_tabs
+                    .get(workspace_path.as_path())
+                    .expect("workspace tabs should exist");
+                let missing_state = tabs
+                    .tabs
+                    .iter()
+                    .find(|tab| tab.session_name.as_deref() == Some(missing_session.as_str()))
+                    .map(|tab| tab.state);
+                let remaining_state = tabs
+                    .tabs
+                    .iter()
+                    .find(|tab| tab.session_name.as_deref() == Some(remaining_session.as_str()))
+                    .map(|tab| tab.state);
+                assert_eq!(missing_state, Some(WorkspaceTabRuntimeState::Stopped));
+                assert_eq!(remaining_state, Some(WorkspaceTabRuntimeState::Running));
+            }
+
+            #[test]
             fn preview_poll_missing_session_marks_workspace_orphaned_idle() {
                 let mut app = fixture_app();
                 app.state.selected_index = 1;
@@ -9129,6 +9308,73 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     Some(true)
                 );
                 assert!(app.session.interactive.is_none());
+            }
+
+            #[test]
+            fn preview_poll_missing_live_session_with_other_agent_tab_keeps_workspace_running() {
+                let mut app = fixture_app();
+                app.state.selected_index = 1;
+                let workspace_path = PathBuf::from("/repos/grove-feature-a");
+                let missing_session = "grove-ws-feature-a-agent-1".to_string();
+                let remaining_session = "grove-ws-feature-a-agent-2".to_string();
+                let missing_tab_id =
+                    insert_running_agent_tab(&mut app, 1, missing_session.as_str(), "Codex 1");
+                let _remaining_tab_id =
+                    insert_running_agent_tab(&mut app, 1, remaining_session.as_str(), "Codex 2");
+                app.session
+                    .agent_sessions
+                    .mark_ready(missing_session.clone());
+                app.session
+                    .agent_sessions
+                    .mark_ready(remaining_session.clone());
+                if let Some(tabs) = app.workspace_tabs.get_mut(workspace_path.as_path()) {
+                    tabs.active_tab_id = missing_tab_id;
+                }
+                if let Some(workspace) = app.state.selected_workspace_mut() {
+                    workspace.status = WorkspaceStatus::Active;
+                    workspace.is_orphaned = false;
+                }
+                app.sync_preview_tab_from_active_workspace_tab();
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::PreviewPollCompleted(PreviewPollCompletion {
+                        generation: 1,
+                        live_capture: Some(LivePreviewCapture {
+                            session: missing_session.clone(),
+                            scrollback_lines: 600,
+                            include_escape_sequences: true,
+                            capture_ms: 1,
+                            total_ms: 1,
+                            result: Err(
+                                "tmux capture-pane failed for 'grove-ws-feature-a-agent-1': can't find pane"
+                                    .to_string(),
+                            ),
+                        }),
+                        cursor_capture: None,
+                        workspace_status_captures: Vec::new(),
+                    }),
+                );
+
+                assert_eq!(
+                    app.state
+                        .selected_workspace()
+                        .map(|workspace| workspace.status),
+                    Some(WorkspaceStatus::Active)
+                );
+                assert_eq!(
+                    app.state
+                        .selected_workspace()
+                        .map(|workspace| workspace.is_orphaned),
+                    Some(false)
+                );
+                assert!(!app.session.agent_sessions.ready.contains(&missing_session));
+                assert!(
+                    app.session
+                        .agent_sessions
+                        .ready
+                        .contains(&remaining_session)
+                );
             }
 
             #[test]

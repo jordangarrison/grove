@@ -61,14 +61,21 @@ impl GroveApp {
     }
 
     fn selected_workspace_has_session(&self, kind: SessionKind, session_name: &str) -> bool {
-        self.state
-            .selected_workspace()
-            .is_some_and(|workspace| match kind {
-                SessionKind::Lazygit => git_session_name_for_workspace(workspace) == session_name,
-                SessionKind::WorkspaceShell => {
-                    shell_session_name_for_workspace(workspace) == session_name
-                }
-            })
+        let Some(workspace) = self.state.selected_workspace() else {
+            return false;
+        };
+        match kind {
+            SessionKind::Lazygit => git_session_name_for_workspace(workspace) == session_name,
+            SessionKind::WorkspaceShell => self
+                .workspace_tabs
+                .get(workspace.path.as_path())
+                .is_some_and(|tabs| {
+                    tabs.tabs.iter().any(|tab| {
+                        tab.kind == WorkspaceTabKind::Shell
+                            && tab.session_name.as_deref() == Some(session_name)
+                    })
+                }),
+        }
     }
 
     fn should_poll_preview_after_launch(&self, kind: SessionKind) -> bool {
@@ -284,11 +291,7 @@ impl GroveApp {
     }
 
     pub(super) fn selected_shell_preview_session_if_ready(&self) -> Option<String> {
-        let tab = self.selected_active_tab()?;
-        if tab.kind != WorkspaceTabKind::Shell {
-            return None;
-        }
-        let session_name = tab.session_name.clone()?;
+        let session_name = self.selected_shell_tab_session_name()?;
         self.session
             .shell_sessions
             .is_ready(&session_name)
@@ -390,7 +393,7 @@ impl GroveApp {
     }
 
     fn shell_session_status_summary(&self, workspace: &Workspace) -> Option<String> {
-        let shell_session_name = shell_session_name_for_workspace(workspace);
+        let shell_session_name = self.selected_shell_tab_session_name()?;
         if self
             .session
             .shell_sessions

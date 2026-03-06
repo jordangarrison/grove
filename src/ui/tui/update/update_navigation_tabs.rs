@@ -201,6 +201,46 @@ impl GroveApp {
             .map(|(workspace_path, _)| workspace_path.clone())
     }
 
+    fn tab_is_running_agent(tab: &WorkspaceTab) -> bool {
+        tab.kind == WorkspaceTabKind::Agent && tab.state == WorkspaceTabRuntimeState::Running
+    }
+
+    pub(super) fn workspace_running_agent_session_for_status_poll(
+        &self,
+        workspace_path: &Path,
+        excluded_session: Option<&str>,
+    ) -> Option<String> {
+        let tabs = self.workspace_tabs.get(workspace_path)?;
+        if let Some(active_session) = tabs
+            .active_tab()
+            .filter(|tab| Self::tab_is_running_agent(tab))
+            .and_then(|tab| tab.session_name.as_deref())
+            .filter(|session_name| Some(*session_name) != excluded_session)
+        {
+            return Some(active_session.to_string());
+        }
+
+        tabs.tabs
+            .iter()
+            .filter(|tab| Self::tab_is_running_agent(tab))
+            .filter_map(|tab| tab.session_name.as_deref())
+            .find(|session_name| Some(*session_name) != excluded_session)
+            .map(str::to_string)
+    }
+
+    pub(super) fn workspace_has_running_agent_tab_excluding_session(
+        &self,
+        workspace_path: &Path,
+        excluded_session: &str,
+    ) -> bool {
+        self.workspace_tabs.get(workspace_path).is_some_and(|tabs| {
+            tabs.tabs.iter().any(|tab| {
+                Self::tab_is_running_agent(tab)
+                    && tab.session_name.as_deref() != Some(excluded_session)
+            })
+        })
+    }
+
     pub(super) fn mark_tab_stopped_for_session(&mut self, session_name: &str) {
         for tabs in self.workspace_tabs.values_mut() {
             if let Some(tab) = tabs
@@ -692,6 +732,14 @@ impl GroveApp {
 
     pub(super) fn active_tab_session_name(&self) -> Option<String> {
         self.selected_active_tab()?.session_name.clone()
+    }
+
+    pub(super) fn selected_shell_tab_session_name(&self) -> Option<String> {
+        let tab = self.selected_active_tab()?;
+        if tab.kind != WorkspaceTabKind::Shell {
+            return None;
+        }
+        tab.session_name.clone()
     }
 
     pub(super) fn kill_active_tab_session(&mut self) {

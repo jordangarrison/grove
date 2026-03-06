@@ -192,14 +192,17 @@ impl GroveApp {
     }
 
     fn preview_shell_fallback_line(&self, selected_workspace: Option<&Workspace>) -> FtLine {
-        let fallback = if let Some(workspace) = selected_workspace {
-            let session_name = shell_session_name_for_workspace(workspace);
-            if self.session.shell_sessions.is_failed(&session_name) {
-                "(shell launch failed)"
-            } else if self.session.shell_sessions.is_ready(&session_name) {
-                "(no shell output yet)"
+        let fallback = if selected_workspace.is_some() {
+            if let Some(session_name) = self.selected_shell_tab_session_name() {
+                if self.session.shell_sessions.is_failed(&session_name) {
+                    "(shell launch failed)"
+                } else if self.session.shell_sessions.is_ready(&session_name) {
+                    "(no shell output yet)"
+                } else {
+                    "(launching shell...)"
+                }
             } else {
-                "(launching shell...)"
+                "(no shell tab selected)"
             }
         } else {
             "(no workspace selected)"

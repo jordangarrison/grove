@@ -5,10 +5,27 @@ impl GroveApp {
         &self,
         live_preview: Option<&LivePreviewTarget>,
     ) -> Vec<WorkspaceStatusTarget> {
-        let targets = workspace_status_targets_for_polling_with_live_preview(
-            &self.state.workspaces,
-            live_preview,
-        );
+        let selected_live_session = live_preview.map(|target| target.session_name.as_str());
+        let targets = self
+            .state
+            .workspaces
+            .iter()
+            .filter_map(|workspace| {
+                if !workspace.supported_agent {
+                    return None;
+                }
+                let session_name = self.workspace_running_agent_session_for_status_poll(
+                    workspace.path.as_path(),
+                    selected_live_session,
+                )?;
+                Some(WorkspaceStatusTarget {
+                    workspace_name: workspace.name.clone(),
+                    workspace_path: workspace.path.clone(),
+                    session_name,
+                    supported_agent: workspace.supported_agent,
+                })
+            })
+            .collect::<Vec<WorkspaceStatusTarget>>();
         if targets.is_empty() {
             return targets;
         }

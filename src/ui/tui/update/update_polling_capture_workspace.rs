@@ -84,24 +84,39 @@ impl GroveApp {
             Err(error) => {
                 let missing_session = tmux_capture_error_indicates_missing_session(&error);
                 if missing_session {
+                    self.session
+                        .agent_sessions
+                        .remove_ready(capture.session_name.as_str());
+                    self.session
+                        .lazygit_sessions
+                        .remove_ready(capture.session_name.as_str());
+                    self.session
+                        .shell_sessions
+                        .remove_ready(capture.session_name.as_str());
+                    self.mark_tab_stopped_for_session(capture.session_name.as_str());
                     let previous_status = self.state.workspaces[workspace_index].status;
                     let previous_orphaned = self.state.workspaces[workspace_index].is_orphaned;
                     let workspace_is_main = self.state.workspaces[workspace_index].is_main;
-                    let previously_had_live_session = previous_status.has_session();
-                    let next_status = if workspace_is_main {
-                        WorkspaceStatus::Main
-                    } else {
-                        WorkspaceStatus::Idle
-                    };
-                    let next_orphaned = if workspace_is_main {
-                        false
-                    } else {
-                        previously_had_live_session || previous_orphaned
-                    };
+                    let has_other_running_agent_tab = self
+                        .workspace_has_running_agent_tab_excluding_session(
+                            capture.workspace_path.as_path(),
+                            capture.session_name.as_str(),
+                        );
+                    self.clear_status_tracking_for_workspace_path(capture.workspace_path.as_path());
                     let workspace = &mut self.state.workspaces[workspace_index];
+                    let (next_status, next_orphaned) = if has_other_running_agent_tab {
+                        (previous_status, false)
+                    } else if workspace_is_main {
+                        (WorkspaceStatus::Main, false)
+                    } else {
+                        let previously_had_live_session = previous_status.has_session();
+                        (
+                            WorkspaceStatus::Idle,
+                            previously_had_live_session || previous_orphaned,
+                        )
+                    };
                     workspace.status = next_status;
                     workspace.is_orphaned = next_orphaned;
-                    self.clear_status_tracking_for_workspace_path(&capture.workspace_path);
                     self.track_workspace_status_transition(
                         &capture.workspace_path,
                         previous_status,

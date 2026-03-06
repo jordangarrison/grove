@@ -263,15 +263,24 @@ impl GroveApp {
                         let workspace_path = self.state.workspaces[index].path.clone();
                         let previous_status = self.state.workspaces[index].status;
                         let previous_orphaned = self.state.workspaces[index].is_orphaned;
-                        let next_status = if self.state.workspaces[index].is_main {
+                        let has_other_running_agent_tab = self
+                            .workspace_has_running_agent_tab_excluding_session(
+                                workspace_path.as_path(),
+                                session_name,
+                            );
+                        let next_status = if has_other_running_agent_tab {
+                            previous_status
+                        } else if self.state.workspaces[index].is_main {
                             WorkspaceStatus::Main
                         } else {
                             WorkspaceStatus::Idle
                         };
-                        let next_orphaned = !self.state.workspaces[index].is_main;
+                        let next_orphaned =
+                            !self.state.workspaces[index].is_main && !has_other_running_agent_tab;
                         let workspace = &mut self.state.workspaces[index];
                         workspace.status = next_status;
                         workspace.is_orphaned = next_orphaned;
+                        self.clear_status_tracking_for_workspace_path(workspace_path.as_path());
                         self.track_workspace_status_transition(
                             &workspace_path,
                             previous_status,
@@ -279,7 +288,6 @@ impl GroveApp {
                             previous_orphaned,
                             next_orphaned,
                         );
-                        self.clear_status_tracking_for_workspace_path(&workspace_path);
                     }
                     if self
                         .session
