@@ -521,16 +521,8 @@ static COMMAND_META: [UiCommandMeta; 38] = [
         palette: Some(PaletteCommandSpec {
             id: "palette:edit_workspace",
             title: "Edit Workspace",
-            description: "Open workspace edit dialog (agent + base branch, or base branch switch on main) (e)",
-            tags: &[
-                "edit",
-                "workspace",
-                "agent",
-                "base",
-                "branch",
-                "switch",
-                "e",
-            ],
+            description: "Open workspace edit dialog (base branch, or branch switch on main) (e)",
+            tags: &["edit", "workspace", "base", "branch", "switch", "e"],
             category: "Workspace",
         }),
         help_hints: &[HelpHintSpec {

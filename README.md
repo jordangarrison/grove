@@ -176,11 +176,13 @@ make test       # run tests
 Inside Grove:
 
 - `n` new workspace
-- `s` start agent
-- `r` restart agent in Agent preview (with confirm modal)
+- `e` edit workspace (base branch, or branch switch on main)
+- `a` new agent tab (opens agent picker + launch options)
+- `s` new shell tab
+- `g` open/focus git tab
 - `Enter` open preview / interactive attach (context dependent)
-- `x` stop agent in Agent preview (with confirm modal)
-- `Alt+X` stop selected workspace agent from any context (with confirm modal)
+- `x` kill active tab session
+- `X` close active tab (confirm kill+close if session is live)
 - `m` merge workspace branch into base
 - `u` update selected workspace (feature merges from base, base pulls from origin)
 - `R` refresh workspace list + GitHub PR metadata

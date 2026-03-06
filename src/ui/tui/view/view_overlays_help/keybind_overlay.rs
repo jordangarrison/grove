@@ -199,7 +199,7 @@ impl GroveApp {
             content_width,
             label_width,
             "Create",
-            "Tab/S-Tab/C-n/C-p fields, Alt+[/] or click tabs, j/k adjust, ';' splits commands, Space toggles auto-run, Enter/Esc",
+            "Tab/S-Tab/C-n/C-p fields, click mode tabs or Alt+[/Alt+], j/k adjust project/branch, Enter/Esc",
             theme,
         );
         Self::keybind_help_push_modal_row(
@@ -207,7 +207,7 @@ impl GroveApp {
             content_width,
             label_width,
             "Edit",
-            "Tab/S-Tab or C-n/C-p fields, type/backspace base, h/l or Space toggle agent, Enter/Esc",
+            "Tab/S-Tab/C-n/C-p fields, type/backspace base branch (or branch on main), Enter/Esc",
             theme,
         );
         Self::keybind_help_push_modal_row(
