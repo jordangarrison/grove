@@ -1840,7 +1840,12 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
         let mut app = fixture_app();
         app.set_launch_dialog(LaunchDialogState {
             agent: AgentType::Claude,
-            start_config: StartAgentConfigState::new(String::new(), String::new(), false),
+            start_config: StartAgentConfigState::new(
+                String::new(),
+                String::new(),
+                String::new(),
+                false,
+            ),
             focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
         });
 
@@ -1854,13 +1859,18 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
         let mut app = fixture_app();
         app.set_launch_dialog(LaunchDialogState {
             agent: AgentType::Claude,
-            start_config: StartAgentConfigState::new(String::new(), String::new(), false),
+            start_config: StartAgentConfigState::new(
+                String::new(),
+                String::new(),
+                String::new(),
+                false,
+            ),
             focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
         });
 
         with_rendered_frame(&app, 80, 24, |frame| {
             let dialog_width = frame.width().saturating_sub(8).min(100);
-            let dialog_height = 11u16;
+            let dialog_height = 16u16;
             let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
             let dialog_y = frame.height().saturating_sub(dialog_height) / 2;
             let probe_x = dialog_x.saturating_add(dialog_width.saturating_sub(3));
@@ -3352,7 +3362,12 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
         let mut app = fixture_app();
         app.set_launch_dialog(LaunchDialogState {
             agent: AgentType::Claude,
-            start_config: StartAgentConfigState::new(String::new(), String::new(), false),
+            start_config: StartAgentConfigState::new(
+                String::new(),
+                String::new(),
+                String::new(),
+                false,
+            ),
             focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
         });
 
@@ -3546,7 +3561,12 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
         let mut app = fixture_app();
         app.set_launch_dialog(LaunchDialogState {
             agent: AgentType::Claude,
-            start_config: StartAgentConfigState::new(String::new(), String::new(), false),
+            start_config: StartAgentConfigState::new(
+                String::new(),
+                String::new(),
+                String::new(),
+                false,
+            ),
             focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
         });
 
@@ -4788,6 +4808,95 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
 
                 assert!(app.launch_dialog().is_some());
                 assert!(commands.borrow().is_empty());
+            }
+
+            #[test]
+            fn start_dialog_name_field_accepts_text_input() {
+                let mut app = fixture_app();
+                app.state.selected_index = 1;
+                app.set_launch_dialog(LaunchDialogState {
+                    agent: AgentType::Codex,
+                    start_config: StartAgentConfigState::new(
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        false,
+                    ),
+                    focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Name),
+                });
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+                );
+
+                assert_eq!(
+                    app.launch_dialog()
+                        .map(|dialog| dialog.start_config.name.as_str()),
+                    Some("x"),
+                );
+            }
+
+            #[test]
+            fn start_dialog_name_sets_new_agent_tab_title() {
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+                app.state.selected_index = 1;
+                app.set_launch_dialog(LaunchDialogState {
+                    agent: AgentType::Codex,
+                    start_config: StartAgentConfigState::new(
+                        "bugfix-tab".to_string(),
+                        String::new(),
+                        String::new(),
+                        false,
+                    ),
+                    focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Name),
+                });
+
+                app.confirm_start_dialog();
+
+                assert!(commands.borrow().iter().any(|command| {
+                    command
+                        == &vec![
+                            "tmux".to_string(),
+                            "set-option".to_string(),
+                            "-t".to_string(),
+                            "grove-ws-feature-a-agent-1".to_string(),
+                            "@grove_tab_title".to_string(),
+                            "bugfix-tab".to_string(),
+                        ]
+                }));
+            }
+
+            #[test]
+            fn start_dialog_blank_name_keeps_default_tab_title() {
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+                app.state.selected_index = 1;
+                app.set_launch_dialog(LaunchDialogState {
+                    agent: AgentType::Codex,
+                    start_config: StartAgentConfigState::new(
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        false,
+                    ),
+                    focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Name),
+                });
+
+                app.confirm_start_dialog();
+
+                assert!(commands.borrow().iter().any(|command| {
+                    command
+                        == &vec![
+                            "tmux".to_string(),
+                            "set-option".to_string(),
+                            "-t".to_string(),
+                            "grove-ws-feature-a-agent-1".to_string(),
+                            "@grove_tab_title".to_string(),
+                            "Codex 1".to_string(),
+                        ]
+                }));
             }
 
             #[test]
@@ -7754,6 +7863,58 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 );
 
                 assert!(!matches!(cmd, Cmd::Quit));
+            }
+
+            #[test]
+            fn x_opens_close_tab_confirm_for_running_active_tab() {
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+                app.state.selected_index = 1;
+                focus_agent_preview_tab(&mut app);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+                );
+
+                let Some(dialog) = app.confirm_dialog() else {
+                    panic!("close-tab confirm should be open");
+                };
+                match &dialog.action {
+                    crate::ui::tui::ConfirmDialogAction::CloseActiveTab {
+                        session_name, ..
+                    } => {
+                        assert_eq!(session_name, "grove-ws-feature-a");
+                    }
+                    crate::ui::tui::ConfirmDialogAction::QuitApp => {
+                        panic!("expected close-tab confirm action")
+                    }
+                }
+                assert!(!commands.borrow().iter().any(|command| {
+                    command
+                        == &vec![
+                            "tmux".to_string(),
+                            "kill-session".to_string(),
+                            "-t".to_string(),
+                            "grove-ws-feature-a".to_string(),
+                        ]
+                }));
+            }
+
+            #[test]
+            fn uppercase_x_does_not_close_active_tab() {
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+                app.state.selected_index = 1;
+                focus_agent_preview_tab(&mut app);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('X')).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(app.confirm_dialog().is_none());
+                assert!(commands.borrow().is_empty());
             }
 
             #[test]

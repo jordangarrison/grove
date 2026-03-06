@@ -83,13 +83,14 @@ impl GroveApp {
                 }
                 if let Some(dialog) = self.launch_dialog() {
                     return format!(
-                        "Status: start agent, field={}, unsafe={}, prompt=\"{}\", init=\"{}\"",
+                        "Status: start agent, field={}, unsafe={}, name=\"{}\", prompt=\"{}\", init=\"{}\"",
                         dialog.focused_field.label(),
                         if dialog.start_config.skip_permissions {
                             "on"
                         } else {
                             "off"
                         },
+                        dialog.start_config.name.replace('\n', "\\n"),
                         dialog.start_config.prompt.replace('\n', "\\n"),
                         dialog.start_config.init_command.replace('\n', "\\n"),
                     );

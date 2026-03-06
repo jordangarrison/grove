@@ -51,6 +51,14 @@ impl GroveApp {
             lines.push("Start Agent Dialog".to_string());
             lines.push(format!("Field: {}", dialog.focused_field.label()));
             lines.push(format!(
+                "Name: {}",
+                if dialog.start_config.name.is_empty() {
+                    "(empty)".to_string()
+                } else {
+                    dialog.start_config.name.clone()
+                }
+            ));
+            lines.push(format!(
                 "Prompt: {}",
                 if dialog.start_config.prompt.is_empty() {
                     "(empty)".to_string()

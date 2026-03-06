@@ -685,10 +685,14 @@ impl GroveApp {
         else {
             return Err("failed to build agent session name".to_string());
         };
+        let tab_title = options
+            .name
+            .clone()
+            .unwrap_or_else(|| format!("{} {ordinal}", agent.label()));
         let tab_id = tabs.insert_tab_adjacent(WorkspaceTab {
             id: 0,
             kind: WorkspaceTabKind::Agent,
-            title: format!("{} {ordinal}", agent.label()),
+            title: tab_title,
             session_name: Some(session_name.clone()),
             agent_type: Some(agent),
             state: WorkspaceTabRuntimeState::Starting,

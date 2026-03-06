@@ -160,11 +160,19 @@ pub(super) fn modal_start_agent_config_rows<F>(
     theme: UiTheme,
     start_config: &StartAgentConfigState,
     is_focused: F,
-) -> [FtLine; 3]
+) -> [FtLine; 4]
 where
     F: Fn(StartAgentConfigField) -> bool,
 {
     [
+        modal_labeled_input_row(
+            content_width,
+            theme,
+            "Name",
+            start_config.name.as_str(),
+            "Optional tab title (defaults to agent + number)",
+            is_focused(StartAgentConfigField::Name),
+        ),
         modal_labeled_input_row(
             content_width,
             theme,

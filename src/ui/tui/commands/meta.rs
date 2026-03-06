@@ -671,58 +671,35 @@ static COMMAND_META: [UiCommandMeta; 39] = [
         }],
     },
     UiCommandMeta {
-        palette: Some(PaletteCommandSpec {
-            id: "palette:kill_active_tab_session",
-            title: "Kill Active Tab Session",
-            description: "Kill whatever is running in the active tab (x)",
-            tags: &["kill", "stop", "session", "tab", "x"],
-            category: "Workspace",
-        }),
-        help_hints: &[
-            HelpHintSpec {
-                context: HelpHintContext::PreviewAgent,
-                label: "x kill session",
-            },
-            HelpHintSpec {
-                context: HelpHintContext::PreviewShell,
-                label: "x kill session",
-            },
-            HelpHintSpec {
-                context: HelpHintContext::PreviewGit,
-                label: "x kill session",
-            },
-        ],
-        keybindings: &[KeybindingSpec {
-            scope: KeybindingScope::NonInteractive,
-            code: KeyCodeMatch::Char('x'),
-            modifiers: KeyModifiersMatch::Any,
-        }],
+        palette: None,
+        help_hints: &[],
+        keybindings: &[],
     },
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
             id: "palette:close_active_tab",
             title: "Close Active Tab",
-            description: "Close active tab, confirm kill+close when session is live (X)",
-            tags: &["close", "tab", "session", "X"],
+            description: "Close active tab, confirm kill+close when session is live (x)",
+            tags: &["close", "tab", "session", "x"],
             category: "Workspace",
         }),
         help_hints: &[
             HelpHintSpec {
                 context: HelpHintContext::PreviewAgent,
-                label: "X close tab",
+                label: "x close tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewShell,
-                label: "X close tab",
+                label: "x close tab",
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewGit,
-                label: "X close tab",
+                label: "x close tab",
             },
         ],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
-            code: KeyCodeMatch::Char('X'),
+            code: KeyCodeMatch::Char('x'),
             modifiers: KeyModifiersMatch::Any,
         }],
     },

@@ -204,6 +204,10 @@ impl GroveApp {
                     Value::from(usize_to_u64(dialog.start_config.prompt.len())),
                 ),
                 (
+                    "name_len".to_string(),
+                    Value::from(usize_to_u64(dialog.start_config.name.len())),
+                ),
+                (
                     "skip_permissions".to_string(),
                     Value::from(dialog.start_config.skip_permissions),
                 ),
@@ -215,11 +219,13 @@ impl GroveApp {
         );
 
         let StartOptions {
+            name,
             prompt,
             init_command,
             skip_permissions,
         } = dialog.start_config.parse_start_options();
         let options = StartOptions {
+            name,
             prompt,
             init_command,
             skip_permissions,

@@ -5,12 +5,12 @@ impl GroveApp {
         let Some(dialog) = self.launch_dialog() else {
             return;
         };
-        if area.width < 20 || area.height < 15 {
+        if area.width < 20 || area.height < 16 {
             return;
         }
 
         let dialog_width = area.width.saturating_sub(8).min(100);
-        let dialog_height = 15u16;
+        let dialog_height = 16u16;
         let theme = self.active_ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
         let focused = |field| dialog.focused_field == field;
@@ -53,6 +53,7 @@ impl GroveApp {
             config_rows[0].clone(),
             config_rows[1].clone(),
             config_rows[2].clone(),
+            config_rows[3].clone(),
             FtLine::raw(""),
             modal_actions_row(
                 content_width,
@@ -66,7 +67,7 @@ impl GroveApp {
         lines.extend(modal_wrapped_hint_rows(
             content_width,
             theme,
-            "Tab/C-n next, S-Tab/C-p prev, j/k or h/l choose agent, Space toggle unsafe, Enter start, Esc cancel",
+            "Tab/C-n next, S-Tab/C-p prev, j/k or h/l choose agent, type Name/Prompt/InitCmd, Space toggle unsafe, Enter start, Esc cancel",
         ));
         let body = FtText::from_lines(lines);
         render_modal_dialog(

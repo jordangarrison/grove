@@ -103,7 +103,9 @@ impl GroveApp {
                             }
                         }
                         LaunchDialogField::StartConfig(field) => match field {
-                            StartAgentConfigField::Prompt | StartAgentConfigField::InitCommand => {
+                            StartAgentConfigField::Name
+                            | StartAgentConfigField::Prompt
+                            | StartAgentConfigField::InitCommand => {
                                 if !character.is_control() {
                                     dialog.start_config.push_char(field, character);
                                 }
@@ -143,6 +145,7 @@ impl GroveApp {
         self.set_launch_dialog(LaunchDialogState {
             agent,
             start_config: StartAgentConfigState::new(
+                String::new(),
                 prompt.clone(),
                 init_command.clone().unwrap_or_default(),
                 skip_permissions,
@@ -155,6 +158,7 @@ impl GroveApp {
             [
                 ("workspace".to_string(), Value::from(workspace.name.clone())),
                 ("agent".to_string(), Value::from(agent.label())),
+                ("name_len".to_string(), Value::from(0u64)),
                 (
                     "prompt_len".to_string(),
                     Value::from(usize_to_u64(prompt.len())),
