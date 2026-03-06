@@ -453,24 +453,23 @@ impl GroveApp {
             .unwrap_or_else(|| "No workspace selected".to_string())
     }
 
-    fn workspace_home_splash(&self, workspace: &Workspace, has_running_tabs: bool) -> String {
-        let running_note = if has_running_tabs {
-            "Sessions are running in other tabs."
-        } else {
-            "No sessions running in this workspace."
-        };
-        [
-            "Workspace Home".to_string(),
-            format!("{} · {}", workspace.name, workspace.path.display()),
-            String::new(),
-            running_note.to_string(),
-            "Press 'a' for agent tabs, 's' for shell tabs, 'g' for git tab.".to_string(),
-            "Use 'x' to kill active tab session, 'X' to close active tab.".to_string(),
-        ]
-        .join("\n")
+    fn workspace_home_splash(&self, workspace: &Workspace, _has_running_tabs: bool) -> String {
+        self.home_splash(
+            "Workspace Home",
+            format!("Workspace: {}", workspace.name).as_str(),
+            "Launch tabs here, or create another workspace when needed.",
+        )
     }
 
     fn main_worktree_splash(&self) -> String {
+        self.home_splash(
+            "Base Worktree",
+            "This is your repo root.",
+            "Create focused workspaces here, or launch tabs directly in base.",
+        )
+    }
+
+    fn home_splash(&self, title: &str, subtitle: &str, summary: &str) -> String {
         const G: &str = "\x1b[38;2;166;227;161m";
         const T: &str = "\x1b[38;2;250;179;135m";
         const R: &str = "\x1b[0m";
@@ -493,10 +492,10 @@ impl GroveApp {
             format!("         {T}||{R}           {T}|||{R}              {T}||{R}"),
             format!("        {T}/||\\{R}         {T}/|||\\{R}            {T}/||\\{R}"),
             String::new(),
-            "Base Worktree".to_string(),
+            title.to_string(),
             String::new(),
-            "This is your repo root.".to_string(),
-            "Create focused workspaces here, or launch tabs directly in base.".to_string(),
+            subtitle.to_string(),
+            summary.to_string(),
             String::new(),
             "--------------------------------------------------".to_string(),
             String::new(),

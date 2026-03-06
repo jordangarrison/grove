@@ -4994,7 +4994,10 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
 
                 let combined = app.preview.lines.join("\n");
                 assert!(combined.contains("Workspace Home"));
-                assert!(combined.contains("Press 'a' for agent tabs"));
+                assert!(combined.contains("Then use 'a' for agent tabs"));
+                assert!(
+                    combined.contains("Launch tabs here, or create another workspace when needed.")
+                );
                 assert!(!combined.contains("Preparing session for feature-a"));
             }
 
