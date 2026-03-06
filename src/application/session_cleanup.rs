@@ -3,10 +3,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::application::agent_runtime::{
-    TMUX_SESSION_PREFIX, git_session_name_for_workspace, session_name_for_workspace_ref,
-    shell_session_name_for_workspace,
-};
+use crate::application::agent_runtime::{TMUX_SESSION_PREFIX, workspace_session_name_matches};
 use crate::application::workspace_discovery::discover_bootstrap_data;
 use crate::domain::Workspace;
 use crate::infrastructure::adapters::{
@@ -248,17 +245,12 @@ fn plan_session_cleanup_from_inputs(
     options: SessionCleanupOptions,
     now_unix_secs: u64,
 ) -> SessionCleanupPlan {
-    let expected_sessions = expected_session_names(workspaces);
     let mut candidates = Vec::new();
     let mut skipped_attached = Vec::new();
 
     for session in sessions {
-        let reason = match cleanup_reason(
-            session,
-            &expected_sessions,
-            options.include_stale,
-            now_unix_secs,
-        ) {
+        let reason = match cleanup_reason(session, workspaces, options.include_stale, now_unix_secs)
+        {
             Some(reason) => reason,
             None => continue,
         };
@@ -288,23 +280,20 @@ fn plan_session_cleanup_from_inputs(
     }
 }
 
-fn expected_session_names(workspaces: &[Workspace]) -> HashSet<String> {
-    let mut expected = HashSet::new();
-    for workspace in workspaces {
-        expected.insert(session_name_for_workspace_ref(workspace));
-        expected.insert(git_session_name_for_workspace(workspace));
-        expected.insert(shell_session_name_for_workspace(workspace));
-    }
-    expected
-}
-
 fn cleanup_reason(
     session: &SessionRecord,
-    expected_sessions: &HashSet<String>,
+    workspaces: &[Workspace],
     include_stale: bool,
     now_unix_secs: u64,
 ) -> Option<SessionCleanupReason> {
-    if !expected_sessions.contains(session.name.as_str()) {
+    let belongs_to_workspace = workspaces.iter().any(|workspace| {
+        workspace_session_name_matches(
+            workspace.project_name.as_deref(),
+            workspace.name.as_str(),
+            session.name.as_str(),
+        )
+    });
+    if !belongs_to_workspace {
         return Some(SessionCleanupReason::Orphaned);
     }
 
@@ -329,7 +318,14 @@ fn stale_auxiliary_session(session: &SessionRecord, now_unix_secs: u64) -> bool 
 }
 
 fn is_auxiliary_session(session_name: &str) -> bool {
-    session_name.ends_with("-git") || session_name.ends_with("-shell")
+    if session_name.ends_with("-git") || session_name.ends_with("-shell") {
+        return true;
+    }
+
+    let Some((_, ordinal)) = session_name.rsplit_once("-shell-") else {
+        return false;
+    };
+    !ordinal.is_empty() && ordinal.chars().all(|character| character.is_ascii_digit())
 }
 
 fn session_missing_error(message: &str) -> bool {
@@ -466,5 +462,68 @@ mod tests {
         );
         assert_eq!(include_attached_plan.candidates.len(), 1);
         assert!(include_attached_plan.skipped_attached.is_empty());
+    }
+
+    #[test]
+    fn plan_recognizes_numbered_agent_and_shell_sessions_as_expected() {
+        let workspace = fixture_workspace("feature-a");
+        let sessions = vec![
+            SessionRecord {
+                name: "grove-ws-grove-feature-a-agent-1".to_string(),
+                created_unix_secs: Some(1_700_000_100),
+                attached_clients: 0,
+            },
+            SessionRecord {
+                name: "grove-ws-grove-feature-a-shell-2".to_string(),
+                created_unix_secs: Some(1_700_000_100),
+                attached_clients: 0,
+            },
+            SessionRecord {
+                name: "grove-ws-grove-lost-agent-1".to_string(),
+                created_unix_secs: Some(1_700_000_100),
+                attached_clients: 0,
+            },
+        ];
+
+        let plan = plan_session_cleanup_from_inputs(
+            &[workspace],
+            sessions.as_slice(),
+            SessionCleanupOptions {
+                include_stale: false,
+                include_attached: false,
+            },
+            1_700_010_000,
+        );
+        assert_eq!(plan.candidates.len(), 1);
+        assert_eq!(
+            plan.candidates[0].session_name,
+            "grove-ws-grove-lost-agent-1"
+        );
+        assert_eq!(plan.candidates[0].reason, SessionCleanupReason::Orphaned);
+    }
+
+    #[test]
+    fn plan_marks_numbered_shell_session_stale_when_enabled() {
+        let workspace = fixture_workspace("feature-a");
+        let sessions = vec![SessionRecord {
+            name: "grove-ws-grove-feature-a-shell-3".to_string(),
+            created_unix_secs: Some(1_700_000_000),
+            attached_clients: 0,
+        }];
+
+        let plan = plan_session_cleanup_from_inputs(
+            &[workspace],
+            sessions.as_slice(),
+            SessionCleanupOptions {
+                include_stale: true,
+                include_attached: false,
+            },
+            1_700_090_000,
+        );
+        assert_eq!(plan.candidates.len(), 1);
+        assert_eq!(
+            plan.candidates[0].reason,
+            SessionCleanupReason::StaleAuxiliary
+        );
     }
 }

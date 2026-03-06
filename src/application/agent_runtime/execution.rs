@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 
 use crate::domain::Workspace;
@@ -244,6 +245,72 @@ pub fn kill_workspace_session_commands(
         kill_tmux_session_command(&format!("{session_name}-git")),
         kill_tmux_session_command(&format!("{session_name}-shell")),
     ]
+}
+
+fn has_numbered_suffix(session_name: &str, prefix: &str) -> bool {
+    let Some(ordinal) = session_name.strip_prefix(prefix) else {
+        return false;
+    };
+    !ordinal.is_empty() && ordinal.chars().all(|character| character.is_ascii_digit())
+}
+
+pub fn workspace_session_name_matches(
+    project_name: Option<&str>,
+    workspace_name: &str,
+    session_name: &str,
+) -> bool {
+    let base_session_name = session_name_for_workspace_in_project(project_name, workspace_name);
+    if session_name == base_session_name {
+        return true;
+    }
+
+    let git_session_name = format!("{base_session_name}-git");
+    if session_name == git_session_name {
+        return true;
+    }
+
+    let shell_session_name = format!("{base_session_name}-shell");
+    if session_name == shell_session_name {
+        return true;
+    }
+
+    let agent_prefix = format!("{base_session_name}-agent-");
+    if has_numbered_suffix(session_name, agent_prefix.as_str()) {
+        return true;
+    }
+
+    let shell_prefix = format!("{base_session_name}-shell-");
+    has_numbered_suffix(session_name, shell_prefix.as_str())
+}
+
+pub fn workspace_session_names_for_cleanup(
+    project_name: Option<&str>,
+    workspace_name: &str,
+    existing_sessions: &[String],
+) -> Vec<String> {
+    let mut matched = Vec::new();
+    let mut seen = HashSet::new();
+    for session_name in existing_sessions {
+        if !workspace_session_name_matches(project_name, workspace_name, session_name) {
+            continue;
+        }
+        if !seen.insert(session_name.clone()) {
+            continue;
+        }
+        matched.push(session_name.clone());
+    }
+    matched
+}
+
+pub fn kill_workspace_session_commands_for_existing_sessions(
+    project_name: Option<&str>,
+    workspace_name: &str,
+    existing_sessions: &[String],
+) -> Vec<Vec<String>> {
+    workspace_session_names_for_cleanup(project_name, workspace_name, existing_sessions)
+        .into_iter()
+        .map(|session_name| kill_tmux_session_command(&session_name))
+        .collect()
 }
 
 fn kill_tmux_session_command(session_name: &str) -> Vec<String> {

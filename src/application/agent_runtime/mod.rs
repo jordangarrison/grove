@@ -24,6 +24,8 @@ pub use execution::{
     execute_launch_plan_with_executor, execute_launch_request_with_result_for_mode,
     execute_shell_launch_request_for_mode, execute_stop_workspace_with_result_for_mode,
     kill_workspace_session_command, kill_workspace_session_commands,
+    kill_workspace_session_commands_for_existing_sessions, workspace_session_name_matches,
+    workspace_session_names_for_cleanup,
 };
 #[cfg(test)]
 pub use execution::{execute_commands, execute_launch_plan};
@@ -236,15 +238,17 @@ mod tests {
             execute_stop_workspace_with_result_for_mode, extract_agent_resume_command,
             git_preview_session_if_ready, git_session_name_for_workspace,
             kill_workspace_session_command, kill_workspace_session_commands,
-            launch_request_for_workspace, live_preview_agent_session,
-            live_preview_capture_target_for_tab, live_preview_session_for_tab, poll_interval,
-            reconcile_with_sessions, restart_workspace_in_pane_with_io, sanitize_workspace_name,
-            session_name_for_workspace, session_name_for_workspace_ref,
-            shell_launch_request_for_workspace, shell_session_name_for_workspace, stop_plan,
-            strip_mouse_fragments, tmux_capture_error_indicates_missing_session,
+            kill_workspace_session_commands_for_existing_sessions, launch_request_for_workspace,
+            live_preview_agent_session, live_preview_capture_target_for_tab,
+            live_preview_session_for_tab, poll_interval, reconcile_with_sessions,
+            restart_workspace_in_pane_with_io, sanitize_workspace_name, session_name_for_workspace,
+            session_name_for_workspace_ref, shell_launch_request_for_workspace,
+            shell_session_name_for_workspace, stop_plan, strip_mouse_fragments,
+            tmux_capture_error_indicates_missing_session,
             tmux_launch_error_indicates_duplicate_session, trimmed_nonempty,
             workspace_can_enter_interactive, workspace_can_start_agent, workspace_can_stop_agent,
-            workspace_session_for_preview_tab, workspace_should_poll_status,
+            workspace_session_for_preview_tab, workspace_session_name_matches,
+            workspace_session_names_for_cleanup, workspace_should_poll_status,
             workspace_status_session_target, workspace_status_targets_for_polling,
             workspace_status_targets_for_polling_with_live_preview,
         };
@@ -1534,6 +1538,92 @@ mod tests {
                         "grove-ws-project-one-feature-auth-v2-shell".to_string(),
                     ],
                 ]
+            );
+        }
+
+        #[test]
+        fn workspace_session_name_matches_accepts_numbered_agent_and_shell_tabs() {
+            assert!(workspace_session_name_matches(
+                Some("project.one"),
+                "feature/auth.v2",
+                "grove-ws-project-one-feature-auth-v2-agent-1",
+            ));
+            assert!(workspace_session_name_matches(
+                Some("project.one"),
+                "feature/auth.v2",
+                "grove-ws-project-one-feature-auth-v2-shell-2",
+            ));
+            assert!(workspace_session_name_matches(
+                Some("project.one"),
+                "feature/auth.v2",
+                "grove-ws-project-one-feature-auth-v2-git",
+            ));
+            assert!(!workspace_session_name_matches(
+                Some("project.one"),
+                "feature/auth.v2",
+                "grove-ws-project-one-feature-auth-v2-agent-x",
+            ));
+            assert!(!workspace_session_name_matches(
+                Some("project.one"),
+                "feature/auth.v2",
+                "grove-ws-project-one-other-agent-1",
+            ));
+        }
+
+        #[test]
+        fn workspace_session_names_for_cleanup_filters_to_workspace_tabs() {
+            let sessions = vec![
+                "grove-ws-project-one-feature-auth-v2".to_string(),
+                "grove-ws-project-one-feature-auth-v2-git".to_string(),
+                "grove-ws-project-one-feature-auth-v2-shell-1".to_string(),
+                "grove-ws-project-one-feature-auth-v2-agent-1".to_string(),
+                "grove-ws-project-one-other-agent-1".to_string(),
+            ];
+            assert_eq!(
+                workspace_session_names_for_cleanup(
+                    Some("project.one"),
+                    "feature/auth.v2",
+                    sessions.as_slice(),
+                ),
+                vec![
+                    "grove-ws-project-one-feature-auth-v2".to_string(),
+                    "grove-ws-project-one-feature-auth-v2-git".to_string(),
+                    "grove-ws-project-one-feature-auth-v2-shell-1".to_string(),
+                    "grove-ws-project-one-feature-auth-v2-agent-1".to_string(),
+                ],
+            );
+            assert_eq!(
+                kill_workspace_session_commands_for_existing_sessions(
+                    Some("project.one"),
+                    "feature/auth.v2",
+                    sessions.as_slice(),
+                ),
+                vec![
+                    vec![
+                        "tmux".to_string(),
+                        "kill-session".to_string(),
+                        "-t".to_string(),
+                        "grove-ws-project-one-feature-auth-v2".to_string(),
+                    ],
+                    vec![
+                        "tmux".to_string(),
+                        "kill-session".to_string(),
+                        "-t".to_string(),
+                        "grove-ws-project-one-feature-auth-v2-git".to_string(),
+                    ],
+                    vec![
+                        "tmux".to_string(),
+                        "kill-session".to_string(),
+                        "-t".to_string(),
+                        "grove-ws-project-one-feature-auth-v2-shell-1".to_string(),
+                    ],
+                    vec![
+                        "tmux".to_string(),
+                        "kill-session".to_string(),
+                        "-t".to_string(),
+                        "grove-ws-project-one-feature-auth-v2-agent-1".to_string(),
+                    ],
+                ],
             );
         }
 

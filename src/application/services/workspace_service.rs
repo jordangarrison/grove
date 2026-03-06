@@ -1,6 +1,9 @@
 use std::path::Path;
+use std::process::Command;
 
-use crate::application::agent_runtime::kill_workspace_session_commands;
+use crate::application::agent_runtime::{
+    kill_workspace_session_commands, kill_workspace_session_commands_for_existing_sessions,
+};
 use crate::application::workspace_lifecycle::{
     CreateWorkspaceRequest, CreateWorkspaceResult, DeleteWorkspaceRequest, GitCommandRunner,
     MergeWorkspaceRequest, SessionTerminator, SetupCommandRunner, SetupScriptRunner,
@@ -13,19 +16,56 @@ use crate::application::workspace_lifecycle::{
     write_workspace_base_marker as lifecycle_write_workspace_base_marker,
 };
 use crate::infrastructure::process::execute_command;
+use crate::infrastructure::process::stderr_trimmed;
 
 #[derive(Debug, Clone, Copy, Default)]
 struct RuntimeSessionTerminator;
 
 impl SessionTerminator for RuntimeSessionTerminator {
     fn stop_workspace_sessions(&self, project_name: Option<&str>, workspace_name: &str) {
-        for command in kill_workspace_session_commands(project_name, workspace_name) {
+        let commands = match list_tmux_session_names() {
+            Ok(existing_sessions) => {
+                if existing_sessions.is_empty() {
+                    return;
+                }
+                kill_workspace_session_commands_for_existing_sessions(
+                    project_name,
+                    workspace_name,
+                    existing_sessions.as_slice(),
+                )
+            }
+            Err(_) => kill_workspace_session_commands(project_name, workspace_name),
+        };
+        for command in commands {
             if command.is_empty() {
                 continue;
             }
             let _ = execute_command(&command);
         }
     }
+}
+
+fn list_tmux_session_names() -> Result<Vec<String>, String> {
+    let output = Command::new("tmux")
+        .args(["list-sessions", "-F", "#{session_name}"])
+        .output()
+        .map_err(|error| format!("tmux list-sessions failed: {error}"))?;
+    if !output.status.success() {
+        let stderr = stderr_trimmed(&output);
+        if stderr.contains("no server running") {
+            return Ok(Vec::new());
+        }
+        return Err(format!("tmux list-sessions failed: {stderr}"));
+    }
+
+    let stdout = String::from_utf8(output.stdout)
+        .map_err(|error| format!("tmux output invalid UTF-8: {error}"))?;
+    Ok(stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect())
 }
 
 pub(crate) trait WorkspaceService {
