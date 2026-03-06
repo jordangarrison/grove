@@ -4999,6 +4999,22 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             }
 
             #[test]
+            fn home_tab_main_workspace_summary_mentions_tabs_in_base() {
+                let mut app = fixture_app();
+                app.state.selected_index = 0;
+                app.sync_preview_tab_from_active_workspace_tab();
+
+                app.refresh_preview_summary();
+
+                let combined = app.preview.lines.join("\n");
+                assert!(
+                    combined.contains(
+                        "Create focused workspaces here, or launch tabs directly in base."
+                    )
+                );
+            }
+
+            #[test]
             fn enter_on_idle_workspace_launches_shell_session_and_enters_interactive_mode() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());

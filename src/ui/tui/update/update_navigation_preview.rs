@@ -496,7 +496,7 @@ impl GroveApp {
             "Base Worktree".to_string(),
             String::new(),
             "This is your repo root.".to_string(),
-            "Create focused workspaces from here when you start new work.".to_string(),
+            "Create focused workspaces here, or launch tabs directly in base.".to_string(),
             String::new(),
             "--------------------------------------------------".to_string(),
             String::new(),
