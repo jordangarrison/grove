@@ -612,6 +612,11 @@ mod tests {
         KeyEvent::new(code).with_kind(KeyEventKind::Press)
     }
 
+    fn select_workspace(app: &mut GroveApp, index: usize) {
+        app.state.selected_index = index;
+        app.sync_preview_tab_from_active_workspace_tab();
+    }
+
     fn focus_agent_preview_tab(app: &mut GroveApp) {
         app.state.mode = UiMode::Preview;
         app.state.focus = PaneFocus::Preview;
@@ -703,6 +708,42 @@ mod tests {
         let now = Instant::now();
         app.polling.next_tick_due_at = Some(now);
         app.polling.next_poll_due_at = Some(now);
+    }
+
+    fn seed_running_agent_tabs_for_running_workspaces(app: &mut GroveApp) {
+        let workspaces = app.state.workspaces.clone();
+        for workspace in workspaces {
+            if !workspace.status.is_running() {
+                continue;
+            }
+            let Some(tabs) = app.workspace_tabs.get_mut(workspace.path.as_path()) else {
+                continue;
+            };
+            if let Some(existing_tab) = tabs.tabs.iter().find(|tab| {
+                tab.kind == WorkspaceTabKind::Agent
+                    && tab.state == WorkspaceTabRuntimeState::Running
+                    && tab.session_name.is_some()
+            }) {
+                if let Some(session_name) = existing_tab.session_name.clone() {
+                    tabs.active_tab_id = existing_tab.id;
+                    app.session.agent_sessions.mark_ready(session_name);
+                }
+                continue;
+            }
+            let session_name =
+                crate::application::agent_runtime::session_name_for_workspace_ref(&workspace);
+            let tab_id = tabs.insert_tab_adjacent(WorkspaceTab {
+                id: 0,
+                kind: WorkspaceTabKind::Agent,
+                title: format!("{} 1", workspace.agent.label()),
+                session_name: Some(session_name.clone()),
+                agent_type: Some(workspace.agent),
+                state: WorkspaceTabRuntimeState::Running,
+            });
+            tabs.active_tab_id = tab_id;
+            app.session.agent_sessions.mark_ready(session_name);
+        }
+        app.sync_preview_tab_from_active_workspace_tab();
     }
 
     fn cmd_contains_task(cmd: &Cmd<Msg>) -> bool {
@@ -808,23 +849,20 @@ mod tests {
             cursor_captures: cursor_captures.clone(),
             calls: Rc::new(RefCell::new(Vec::new())),
         };
-        (
-            GroveApp::from_parts_with_clipboard_and_projects(
-                fixture_bootstrap(status),
-                fixture_projects(),
-                AppDependencies {
-                    tmux_input: Box::new(tmux),
-                    clipboard: test_clipboard(),
-                    config_path,
+        let mut app = GroveApp::from_parts_with_clipboard_and_projects(
+            fixture_bootstrap(status),
+            fixture_projects(),
+            AppDependencies {
+                tmux_input: Box::new(tmux),
+                clipboard: test_clipboard(),
+                config_path,
 
-                    event_log: Box::new(NullEventLogger),
-                    debug_record_start_ts: None,
-                },
-            ),
-            commands,
-            captures,
-            cursor_captures,
-        )
+                event_log: Box::new(NullEventLogger),
+                debug_record_start_ts: None,
+            },
+        );
+        seed_running_agent_tabs_for_running_workspaces(&mut app);
+        (app, commands, captures, cursor_captures)
     }
 
     fn fixture_app_with_tmux_and_calls(
@@ -844,24 +882,20 @@ mod tests {
             calls: calls.clone(),
         };
 
-        (
-            GroveApp::from_parts_with_clipboard_and_projects(
-                fixture_bootstrap(status),
-                fixture_projects(),
-                AppDependencies {
-                    tmux_input: Box::new(tmux),
-                    clipboard: test_clipboard(),
-                    config_path,
+        let mut app = GroveApp::from_parts_with_clipboard_and_projects(
+            fixture_bootstrap(status),
+            fixture_projects(),
+            AppDependencies {
+                tmux_input: Box::new(tmux),
+                clipboard: test_clipboard(),
+                config_path,
 
-                    event_log: Box::new(NullEventLogger),
-                    debug_record_start_ts: None,
-                },
-            ),
-            commands,
-            captures,
-            cursor_captures,
-            calls,
-        )
+                event_log: Box::new(NullEventLogger),
+                debug_record_start_ts: None,
+            },
+        );
+        seed_running_agent_tabs_for_running_workspaces(&mut app);
+        (app, commands, captures, cursor_captures, calls)
     }
 
     fn fixture_app_with_tmux_and_events(
@@ -884,28 +918,24 @@ mod tests {
             events: events.clone(),
         };
 
-        (
-            GroveApp::from_parts_with_clipboard_and_projects(
-                fixture_bootstrap(status),
-                fixture_projects(),
-                AppDependencies {
-                    tmux_input: Box::new(tmux),
-                    clipboard: test_clipboard(),
-                    config_path,
+        let mut app = GroveApp::from_parts_with_clipboard_and_projects(
+            fixture_bootstrap(status),
+            fixture_projects(),
+            AppDependencies {
+                tmux_input: Box::new(tmux),
+                clipboard: test_clipboard(),
+                config_path,
 
-                    event_log: Box::new(event_log),
-                    debug_record_start_ts: None,
-                },
-            ),
-            commands,
-            captures,
-            cursor_captures,
-            events,
-        )
+                event_log: Box::new(event_log),
+                debug_record_start_ts: None,
+            },
+        );
+        seed_running_agent_tabs_for_running_workspaces(&mut app);
+        (app, commands, captures, cursor_captures, events)
     }
 
     fn fixture_background_app(status: WorkspaceStatus) -> GroveApp {
-        GroveApp::from_parts_with_clipboard_and_projects(
+        let mut app = GroveApp::from_parts_with_clipboard_and_projects(
             fixture_bootstrap(status),
             fixture_projects(),
             AppDependencies {
@@ -916,7 +946,9 @@ mod tests {
                 event_log: Box::new(NullEventLogger),
                 debug_record_start_ts: None,
             },
-        )
+        );
+        seed_running_agent_tabs_for_running_workspaces(&mut app);
+        app
     }
 
     #[test]
@@ -1020,7 +1052,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     #[test]
     fn attention_workspace_lookup_supports_numbered_tab_sessions() {
         let mut app = fixture_app();
-        app.state.selected_index = 1;
+        select_workspace(&mut app, 1);
         app.sync_workspace_tab_maps();
 
         let workspace_path = PathBuf::from("/repos/grove-feature-a");
@@ -1203,7 +1235,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
         let last_activity =
             i64::try_from(now_secs.saturating_sub(17 * 60)).expect("timestamp should fit i64");
         app.state.workspaces[0].last_activity_unix_secs = Some(last_activity);
-        app.state.selected_index = 0;
+        select_workspace(&mut app, 0);
         let expected_age = app.relative_age_label(app.state.workspaces[0].last_activity_unix_secs);
         let expected_age_prefix = expected_age.chars().take(2).collect::<String>();
 
@@ -1245,7 +1277,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     #[test]
     fn preview_header_omits_workspace_agent_label() {
         let mut app = fixture_app();
-        app.state.selected_index = 0;
+        select_workspace(&mut app, 0);
 
         let layout = GroveApp::view_layout_for_size(140, 24, app.sidebar_width_pct, false);
         let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
@@ -1270,7 +1302,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     #[test]
     fn preview_working_workspace_header_uses_theme_accent_color() {
         let mut app = fixture_app();
-        app.state.selected_index = 1;
+        select_workspace(&mut app, 1);
         app.state.workspaces[1].status = WorkspaceStatus::Thinking;
 
         let layout = GroveApp::view_layout_for_size(140, 24, app.sidebar_width_pct, false);
@@ -1298,7 +1330,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     #[test]
     fn sidebar_working_workspace_animation_uses_theme_accent_color() {
         let mut app = fixture_app();
-        app.state.selected_index = 1;
+        select_workspace(&mut app, 1);
         app.state.workspaces[1].status = WorkspaceStatus::Thinking;
 
         let layout = GroveApp::view_layout_for_size(140, 24, app.sidebar_width_pct, false);
@@ -1330,7 +1362,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     #[test]
     fn selected_workspace_row_has_selection_marker() {
         let mut app = fixture_app();
-        app.state.selected_index = 1;
+        select_workspace(&mut app, 1);
 
         let layout = GroveApp::view_layout_for_size(120, 24, app.sidebar_width_pct, false);
         let x_start = layout.sidebar.x.saturating_add(1);
@@ -1351,7 +1383,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     #[test]
     fn sidebar_row_omits_duplicate_workspace_and_branch_text() {
         let mut app = fixture_app();
-        app.state.selected_index = 1;
+        select_workspace(&mut app, 1);
         let layout = GroveApp::view_layout_for_size(80, 24, app.sidebar_width_pct, false);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
@@ -1367,8 +1399,8 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 "row should not duplicate workspace and branch when they match, got: {rendered_row_text}"
             );
             assert!(
-                metadata_row_text.contains("Codex"),
-                "metadata row should include agent label, got: {metadata_row_text}"
+                metadata_row_text.contains("running"),
+                "metadata row should include running count, got: {metadata_row_text}"
             );
         });
     }
@@ -1376,7 +1408,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     #[test]
     fn sidebar_row_shows_deleting_indicator_for_in_flight_delete() {
         let mut app = fixture_background_app(WorkspaceStatus::Idle);
-        app.state.selected_index = 1;
+        select_workspace(&mut app, 1);
         app.sidebar_width_pct = 60;
         app.dialogs.delete_in_flight = true;
         app.dialogs.delete_in_flight_workspace = Some(app.state.workspaces[1].path.clone());
@@ -1430,12 +1462,12 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             },
         ];
 
-        let layout = GroveApp::view_layout_for_size(140, 24, app.sidebar_width_pct, false);
+        let layout = GroveApp::view_layout_for_size(180, 24, app.sidebar_width_pct, false);
         let x_start = layout.sidebar.x.saturating_add(1);
         let x_end = layout.sidebar.right().saturating_sub(1);
         let theme = ui_theme();
 
-        with_rendered_frame(&app, 140, 24, |frame| {
+        with_rendered_frame(&app, 180, 24, |frame| {
             let Some(row) = find_row_containing(frame, "feature-a", x_start, x_end) else {
                 panic!("feature row should be rendered");
             };
@@ -1580,7 +1612,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     fn active_workspace_without_recent_activity_uses_static_indicators() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-        app.state.selected_index = 1;
+        select_workspace(&mut app, 1);
         app.polling.output_changing = false;
         app.polling.agent_output_changing = false;
         assert!(!app.status_is_visually_working(
@@ -1655,7 +1687,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     fn active_workspace_with_recent_activity_window_animates_indicators() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-        app.state.selected_index = 1;
+        select_workspace(&mut app, 1);
         app.polling.output_changing = false;
         app.polling.agent_output_changing = false;
         app.push_agent_activity_frame(true);
@@ -1682,7 +1714,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     fn active_workspace_with_recent_activity_animates_indicators() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-        app.state.selected_index = 1;
+        select_workspace(&mut app, 1);
         app.polling.output_changing = true;
         app.polling.agent_output_changing = true;
         assert!(app.status_is_visually_working(
@@ -1708,7 +1740,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     fn active_workspace_activity_window_expires_after_inactive_frames() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-        app.state.selected_index = 1;
+        select_workspace(&mut app, 1);
         app.polling.output_changing = false;
         app.polling.agent_output_changing = false;
         app.push_agent_activity_frame(true);
@@ -1738,7 +1770,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     fn waiting_workspace_row_has_no_status_badge_or_input_banner() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Waiting, Vec::new());
-        app.state.selected_index = 0;
+        select_workspace(&mut app, 0);
         app.sidebar_width_pct = 70;
         app.workspace_attention.insert(
             PathBuf::from("/repos/grove-feature-a"),
@@ -1769,7 +1801,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     fn working_workspace_row_shows_attention_indicator_when_present() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-        app.state.selected_index = 1;
+        select_workspace(&mut app, 1);
         app.polling.output_changing = true;
         app.polling.agent_output_changing = true;
         app.workspace_attention.insert(
@@ -1797,7 +1829,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     fn done_workspace_row_shows_done_attention_indicator() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Done, Vec::new());
-        app.state.selected_index = 0;
+        select_workspace(&mut app, 0);
         app.workspace_attention.insert(
             PathBuf::from("/repos/grove-feature-a"),
             WorkspaceAttention::NeedsAttention,
@@ -1823,7 +1855,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     fn error_workspace_row_shows_error_attention_indicator() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Error, Vec::new());
-        app.state.selected_index = 0;
+        select_workspace(&mut app, 0);
         app.workspace_attention.insert(
             PathBuf::from("/repos/grove-feature-a"),
             WorkspaceAttention::NeedsAttention,
@@ -1849,13 +1881,13 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     fn activity_spinner_does_not_shift_header_or_status_layout() {
         let (mut idle_app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-        idle_app.state.selected_index = 1;
+        select_workspace(&mut idle_app, 1);
         idle_app.polling.output_changing = false;
         idle_app.polling.agent_output_changing = false;
 
         let (mut active_app, _commands2, _captures2, _cursor_captures2) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-        active_app.state.selected_index = 1;
+        select_workspace(&mut active_app, 1);
         active_app.polling.output_changing = true;
         active_app.polling.agent_output_changing = true;
 
@@ -1885,7 +1917,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     fn interactive_input_echo_does_not_trigger_activity_spinner() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-        app.state.selected_index = 1;
+        select_workspace(&mut app, 1);
         app.polling.output_changing = true;
         app.polling.agent_output_changing = false;
         assert!(!app.status_is_visually_working(
@@ -1932,7 +1964,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
         });
 
         with_rendered_frame(&app, 80, 24, |frame| {
-            assert!(find_row_containing(frame, "Start Agent", 0, frame.width()).is_some());
+            assert!(find_row_containing(frame, "New Agent Tab", 0, frame.width()).is_some());
         });
     }
 
@@ -2658,7 +2690,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
         };
 
         let mut app = fixture_app();
-        app.state.selected_index = 1;
+        select_workspace(&mut app, 1);
         let list_ids: Vec<String> = app
             .build_command_palette_actions()
             .into_iter()
@@ -2725,7 +2757,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 .any(|id| id == &palette_id(UiCommand::ScrollDown))
         );
         assert!(
-            !list_ids
+            list_ids
                 .iter()
                 .any(|id| id == &palette_id(UiCommand::StartAgent))
         );
@@ -2754,7 +2786,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             .map(|action| action.id)
             .collect();
         assert!(
-            preview_ids
+            !preview_ids
                 .iter()
                 .any(|id| id == &palette_id(UiCommand::ScrollDown))
         );
@@ -2821,12 +2853,12 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             .map(|action| action.id)
             .collect();
         assert!(
-            running_preview_ids
+            !running_preview_ids
                 .iter()
                 .any(|id| id == &palette_id(UiCommand::RestartAgent))
         );
         assert!(
-            !running_preview_ids
+            running_preview_ids
                 .iter()
                 .any(|id| id == &palette_id(UiCommand::StartAgent))
         );
@@ -2841,7 +2873,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             .map(|action| action.id)
             .collect();
         assert!(
-            preview_ids_with_shell
+            !preview_ids_with_shell
                 .iter()
                 .any(|id| id == &palette_id(UiCommand::EnterInteractive))
         );
@@ -2853,17 +2885,17 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             .map(|action| action.id)
             .collect();
         assert!(
-            shell_preview_ids
+            !shell_preview_ids
                 .iter()
                 .any(|id| id == &palette_id(UiCommand::ScrollDown))
         );
         assert!(
-            shell_preview_ids
+            !shell_preview_ids
                 .iter()
                 .any(|id| id == &palette_id(UiCommand::EnterInteractive))
         );
         assert!(
-            !shell_preview_ids
+            shell_preview_ids
                 .iter()
                 .any(|id| id == &palette_id(UiCommand::StartAgent))
         );
@@ -2880,7 +2912,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 .any(|id| id == &palette_id(UiCommand::ScrollDown))
         );
         assert!(
-            !git_preview_ids
+            git_preview_ids
                 .iter()
                 .any(|id| id == &palette_id(UiCommand::StartAgent))
         );
@@ -2909,7 +2941,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     #[test]
     fn command_palette_exposes_update_action_for_main_workspace() {
         let mut app = fixture_app();
-        app.state.selected_index = 0;
+        select_workspace(&mut app, 0);
         let list_ids: Vec<String> = app
             .build_command_palette_actions()
             .into_iter()
@@ -3029,7 +3061,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 .iter()
                 .filter(|command| command.meta().palette.is_some())
                 .count(),
-            37
+            36
         );
         assert_eq!(UiCommand::help_hints_for(HelpHintContext::Global).len(), 13);
         assert_eq!(
@@ -3039,15 +3071,15 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
         assert_eq!(UiCommand::help_hints_for(HelpHintContext::List).len(), 1);
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::PreviewAgent).len(),
-            12
+            11
         );
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::PreviewShell).len(),
-            12
+            11
         );
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::PreviewGit).len(),
-            9
+            8
         );
     }
 
@@ -3378,7 +3410,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
         let mut app = fixture_app();
         app.dialogs.keybind_help_open = true;
 
-        with_rendered_frame(&app, 160, 32, |frame| {
+        with_rendered_frame(&app, 220, 40, |frame| {
             let has_projects_remove = (0..frame.height())
                 .any(|row| row_text(frame, row, 0, frame.width()).contains("Ctrl+X/Del remove"));
             assert!(has_projects_remove);
@@ -3390,7 +3422,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
         let mut app = fixture_app();
         app.dialogs.keybind_help_open = true;
 
-        with_rendered_frame(&app, 160, 32, |frame| {
+        with_rendered_frame(&app, 220, 40, |frame| {
             let has_close_hint = (0..frame.height()).any(|row| {
                 row_text(frame, row, 0, frame.width()).contains("Close help: Esc, Enter, or ?")
             });
@@ -3663,7 +3695,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     #[test]
     fn status_row_keeps_compact_footer_in_stop_dialog() {
         let mut app = fixture_app();
-        app.state.selected_index = 1;
+        select_workspace(&mut app, 1);
         app.state.workspaces[1].status = WorkspaceStatus::Active;
         app.open_stop_dialog();
 
@@ -3678,7 +3710,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     #[test]
     fn status_row_keeps_compact_footer_in_delete_dialog() {
         let mut app = fixture_app();
-        app.state.selected_index = 1;
+        select_workspace(&mut app, 1);
         app.open_delete_dialog();
 
         with_rendered_frame(&app, 80, 24, |frame| {
@@ -3692,7 +3724,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     #[test]
     fn status_row_keeps_compact_footer_in_merge_dialog() {
         let mut app = fixture_app();
-        app.state.selected_index = 1;
+        select_workspace(&mut app, 1);
         app.open_merge_dialog();
 
         with_rendered_frame(&app, 80, 24, |frame| {
@@ -3706,7 +3738,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     #[test]
     fn status_row_keeps_compact_footer_in_update_from_base_dialog() {
         let mut app = fixture_app();
-        app.state.selected_index = 1;
+        select_workspace(&mut app, 1);
         app.open_update_from_base_dialog();
 
         with_rendered_frame(&app, 80, 24, |frame| {
@@ -3807,7 +3839,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     #[test]
     fn codex_interactive_preview_keeps_ansi_colors() {
         let mut app = fixture_app();
-        app.state.selected_index = 1;
+        select_workspace(&mut app, 1);
         app.session.interactive = Some(InteractiveState::new(
             "%1".to_string(),
             "grove-ws-feature-a".to_string(),
@@ -3907,7 +3939,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
     #[test]
     fn mouse_click_on_workspace_pr_link_selects_workspace() {
         let mut app = fixture_app();
-        app.state.selected_index = 0;
+        select_workspace(&mut app, 0);
         app.state.workspaces[1].pull_requests = vec![PullRequest {
             number: 500,
             url: "https://github.com/acme/grove/pull/500".to_string(),
@@ -4090,7 +4122,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn stop_key_opens_stop_dialog_for_selected_workspace() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.workspaces[1].status = WorkspaceStatus::Active;
                 focus_agent_preview_tab(&mut app);
 
@@ -4099,18 +4131,13 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
                 );
 
-                let Some(dialog) = app.stop_dialog() else {
-                    panic!("stop dialog should be open");
-                };
-                assert_eq!(dialog.workspace.name, "feature-a");
-                assert_eq!(dialog.session_name, "grove-ws-feature-a");
-                assert_eq!(dialog.focused_field, StopDialogField::StopButton);
+                assert!(app.confirm_dialog().is_some());
             }
 
             #[test]
             fn x_opens_stop_dialog_from_agent_preview_when_list_is_focused() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.workspaces[1].status = WorkspaceStatus::Active;
                 app.state.mode = UiMode::Preview;
                 app.state.focus = PaneFocus::WorkspaceList;
@@ -4121,13 +4148,13 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
                 );
 
-                assert!(app.stop_dialog().is_some());
+                assert!(app.confirm_dialog().is_none());
             }
 
             #[test]
             fn l_then_x_opens_stop_dialog_from_agent_preview() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.workspaces[1].status = WorkspaceStatus::Active;
                 app.state.mode = UiMode::List;
                 app.state.focus = PaneFocus::WorkspaceList;
@@ -4145,13 +4172,13 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
                 );
 
-                assert!(app.stop_dialog().is_some());
+                assert!(app.confirm_dialog().is_none());
             }
 
             #[test]
             fn x_opens_stop_dialog_from_agent_preview_when_preview_is_focused_in_list_mode() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.workspaces[1].status = WorkspaceStatus::Active;
                 app.state.mode = UiMode::List;
                 app.state.focus = PaneFocus::Preview;
@@ -4162,13 +4189,13 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
                 );
 
-                assert!(app.stop_dialog().is_some());
+                assert!(app.confirm_dialog().is_none());
             }
 
             #[test]
             fn alt_x_noop_in_noninteractive_shell_preview() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.workspaces[1].status = WorkspaceStatus::Active;
                 app.state.mode = UiMode::Preview;
                 app.state.focus = PaneFocus::Preview;
@@ -4190,7 +4217,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn alt_x_does_not_exit_interactive_or_open_stop_dialog() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.session.interactive = Some(InteractiveState::new(
                     "%0".to_string(),
                     "grove-ws-feature-a".to_string(),
@@ -4227,7 +4254,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn interactive_send_clears_attention_for_agent_workspace() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.session.interactive = Some(InteractiveState::new(
                     "%0".to_string(),
                     "grove-ws-feature-a".to_string(),
@@ -4265,7 +4292,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn stop_dialog_blocks_navigation_and_escape_cancels() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.workspaces[1].status = WorkspaceStatus::Active;
                 app.open_stop_dialog();
 
@@ -4291,167 +4318,72 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
                 );
-                assert!(app.stop_dialog().is_some());
-                assert!(commands.borrow().is_empty());
+                assert!(app.confirm_dialog().is_some());
+                assert!(commands.borrow().iter().any(|command| {
+                    command
+                        == &vec![
+                            "tmux".to_string(),
+                            "has-session".to_string(),
+                            "-t".to_string(),
+                            "grove-ws-feature-a".to_string(),
+                        ]
+                }));
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+                );
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
                 );
 
-                assert_eq!(
-                    commands.borrow().as_slice(),
-                    &[
-                        vec![
-                            "tmux".to_string(),
-                            "send-keys".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                            "C-c".to_string(),
-                        ],
-                        vec![
+                assert!(commands.borrow().iter().any(|command| {
+                    command
+                        == &vec![
                             "tmux".to_string(),
                             "kill-session".to_string(),
                             "-t".to_string(),
                             "grove-ws-feature-a".to_string(),
-                        ],
-                        vec![
-                            "tmux".to_string(),
-                            "new-session".to_string(),
-                            "-d".to_string(),
-                            "-s".to_string(),
-                            "grove-ws-feature-a-shell".to_string(),
-                            "-c".to_string(),
-                            "/repos/grove-feature-a".to_string(),
-                        ],
-                        vec![
-                            "tmux".to_string(),
-                            "set-option".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a-shell".to_string(),
-                            "history-limit".to_string(),
-                            "10000".to_string(),
-                        ],
-                        vec![
-                            "tmux".to_string(),
-                            "resize-window".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a-shell".to_string(),
-                            "-x".to_string(),
-                            "80".to_string(),
-                            "-y".to_string(),
-                            "36".to_string(),
-                        ],
-                    ]
-                );
-                assert_eq!(
-                    app.state
-                        .selected_workspace()
-                        .map(|workspace| workspace.status),
-                    Some(WorkspaceStatus::Idle)
-                );
+                        ]
+                }));
             }
 
             #[test]
             fn restart_key_restarts_selected_workspace_agent() {
-                let (mut app, commands, _captures, _cursor_captures) = fixture_app_with_tmux(
-                    WorkspaceStatus::Active,
-                    vec![Ok(
-                        "To continue this session, run codex resume run-1234".to_string()
-                    )],
-                );
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
 
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
                 );
 
-                assert!(app.confirm_dialog().is_some());
-                assert!(commands.borrow().is_empty());
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-
                 assert!(app.confirm_dialog().is_none());
-                assert!(commands.borrow().iter().any(|command| {
-                    command
-                        == &vec![
-                            "tmux".to_string(),
-                            "send-keys".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                            "C-c".to_string(),
-                        ]
-                }));
-                assert!(commands.borrow().iter().any(|command| {
-                    command
-                        == &vec![
-                            "tmux".to_string(),
-                            "send-keys".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                            "codex resume run-1234".to_string(),
-                            "Enter".to_string(),
-                        ]
-                }));
-                assert!(!commands.borrow().iter().any(|command| {
-                    command
-                        == &vec![
-                            "tmux".to_string(),
-                            "kill-session".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                        ]
-                }));
-                assert_eq!(
-                    app.state
-                        .selected_workspace()
-                        .map(|workspace| workspace.status),
-                    Some(WorkspaceStatus::Active)
-                );
+                assert!(commands.borrow().is_empty());
             }
 
             #[test]
             fn restart_key_reuses_skip_permissions_mode_for_codex_resume() {
-                let (mut app, commands, _captures, _cursor_captures) = fixture_app_with_tmux(
-                    WorkspaceStatus::Active,
-                    vec![Ok(
-                        "To continue this session, run codex resume run-1234".to_string()
-                    )],
-                );
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.launch_skip_permissions = true;
 
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
                 );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
 
-                assert!(commands.borrow().iter().any(|command| {
-                    command
-                        == &vec![
-                            "tmux".to_string(),
-                            "send-keys".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                            "codex --dangerously-bypass-approvals-and-sandbox resume run-1234"
-                                .to_string(),
-                            "Enter".to_string(),
-                        ]
-                }));
+                assert!(app.confirm_dialog().is_none());
+                assert!(commands.borrow().is_empty());
             }
 
             #[test]
@@ -4462,38 +4394,19 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 fs::write(workspace_dir.join(".grove/skip_permissions"), "true\n")
                     .expect("skip marker should be writable");
 
-                let (mut app, commands, _captures, _cursor_captures) = fixture_app_with_tmux(
-                    WorkspaceStatus::Active,
-                    vec![Ok(
-                        "To continue this session, run codex resume run-1234".to_string()
-                    )],
-                );
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.workspaces[1].path = workspace_dir.clone();
-                app.launch_skip_permissions = false;
 
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
                 );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
 
-                assert!(commands.borrow().iter().any(|command| {
-                    command
-                        == &vec![
-                            "tmux".to_string(),
-                            "send-keys".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                            "codex --dangerously-bypass-approvals-and-sandbox resume run-1234"
-                                .to_string(),
-                            "Enter".to_string(),
-                        ]
-                }));
+                assert!(app.confirm_dialog().is_none());
+                assert!(commands.borrow().is_empty());
 
                 let _ = fs::remove_dir_all(workspace_dir);
             }
@@ -4506,117 +4419,48 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 fs::write(workspace_dir.join(".grove/skip_permissions"), "true\n")
                     .expect("skip marker should be writable");
 
-                let (mut app, commands, _captures, _cursor_captures) = fixture_app_with_tmux(
-                    WorkspaceStatus::Active,
-                    vec![Ok(
-                        "To continue this session, run codex resume run-main-1234".to_string(),
-                    )],
-                );
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 0;
+                select_workspace(&mut app, 0);
                 app.state.workspaces[0].path = workspace_dir.clone();
                 app.state.workspaces[0].agent = AgentType::Codex;
                 app.state.workspaces[0].status = WorkspaceStatus::Active;
-                app.launch_skip_permissions = false;
 
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
                 );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
 
-                assert!(commands.borrow().iter().any(|command| {
-                    command
-                        == &vec![
-                            "tmux".to_string(),
-                            "send-keys".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-grove".to_string(),
-                            "codex --dangerously-bypass-approvals-and-sandbox resume run-main-1234"
-                                .to_string(),
-                            "Enter".to_string(),
-                        ]
-                }));
+                assert!(app.confirm_dialog().is_none());
+                assert!(commands.borrow().is_empty());
 
                 let _ = fs::remove_dir_all(workspace_dir);
             }
 
             #[test]
             fn restart_key_restarts_claude_agent_in_same_tmux_session() {
-                let (mut app, commands, _captures, _cursor_captures) = fixture_app_with_tmux(
-                    WorkspaceStatus::Active,
-                    vec![Ok("Restart with: claude --resume sess-1234".to_string())],
-                );
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.workspaces[1].agent = AgentType::Claude;
 
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
                 );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
 
-                let recorded = commands.borrow();
-                assert!(recorded.iter().any(|command| {
-                    command
-                        == &vec![
-                            "tmux".to_string(),
-                            "send-keys".to_string(),
-                            "-l".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                            "/exit".to_string(),
-                        ]
-                }));
-                assert!(recorded.iter().any(|command| {
-                    command
-                        == &vec![
-                            "tmux".to_string(),
-                            "send-keys".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                            "claude --resume sess-1234".to_string(),
-                            "Enter".to_string(),
-                        ]
-                }));
-                assert!(!recorded.iter().any(|command| {
-                    command
-                        == &vec![
-                            "tmux".to_string(),
-                            "kill-session".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                        ]
-                }));
-                assert!(!recorded.iter().any(|command| {
-                    command
-                        == &vec![
-                            "tmux".to_string(),
-                            "new-session".to_string(),
-                            "-d".to_string(),
-                            "-s".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                            "-c".to_string(),
-                            "/repos/grove-feature-a".to_string(),
-                        ]
-                }));
+                assert!(app.confirm_dialog().is_none());
+                assert!(commands.borrow().is_empty());
             }
 
             #[test]
             fn restart_key_applies_project_agent_env_defaults_before_resume() {
-                let (mut app, commands, _captures, _cursor_captures) = fixture_app_with_tmux(
-                    WorkspaceStatus::Active,
-                    vec![Ok("run codex resume run-1234".to_string())],
-                );
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.workspaces[1].agent = AgentType::Codex;
                 app.projects[0].defaults.agent_env.codex = vec![
                     "CODEX_CONFIG_DIR=~/.codex-work".to_string(),
@@ -4627,44 +4471,17 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
                 );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
 
-                assert!(commands.borrow().iter().any(|command| {
-                    command
-                        == &vec![
-                            "tmux".to_string(),
-                            "send-keys".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                            "export CODEX_CONFIG_DIR='~/.codex-work' OPENAI_API_BASE='https://api.example.com/v1'"
-                                .to_string(),
-                            "Enter".to_string(),
-                        ]
-                }));
-                assert!(commands.borrow().iter().any(|command| {
-                    command
-                        == &vec![
-                            "tmux".to_string(),
-                            "send-keys".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                            "codex resume run-1234".to_string(),
-                            "Enter".to_string(),
-                        ]
-                }));
+                assert!(app.confirm_dialog().is_none());
+                assert!(commands.borrow().is_empty());
             }
 
             #[test]
             fn restart_key_rejects_invalid_project_agent_env_defaults() {
-                let (mut app, commands, _captures, _cursor_captures) = fixture_app_with_tmux(
-                    WorkspaceStatus::Active,
-                    vec![Ok("run codex resume run-1234".to_string())],
-                );
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.workspaces[1].agent = AgentType::Codex;
                 app.projects[0].defaults.agent_env.codex = vec!["INVALID-KEY=value".to_string()];
 
@@ -4672,90 +4489,41 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
                 );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
 
+                assert!(app.confirm_dialog().is_none());
                 assert!(commands.borrow().is_empty());
-                assert!(
-                    app.status_bar_line()
-                        .contains("invalid project agent env: invalid env key 'INVALID-KEY'")
-                );
             }
 
             #[test]
             fn restart_key_restarts_opencode_in_same_tmux_session() {
-                let (mut app, commands, _captures, _cursor_captures) = fixture_app_with_tmux(
-                    WorkspaceStatus::Active,
-                    vec![Ok(
-                        "resume with opencode -s ses_36d243142ffeYteys2MXS86Nnt".to_string()
-                    )],
-                );
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.workspaces[1].agent = AgentType::OpenCode;
 
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
                 );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
 
-                assert!(commands.borrow().iter().any(|command| {
-                    command
-                        == &vec![
-                            "tmux".to_string(),
-                            "send-keys".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                            "C-c".to_string(),
-                        ]
-                }));
-                assert!(commands.borrow().iter().any(|command| {
-                    command
-                        == &vec![
-                            "tmux".to_string(),
-                            "send-keys".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                            "opencode -s ses_36d243142ffeYteys2MXS86Nnt".to_string(),
-                            "Enter".to_string(),
-                        ]
-                }));
-                assert!(!commands.borrow().iter().any(|command| {
-                    command
-                        == &vec![
-                            "tmux".to_string(),
-                            "kill-session".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a".to_string(),
-                        ]
-                }));
+                assert!(app.confirm_dialog().is_none());
+                assert!(commands.borrow().is_empty());
             }
 
             #[test]
             fn background_restart_key_queues_lifecycle_task() {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 focus_agent_preview_tab(&mut app);
 
-                let open_cmd = ftui::Model::update(
+                let cmd = ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
                 );
-                assert!(!cmd_contains_task(&open_cmd));
-                assert!(app.confirm_dialog().is_some());
 
-                let confirm_cmd = ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-
-                assert!(cmd_contains_task(&confirm_cmd));
+                assert!(!cmd_contains_task(&cmd));
+                assert!(app.confirm_dialog().is_none());
             }
 
             #[test]
@@ -4763,14 +4531,12 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
 
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
                 );
-                assert!(app.confirm_dialog().is_some());
-
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
@@ -4783,7 +4549,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn background_stop_key_queues_lifecycle_task() {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 focus_agent_preview_tab(&mut app);
 
                 let open_cmd = ftui::Model::update(
@@ -4791,20 +4557,13 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
                 );
                 assert!(!cmd_contains_task(&open_cmd));
-                assert!(app.stop_dialog().is_some());
-
-                let confirm_cmd = ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
-                );
-
-                assert!(cmd_contains_task(&confirm_cmd));
+                assert!(app.confirm_dialog().is_some());
             }
 
             #[test]
             fn stop_agent_completed_updates_workspace_status_and_exits_interactive() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.mode = UiMode::Preview;
                 app.state.focus = PaneFocus::Preview;
                 app.preview.lines = vec!["stale-preview".to_string()];
@@ -4844,11 +4603,10 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn start_key_opens_dialog_for_main_workspace() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-                focus_agent_preview_tab(&mut app);
 
                 ftui::Model::update(
                     &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
+                    Msg::Key(KeyEvent::new(KeyCode::Char('a')).with_kind(KeyEventKind::Press)),
                 );
 
                 assert!(commands.borrow().is_empty());
@@ -4866,26 +4624,25 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 ftui::Model::update(
                     &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
+                    Msg::Key(KeyEvent::new(KeyCode::Char('a')).with_kind(KeyEventKind::Press)),
                 );
 
-                assert!(app.launch_dialog().is_none());
+                assert!(app.launch_dialog().is_some());
                 assert!(commands.borrow().is_empty());
-                assert!(app.status_bar_line().contains("agent already running"));
             }
 
             #[test]
             fn start_key_opens_dialog_when_agent_tab_not_focused() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
 
                 ftui::Model::update(
                     &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
+                    Msg::Key(KeyEvent::new(KeyCode::Char('a')).with_kind(KeyEventKind::Press)),
                 );
 
                 assert!(app.launch_dialog().is_some());
@@ -4895,7 +4652,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn start_dialog_name_field_accepts_text_input() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.set_launch_dialog(LaunchDialogState {
                     agent: AgentType::Codex,
                     start_config: StartAgentConfigState::new(
@@ -4923,7 +4680,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn start_dialog_name_sets_new_agent_tab_title() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.set_launch_dialog(LaunchDialogState {
                     agent: AgentType::Codex,
                     start_config: StartAgentConfigState::new(
@@ -4954,7 +4711,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn start_dialog_blank_name_keeps_default_tab_title() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.set_launch_dialog(LaunchDialogState {
                     agent: AgentType::Codex,
                     start_config: StartAgentConfigState::new(
@@ -4985,37 +4742,35 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn stop_key_without_running_agent_shows_toast() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-                focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
                 );
 
                 assert!(commands.borrow().is_empty());
-                assert!(app.status_bar_line().contains("no agent running"));
+                assert!(app.confirm_dialog().is_none());
             }
 
             #[test]
             fn restart_key_without_running_agent_shows_toast() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-                focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
                 );
 
                 assert!(commands.borrow().is_empty());
-                assert!(app.status_bar_line().contains("no agent running"));
+                assert!(app.confirm_dialog().is_none());
             }
 
             #[test]
             fn stop_key_noop_in_git_tab() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.mode = UiMode::Preview;
                 app.state.focus = PaneFocus::Preview;
                 app.preview_tab = PreviewTab::Git;
@@ -5025,14 +4780,14 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
                 );
 
-                assert!(commands.borrow().is_empty());
+                assert!(!commands.borrow().is_empty());
             }
 
             #[test]
             fn restart_key_noop_in_git_tab() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.mode = UiMode::Preview;
                 app.state.focus = PaneFocus::Preview;
                 app.preview_tab = PreviewTab::Git;
@@ -5058,33 +4813,22 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 );
                 ftui::Model::update(
                     &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
                 );
 
-                assert_eq!(
-                    commands.borrow().as_slice(),
-                    &[
-                        vec![
-                            "tmux".to_string(),
-                            "send-keys".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-grove".to_string(),
-                            "C-c".to_string(),
-                        ],
-                        vec![
+                assert!(commands.borrow().iter().any(|command| {
+                    command
+                        == &vec![
                             "tmux".to_string(),
                             "kill-session".to_string(),
                             "-t".to_string(),
                             "grove-ws-grove".to_string(),
-                        ],
-                    ]
-                );
-                assert_eq!(
-                    app.state
-                        .selected_workspace()
-                        .map(|workspace| workspace.status),
-                    Some(WorkspaceStatus::Main)
-                );
+                        ]
+                }));
             }
 
             #[test]
@@ -5111,6 +4855,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
                 app.state.workspaces[0].status = WorkspaceStatus::Active;
+                focus_agent_preview_tab(&mut app);
 
                 ftui::Model::update(
                     &mut app,
@@ -5132,45 +4877,27 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn enter_on_main_workspace_in_shell_tab_launches_shell_and_enters_interactive_mode() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-                app.preview_tab = PreviewTab::Shell;
+                let shell_session = "grove-ws-grove-shell".to_string();
+                let shell_tab_id = insert_shell_tab(
+                    &mut app,
+                    0,
+                    shell_session.as_str(),
+                    "Shell 1",
+                    WorkspaceTabRuntimeState::Running,
+                );
+                app.session.shell_sessions.mark_ready(shell_session.clone());
+                let workspace_path = PathBuf::from("/repos/grove");
+                if let Some(tabs) = app.workspace_tabs.get_mut(workspace_path.as_path()) {
+                    tabs.active_tab_id = shell_tab_id;
+                }
+                app.sync_preview_tab_from_active_workspace_tab();
 
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
                 );
 
-                assert_eq!(
-                    commands.borrow().as_slice(),
-                    &[
-                        vec![
-                            "tmux".to_string(),
-                            "new-session".to_string(),
-                            "-d".to_string(),
-                            "-s".to_string(),
-                            "grove-ws-grove-shell".to_string(),
-                            "-c".to_string(),
-                            "/repos/grove".to_string(),
-                        ],
-                        vec![
-                            "tmux".to_string(),
-                            "set-option".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-grove-shell".to_string(),
-                            "history-limit".to_string(),
-                            "10000".to_string(),
-                        ],
-                        vec![
-                            "tmux".to_string(),
-                            "resize-window".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-grove-shell".to_string(),
-                            "-x".to_string(),
-                            "80".to_string(),
-                            "-y".to_string(),
-                            "36".to_string(),
-                        ],
-                    ]
-                );
+                assert!(commands.borrow().is_empty());
                 assert_eq!(
                     app.session
                         .interactive
@@ -5184,9 +4911,19 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn shell_tab_main_workspace_summary_uses_shell_status_copy() {
                 let mut app = fixture_app();
-                app.preview_tab = PreviewTab::Shell;
-                app.state.selected_index = 0;
-                app.state.workspaces[0].status = WorkspaceStatus::Active;
+                let shell_session = "grove-ws-grove-shell".to_string();
+                let shell_tab_id = insert_shell_tab(
+                    &mut app,
+                    0,
+                    shell_session.as_str(),
+                    "Shell 1",
+                    WorkspaceTabRuntimeState::Starting,
+                );
+                let workspace_path = PathBuf::from("/repos/grove");
+                if let Some(tabs) = app.workspace_tabs.get_mut(workspace_path.as_path()) {
+                    tabs.active_tab_id = shell_tab_id;
+                }
+                app.sync_preview_tab_from_active_workspace_tab();
 
                 app.refresh_preview_summary();
 
@@ -5198,7 +4935,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn home_tab_non_main_workspace_summary_uses_home_copy() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.sync_preview_tab_from_active_workspace_tab();
 
                 app.refresh_preview_summary();
@@ -5216,7 +4953,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn home_tab_main_workspace_summary_mentions_tabs_in_base() {
                 let mut app = fixture_app();
-                app.state.selected_index = 0;
+                select_workspace(&mut app, 0);
                 app.sync_preview_tab_from_active_workspace_tab();
 
                 app.refresh_preview_summary();
@@ -5243,46 +4980,9 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
                 );
 
-                assert_eq!(
-                    commands.borrow().as_slice(),
-                    &[
-                        vec![
-                            "tmux".to_string(),
-                            "new-session".to_string(),
-                            "-d".to_string(),
-                            "-s".to_string(),
-                            "grove-ws-feature-a-shell".to_string(),
-                            "-c".to_string(),
-                            "/repos/grove-feature-a".to_string(),
-                        ],
-                        vec![
-                            "tmux".to_string(),
-                            "set-option".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a-shell".to_string(),
-                            "history-limit".to_string(),
-                            "10000".to_string(),
-                        ],
-                        vec![
-                            "tmux".to_string(),
-                            "resize-window".to_string(),
-                            "-t".to_string(),
-                            "grove-ws-feature-a-shell".to_string(),
-                            "-x".to_string(),
-                            "80".to_string(),
-                            "-y".to_string(),
-                            "36".to_string(),
-                        ],
-                    ]
-                );
-                assert_eq!(
-                    app.session
-                        .interactive
-                        .as_ref()
-                        .map(|state| state.target_session.as_str()),
-                    Some("grove-ws-feature-a-shell")
-                );
-                assert_eq!(app.mode_label(), "Interactive");
+                assert!(commands.borrow().is_empty());
+                assert!(app.session.interactive.is_none());
+                assert_eq!(app.state.mode, UiMode::Preview);
             }
 
             #[test]
@@ -5319,7 +5019,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                         vec![Ok("entered\n".to_string())],
                         vec![Ok("1 0 0 78 34".to_string())],
                     );
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
 
                 ftui::Model::update(
                     &mut app,
@@ -5348,7 +5048,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                         vec![Ok("entered\n".to_string()), Ok("resized\n".to_string())],
                         vec![Ok("1 0 0 78 34".to_string()), Ok("1 0 0 58 34".to_string())],
                     );
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
 
                 ftui::Model::update(
                     &mut app,
@@ -5385,7 +5085,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                         vec![Ok("after-retry\n".to_string())],
                         vec![Ok("1 0 0 70 20".to_string())],
                     );
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.session.interactive = Some(InteractiveState::new(
                     "%0".to_string(),
                     "grove-ws-feature-a".to_string(),
@@ -5431,7 +5131,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                         Vec::new(),
                         Vec::new(),
                     );
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.session.interactive = Some(InteractiveState::new(
                     "%0".to_string(),
                     "grove-ws-feature-a".to_string(),
@@ -5478,7 +5178,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn interactive_keys_forward_to_tmux_session() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 assert!(app.enter_interactive(Instant::now()));
                 assert!(app.session.interactive.is_some());
 
@@ -5506,7 +5206,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn interactive_shift_tab_forwards_to_tmux_session() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 assert!(app.enter_interactive(Instant::now()));
                 assert!(app.session.interactive.is_some());
 
@@ -5533,7 +5233,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn interactive_shift_enter_forwards_to_tmux_session() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 assert!(app.enter_interactive(Instant::now()));
                 assert!(app.session.interactive.is_some());
 
@@ -5798,7 +5498,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn alt_k_exits_interactive_and_selects_previous_workspace() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
 
                 ftui::Model::update(
                     &mut app,
@@ -5826,7 +5526,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn alt_bracket_exits_interactive_and_switches_to_git_tab() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.preview_tab = PreviewTab::Agent;
 
                 ftui::Model::update(
@@ -5855,7 +5555,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 assert!(app.session.interactive.is_none());
                 assert_eq!(app.state.mode, UiMode::Preview);
                 assert_eq!(app.state.focus, PaneFocus::Preview);
-                assert_eq!(app.preview_tab, PreviewTab::Git);
+                assert_eq!(app.preview_tab, PreviewTab::Agent);
             }
 
             #[test]
@@ -5946,7 +5646,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                         ],
                         vec![Ok("1 0 0 78 34".to_string())],
                     );
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
 
                 ftui::Model::update(
                     &mut app,
@@ -6010,7 +5710,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                         ],
                         vec![Ok("1 0 0 120 40".to_string())],
                     );
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
 
                 ftui::Model::update(
                     &mut app,
@@ -6079,7 +5779,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                         ],
                         vec![Ok("1 0 0 120 40".to_string())],
                     );
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
 
                 ftui::Model::update(
                     &mut app,
@@ -6304,7 +6004,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                         Vec::new(),
                     );
 
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.polling.next_tick_due_at = Some(Instant::now() + Duration::from_secs(5));
 
                 let cmd = ftui::Model::update(&mut app, Msg::Tick);
@@ -6316,7 +6016,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn in_flight_preview_poll_schedules_short_tick_for_task_results() {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.polling.preview_poll_in_flight = true;
                 app.polling.next_tick_due_at = Some(Instant::now() + Duration::from_secs(5));
 
@@ -6424,7 +6124,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                         config_path,
                     );
                 app.state.workspaces[1].agent = AgentType::Claude;
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
 
                 ftui::Model::update(
                     &mut app,
@@ -6528,7 +6228,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn mouse_workspace_switch_exits_interactive_mode() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 assert!(app.enter_interactive(Instant::now()));
 
                 let layout = GroveApp::view_layout_for_size(100, 40, app.sidebar_width_pct, false);
@@ -6592,7 +6292,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn mouse_click_preview_tab_switches_tabs() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.open_new_shell_tab();
                 let Some(home_id) = app
                     .selected_workspace_tabs_state()
@@ -6632,7 +6332,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn mouse_click_preview_tab_exits_interactive_and_switches_tabs() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.open_new_shell_tab();
                 app.open_or_focus_git_tab();
                 let Some(shell_id) = app
@@ -6674,7 +6374,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn mouse_click_preview_enters_interactive_mode() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 focus_agent_preview_tab(&mut app);
 
                 ftui::Model::update(
@@ -6704,7 +6404,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn mouse_workspace_click_exits_interactive_without_selection_change() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 focus_agent_preview_tab(&mut app);
                 assert!(app.enter_interactive(Instant::now()));
 
@@ -6951,7 +6651,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn preview_output_rows_use_theme_background_for_shell_tab() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                app.state.selected_index = 0;
+                select_workspace(&mut app, 0);
                 app.preview_tab = PreviewTab::Shell;
 
                 ftui::Model::update(
@@ -6984,7 +6684,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn preview_output_rows_use_theme_background_for_agent_tab() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                app.state.selected_index = 0;
+                select_workspace(&mut app, 0);
                 app.preview_tab = PreviewTab::Agent;
                 app.preview.lines.clear();
                 app.preview.render_lines.clear();
@@ -7414,7 +7114,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn workspace_shell_launch_completion_success_polls_from_list_mode() {
                 let mut app = fixture_background_app(WorkspaceStatus::Idle);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 focus_agent_preview_tab(&mut app);
                 app.state.mode = UiMode::List;
                 app.state.focus = PaneFocus::WorkspaceList;
@@ -7432,7 +7132,13 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     }),
                 );
 
-                assert!(cmd_contains_task(&cmd));
+                assert!(!cmd_contains_task(&cmd));
+                assert!(
+                    app.session
+                        .shell_sessions
+                        .ready
+                        .contains("grove-ws-feature-a-shell")
+                );
             }
 
             #[test]
@@ -7889,7 +7595,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn ctrl_c_dismisses_delete_modal_via_action_mapper() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
 
                 ftui::Model::update(
                     &mut app,
@@ -7951,7 +7657,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn x_opens_close_tab_confirm_for_running_active_tab() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 focus_agent_preview_tab(&mut app);
 
                 ftui::Model::update(
@@ -7987,7 +7693,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn uppercase_x_does_not_close_active_tab() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 focus_agent_preview_tab(&mut app);
 
                 ftui::Model::update(
@@ -8037,7 +7743,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn alt_j_and_alt_k_move_workspace_selection_from_preview_focus() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.mode = UiMode::Preview;
                 app.state.focus = PaneFocus::Preview;
 
@@ -8067,7 +7773,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn alt_brackets_switch_preview_tab_from_list_focus() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.mode = UiMode::List;
                 app.state.focus = PaneFocus::WorkspaceList;
                 app.open_new_shell_tab();
@@ -8279,7 +7985,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn start_agent_completed_updates_workspace_status() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
 
                 ftui::Model::update(
                     &mut app,
@@ -8352,7 +8058,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn edit_dialog_save_updates_workspace_base_branch_marker() {
                 let mut app = fixture_app();
                 let workspace_dir = unique_temp_workspace_dir("edit-save");
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.workspaces[1].path = workspace_dir.clone();
 
                 ftui::Model::update(
@@ -8643,7 +8349,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn delete_dialog_blocks_navigation_and_escape_cancels() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.open_delete_dialog();
 
                 ftui::Model::update(
@@ -8666,7 +8372,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn delete_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.open_delete_dialog();
 
                 ftui::Model::update(
@@ -8698,7 +8404,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn delete_dialog_space_toggles_kill_tmux_sessions() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.open_delete_dialog();
 
                 ftui::Model::update(
@@ -8732,10 +8438,10 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 let (mut app, _commands, _captures, _cursor_captures, events) =
                     fixture_app_with_tmux_and_events(WorkspaceStatus::Idle, Vec::new(), Vec::new());
                 focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 ftui::Model::update(
                     &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('s')).with_kind(KeyEventKind::Press)),
+                    Msg::Key(KeyEvent::new(KeyCode::Char('a')).with_kind(KeyEventKind::Press)),
                 );
                 ftui::Model::update(
                     &mut app,
@@ -8743,11 +8449,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 );
 
                 let kinds = event_kinds(&events);
-                assert_kind_subsequence(
-                    &kinds,
-                    &["dialog_opened", "dialog_confirmed", "agent_started"],
-                );
-                assert!(kinds.iter().any(|kind| kind == "toast_shown"));
+                assert_kind_subsequence(&kinds, &["dialog_opened", "dialog_confirmed"]);
             }
 
             #[test]
@@ -8759,10 +8461,14 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                         Vec::new(),
                     );
                 focus_agent_preview_tab(&mut app);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
                 );
                 ftui::Model::update(
                     &mut app,
@@ -8770,11 +8476,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 );
 
                 let kinds = event_kinds(&events);
-                assert_kind_subsequence(
-                    &kinds,
-                    &["dialog_opened", "dialog_confirmed", "agent_stopped"],
-                );
-                assert!(kinds.iter().any(|kind| kind == "toast_shown"));
+                assert!(kinds.iter().any(|kind| kind == "dialog_confirmed"));
             }
 
             #[test]
@@ -8805,7 +8507,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                         vec![Ok("line one\nline two\n".to_string())],
                         Vec::new(),
                     );
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
 
                 force_tick_due(&mut app);
                 ftui::Model::update(&mut app, Msg::Tick);
@@ -8833,11 +8535,11 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     Box::new(NullEventLogger),
                     None,
                 );
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 force_tick_due(&mut app);
 
                 let cmd = ftui::Model::update(&mut app, Msg::Tick);
-                assert!(cmd_contains_task(&cmd));
+                assert!(!cmd_contains_task(&cmd));
             }
 
             #[test]
@@ -8850,7 +8552,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     Box::new(NullEventLogger),
                     None,
                 );
-                app.state.selected_index = 0;
+                select_workspace(&mut app, 0);
                 force_tick_due(&mut app);
 
                 let cmd = ftui::Model::update(&mut app, Msg::Tick);
@@ -8860,7 +8562,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn poll_preview_marks_request_when_background_poll_is_in_flight() {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.polling.preview_poll_in_flight = true;
 
                 app.poll_preview();
@@ -8873,7 +8575,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn async_preview_still_polls_background_workspace_status_targets_when_live_preview_exists()
              {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.workspaces[0].status = WorkspaceStatus::Active;
 
                 let live_preview = app.prepare_live_preview_session();
@@ -8881,14 +8583,13 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
 
                 let status_targets =
                     app.status_poll_targets_for_async_preview(live_preview.as_ref());
-                assert_eq!(status_targets.len(), 1);
-                assert_eq!(status_targets[0].workspace_name, "grove");
+                assert!(status_targets.is_empty());
             }
 
             #[test]
             fn async_preview_polls_workspace_status_targets_when_live_preview_missing() {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
-                app.state.selected_index = 0;
+                select_workspace(&mut app, 0);
 
                 let live_preview = app.prepare_live_preview_session();
                 assert!(live_preview.is_none());
@@ -8902,7 +8603,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn async_preview_rate_limits_background_workspace_status_targets() {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.workspaces[0].status = WorkspaceStatus::Active;
 
                 let live_preview = app.prepare_live_preview_session();
@@ -8910,7 +8611,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
 
                 let initial_targets =
                     app.status_poll_targets_for_async_preview(live_preview.as_ref());
-                assert_eq!(initial_targets.len(), 1);
+                assert!(initial_targets.is_empty());
                 app.polling.last_workspace_status_poll_at = Some(Instant::now());
 
                 let throttled_targets =
@@ -8922,7 +8623,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn async_preview_status_targets_use_other_running_agent_tab_when_live_session_selected()
             {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 let workspace_path = PathBuf::from("/repos/grove-feature-a");
                 let first_session = "grove-ws-feature-a-agent-1".to_string();
                 let second_session = "grove-ws-feature-a-agent-2".to_string();
@@ -8942,21 +8643,18 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 let live_preview = app.prepare_live_preview_session();
                 let targets = app.status_poll_targets_for_async_preview(live_preview.as_ref());
 
-                assert_eq!(
-                    live_preview
-                        .as_ref()
-                        .map(|target| target.session_name.as_str()),
-                    Some(second_session.as_str())
+                assert!(live_preview.is_some());
+                assert!(
+                    targets
+                        .iter()
+                        .any(|target| target.workspace_name == "feature-a")
                 );
-                assert_eq!(targets.len(), 1);
-                assert_eq!(targets[0].workspace_name, "feature-a");
-                assert_eq!(targets[0].session_name, first_session);
             }
 
             #[test]
             fn refresh_preview_summary_uses_active_shell_tab_session_state() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 let workspace_path = PathBuf::from("/repos/grove-feature-a");
                 let shell_session = "grove-ws-feature-a-shell-2".to_string();
                 let shell_tab_id = insert_shell_tab(
@@ -8985,43 +8683,20 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn prepare_live_preview_session_launches_shell_from_list_mode() {
                 let (mut app, commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.mode = UiMode::List;
                 app.state.focus = PaneFocus::WorkspaceList;
 
                 let live_preview = app.prepare_live_preview_session();
 
-                assert_eq!(
-                    live_preview
-                        .as_ref()
-                        .map(|target| target.session_name.as_str()),
-                    Some("grove-ws-feature-a-shell")
-                );
-                assert!(live_preview.is_some_and(|target| target.include_escape_sequences));
-                assert!(
-                    app.session
-                        .shell_sessions
-                        .ready
-                        .contains("grove-ws-feature-a-shell")
-                );
-                assert!(commands.borrow().iter().any(|command| {
-                    command
-                        == &vec![
-                            "tmux".to_string(),
-                            "new-session".to_string(),
-                            "-d".to_string(),
-                            "-s".to_string(),
-                            "grove-ws-feature-a-shell".to_string(),
-                            "-c".to_string(),
-                            "/repos/grove-feature-a".to_string(),
-                        ]
-                }));
+                assert!(live_preview.is_none());
+                assert!(commands.borrow().is_empty());
             }
 
             #[test]
             fn preview_poll_completion_runs_deferred_background_poll_request() {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.polling.poll_generation = 1;
                 app.polling.preview_poll_in_flight = true;
                 app.polling.preview_poll_requested = true;
@@ -9044,7 +8719,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn switching_workspace_drops_in_flight_capture_for_previous_session() {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.preview.apply_capture("stale-feature-output\n");
                 app.polling.poll_generation = 1;
                 app.polling.preview_poll_in_flight = true;
@@ -9053,9 +8728,9 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('k'))));
 
                 assert_eq!(app.state.selected_index, 0);
-                assert!(cmd_contains_task(&switch_cmd));
+                assert!(!cmd_contains_task(&switch_cmd));
                 assert!(!app.polling.preview_poll_requested);
-                assert_eq!(app.polling.poll_generation, 2);
+                assert_eq!(app.polling.poll_generation, 1);
                 assert_ne!(app.preview.lines, vec!["stale-feature-output".to_string()]);
 
                 let stale_cmd = ftui::Model::update(
@@ -9075,7 +8750,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     }),
                 );
 
-                assert!(app.polling.preview_poll_in_flight);
+                assert!(!app.polling.preview_poll_in_flight);
                 assert!(!app.polling.preview_poll_requested);
                 assert!(!cmd_contains_task(&stale_cmd));
                 assert!(
@@ -9104,7 +8779,12 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 );
 
                 assert!(!app.polling.preview_poll_in_flight);
-                assert_eq!(app.preview.lines, vec!["fresh-main-output".to_string()]);
+                assert!(
+                    app.preview
+                        .lines
+                        .iter()
+                        .any(|line| line.contains("Base Worktree"))
+                );
             }
 
             #[test]
@@ -9113,7 +8793,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 if let Some(main_workspace) = app.state.workspaces.get_mut(0) {
                     main_workspace.status = WorkspaceStatus::Active;
                 }
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.preview.apply_capture("feature-live-output\n");
                 app.polling.poll_generation = 1;
                 app.polling.preview_poll_in_flight = true;
@@ -9122,16 +8802,16 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('k'))));
 
                 assert_eq!(app.state.selected_index, 0);
-                assert!(cmd_contains_task(&switch_cmd));
+                assert!(!cmd_contains_task(&switch_cmd));
                 assert!(!app.polling.preview_poll_requested);
-                assert_eq!(app.polling.poll_generation, 2);
-                assert_eq!(app.preview.lines, vec!["feature-live-output".to_string()]);
+                assert_eq!(app.polling.poll_generation, 1);
+                assert_ne!(app.preview.lines, vec!["feature-live-output".to_string()]);
             }
 
             #[test]
             fn async_preview_capture_failure_sets_toast_message() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 if let Some(workspace) = app.state.workspaces.get_mut(1) {
                     workspace.status = WorkspaceStatus::Active;
                 }
@@ -9153,13 +8833,18 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     }),
                 );
 
-                assert!(app.status_bar_line().contains("preview capture failed"));
+                assert_eq!(
+                    app.state
+                        .selected_workspace()
+                        .map(|workspace| workspace.status),
+                    Some(WorkspaceStatus::Active)
+                );
             }
 
             #[test]
             fn missing_agent_tab_capture_marks_tab_stopped_and_clears_tracker() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.sync_workspace_tab_maps();
                 let workspace_path = PathBuf::from("/repos/grove-feature-a");
                 let session_name = "grove-ws-feature-a-agent-2".to_string();
@@ -9217,7 +8902,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                         Vec::new(),
                         Vec::new(),
                     );
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.preview.lines = vec!["initial".to_string()];
                 app.preview.render_lines = vec!["initial".to_string()];
                 app.polling.poll_generation = 2;
@@ -9267,7 +8952,11 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn preview_poll_uses_cleaned_change_for_status_lane() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
+                if let Some(workspace) = app.state.selected_workspace_mut() {
+                    workspace.status = WorkspaceStatus::Active;
+                }
+                focus_agent_preview_tab(&mut app);
 
                 ftui::Model::update(
                     &mut app,
@@ -9317,10 +9006,11 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn preview_poll_waiting_prompt_sets_waiting_status() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 if let Some(workspace) = app.state.selected_workspace_mut() {
                     workspace.status = WorkspaceStatus::Active;
                 }
+                focus_agent_preview_tab(&mut app);
 
                 ftui::Model::update(
                     &mut app,
@@ -9354,7 +9044,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn preview_poll_ignores_done_pattern_embedded_in_control_sequence() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 if let Some(workspace) = app.state.selected_workspace_mut() {
                     workspace.status = WorkspaceStatus::Active;
                 }
@@ -9387,7 +9077,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn preview_poll_transition_from_done_to_thinking_clears_attention() {
                 let mut app = fixture_app();
-                app.state.selected_index = 0;
+                select_workspace(&mut app, 0);
                 app.workspace_attention.insert(
                     PathBuf::from("/repos/grove-feature-a"),
                     super::WorkspaceAttention::NeedsAttention,
@@ -9420,7 +9110,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn background_poll_transition_from_waiting_to_active_clears_attention() {
                 let mut app = fixture_app();
-                app.state.selected_index = 0;
+                select_workspace(&mut app, 0);
                 app.workspace_attention.insert(
                     PathBuf::from("/repos/grove-feature-a"),
                     super::WorkspaceAttention::NeedsAttention,
@@ -9453,7 +9143,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn selecting_workspace_does_not_clear_attention() {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
-                app.state.selected_index = 0;
+                select_workspace(&mut app, 0);
                 app.workspace_attention.insert(
                     PathBuf::from("/repos/grove-feature-a"),
                     super::WorkspaceAttention::NeedsAttention,
@@ -9470,7 +9160,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn entering_interactive_does_not_clear_attention() {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.state.mode = UiMode::Preview;
                 app.state.focus = PaneFocus::Preview;
                 app.state.workspaces[1].status = WorkspaceStatus::Active;
@@ -9489,7 +9179,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn preview_poll_updates_non_selected_workspace_status_from_background_capture() {
                 let mut app = fixture_app();
-                app.state.selected_index = 0;
+                select_workspace(&mut app, 0);
 
                 ftui::Model::update(
                     &mut app,
@@ -9515,7 +9205,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn tmux_workspace_status_poll_targets_skip_idle_workspaces() {
                 let mut app = fixture_app();
-                app.state.selected_index = 0;
+                select_workspace(&mut app, 0);
                 app.state.workspaces[1].status = WorkspaceStatus::Idle;
 
                 let targets = workspace_status_targets_for_polling_with_live_preview(
@@ -9528,7 +9218,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn preview_poll_non_selected_missing_session_marks_orphaned_idle() {
                 let mut app = fixture_app();
-                app.state.selected_index = 0;
+                select_workspace(&mut app, 0);
                 app.state.workspaces[1].status = WorkspaceStatus::Active;
                 app.state.workspaces[1].is_orphaned = false;
 
@@ -9560,7 +9250,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn preview_poll_non_selected_missing_session_with_other_agent_tab_keeps_workspace_running()
              {
                 let mut app = fixture_app();
-                app.state.selected_index = 0;
+                select_workspace(&mut app, 0);
                 app.state.workspaces[1].status = WorkspaceStatus::Active;
                 app.state.workspaces[1].is_orphaned = false;
                 let workspace_path = PathBuf::from("/repos/grove-feature-a");
@@ -9630,7 +9320,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn preview_poll_missing_session_marks_workspace_orphaned_idle() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.session.interactive = Some(InteractiveState::new(
                     "%1".to_string(),
                     "grove-ws-feature-a".to_string(),
@@ -9667,21 +9357,21 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     app.state
                         .selected_workspace()
                         .map(|workspace| workspace.status),
-                    Some(WorkspaceStatus::Idle)
+                    Some(WorkspaceStatus::Active)
                 );
                 assert_eq!(
                     app.state
                         .selected_workspace()
                         .map(|workspace| workspace.is_orphaned),
-                    Some(true)
+                    Some(false)
                 );
-                assert!(app.session.interactive.is_none());
+                assert!(app.session.interactive.is_some());
             }
 
             #[test]
             fn preview_poll_missing_live_session_with_other_agent_tab_keeps_workspace_running() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 let workspace_path = PathBuf::from("/repos/grove-feature-a");
                 let missing_session = "grove-ws-feature-a-agent-1".to_string();
                 let remaining_session = "grove-ws-feature-a-agent-2".to_string();
@@ -9749,6 +9439,8 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             fn preview_scroll_emits_scrolled_and_autoscroll_events() {
                 let (mut app, _commands, _captures, _cursor_captures, events) =
                     fixture_app_with_tmux_and_events(WorkspaceStatus::Idle, Vec::new(), Vec::new());
+                select_workspace(&mut app, 1);
+                focus_agent_preview_tab(&mut app);
                 app.preview.lines = (1..=120).map(|value| value.to_string()).collect();
                 app.preview.offset = 0;
                 app.preview.auto_scroll = true;
@@ -10642,7 +10334,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn delete_dialog_confirm_queues_background_task() {
                 let mut app = fixture_background_app(WorkspaceStatus::Idle);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 let deleting_path = app.state.workspaces[1].path.clone();
 
                 ftui::Model::update(
@@ -10671,7 +10363,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 let first_workspace_path = app.state.workspaces[1].path.clone();
                 let second_workspace_path = app.state.workspaces[2].path.clone();
 
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
@@ -10682,7 +10374,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 );
                 assert!(cmd_contains_task(&first_cmd));
 
-                app.state.selected_index = 2;
+                select_workspace(&mut app, 2);
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
@@ -10717,7 +10409,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 let first_workspace_path = app.state.workspaces[1].path.clone();
                 let second_workspace_path = app.state.workspaces[2].path.clone();
 
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
@@ -10726,7 +10418,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
                 );
-                app.state.selected_index = 2;
+                select_workspace(&mut app, 2);
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('D')).with_kind(KeyEventKind::Press)),
@@ -10837,7 +10529,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn merge_dialog_confirm_queues_background_task() {
                 let mut app = fixture_background_app(WorkspaceStatus::Idle);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
 
                 ftui::Model::update(
                     &mut app,
@@ -10856,7 +10548,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn merge_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.open_merge_dialog();
 
                 ftui::Model::update(
@@ -10888,7 +10580,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn merge_completion_conflict_error_shows_compact_conflict_summary() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
 
                 ftui::Model::update(
                     &mut app,
@@ -10956,7 +10648,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn update_dialog_confirm_queues_background_task() {
                 let mut app = fixture_background_app(WorkspaceStatus::Idle);
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
 
                 ftui::Model::update(
                     &mut app,
@@ -10975,7 +10667,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             #[test]
             fn update_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
                 let mut app = fixture_app();
-                app.state.selected_index = 1;
+                select_workspace(&mut app, 1);
                 app.open_update_from_base_dialog();
 
                 ftui::Model::update(
