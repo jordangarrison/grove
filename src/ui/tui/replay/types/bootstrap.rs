@@ -109,48 +109,8 @@ impl ReplayBootstrapSnapshot {
         }
     }
 
-    fn to_bootstrap_data(&self) -> BootstrapData {
-        BootstrapData {
-            repo_name: self.repo_name.clone(),
-            workspaces: self
-                .tasks
-                .iter()
-                .flat_map(|task| {
-                    let task = task.to_task();
-                    task.worktrees
-                        .iter()
-                        .map(|worktree| workspace_from_replay_task_worktree(&task, worktree))
-                        .collect::<Vec<Workspace>>()
-                })
-                .collect(),
-            discovery_state: self.discovery_state.to_discovery_state(),
-        }
-    }
-
     fn to_tasks(&self) -> Vec<Task> {
         self.tasks.iter().map(ReplayTask::to_task).collect()
-    }
-}
-
-fn workspace_from_replay_task_worktree(_task: &Task, worktree: &Worktree) -> Workspace {
-    Workspace {
-        name: worktree.repository_name.clone(),
-        path: worktree.path.clone(),
-        project_name: Some(worktree.repository_name.clone()),
-        project_path: Some(worktree.repository_path.clone()),
-        branch: worktree.branch.clone(),
-        base_branch: worktree.base_branch.clone(),
-        last_activity_unix_secs: worktree.last_activity_unix_secs,
-        agent: worktree.agent,
-        status: if worktree.status == WorkspaceStatus::Main {
-            WorkspaceStatus::Idle
-        } else {
-            worktree.status
-        },
-        is_main: false,
-        is_orphaned: worktree.is_orphaned,
-        supported_agent: worktree.supported_agent,
-        pull_requests: worktree.pull_requests.clone(),
     }
 }
 

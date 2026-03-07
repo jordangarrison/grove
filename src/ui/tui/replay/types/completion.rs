@@ -365,85 +365,28 @@ impl ReplayRefreshWorkspacesCompletion {
     fn from_completion(completion: &RefreshWorkspacesCompletion) -> Self {
         Self {
             preferred_workspace_path: completion.preferred_workspace_path.clone(),
-            bootstrap: ReplayBootstrapData::from_bootstrap_data(&completion.bootstrap),
+            bootstrap: ReplayBootstrapData {
+                repo_name: completion.repo_name.clone(),
+                tasks: completion
+                    .tasks
+                    .iter()
+                    .map(ReplayTask::from_task)
+                    .collect(),
+                discovery_state: ReplayDiscoveryState::from_discovery_state(
+                    &completion.discovery_state,
+                ),
+            },
         }
     }
 
     fn to_completion(&self) -> RefreshWorkspacesCompletion {
         RefreshWorkspacesCompletion {
             preferred_workspace_path: self.preferred_workspace_path.clone(),
-            bootstrap: self.bootstrap.to_bootstrap_data(),
+            repo_name: self.bootstrap.repo_name.clone(),
+            discovery_state: self.bootstrap.discovery_state.to_discovery_state(),
+            tasks: self.bootstrap.tasks.iter().map(ReplayTask::to_task).collect(),
         }
     }
-}
-
-impl ReplayBootstrapData {
-    fn from_bootstrap_data(data: &BootstrapData) -> Self {
-        Self {
-            repo_name: data.repo_name.clone(),
-            tasks: data
-                .workspaces
-                .iter()
-                .map(replay_task_from_bootstrap_workspace)
-                .map(|task| ReplayTask::from_task(&task))
-                .collect(),
-            discovery_state: ReplayDiscoveryState::from_discovery_state(&data.discovery_state),
-        }
-    }
-
-    fn to_bootstrap_data(&self) -> BootstrapData {
-        BootstrapData {
-            repo_name: self.repo_name.clone(),
-            workspaces: self
-                .tasks
-                .iter()
-                .flat_map(|task| {
-                    let task = task.to_task();
-                    task.worktrees
-                        .iter()
-                        .map(|worktree| workspace_from_replay_task_worktree(&task, worktree))
-                        .collect::<Vec<Workspace>>()
-                })
-                .collect(),
-            discovery_state: self.discovery_state.to_discovery_state(),
-        }
-    }
-}
-
-fn replay_task_from_bootstrap_workspace(workspace: &Workspace) -> Task {
-    let repository_path = workspace
-        .project_path
-        .clone()
-        .unwrap_or_else(|| workspace.path.clone());
-    let repository_name = workspace.project_name.clone().unwrap_or_else(|| {
-        repository_path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .map_or_else(|| workspace.name.clone(), ToString::to_string)
-    });
-    let worktree = Worktree::try_new(
-        repository_name,
-        repository_path,
-        workspace.path.clone(),
-        workspace.branch.clone(),
-        workspace.agent,
-        workspace.status,
-    )
-    .expect("replay bootstrap workspace should decode")
-    .with_base_branch(workspace.base_branch.clone())
-    .with_last_activity_unix_secs(workspace.last_activity_unix_secs)
-    .with_supported_agent(workspace.supported_agent)
-    .with_orphaned(workspace.is_orphaned)
-    .with_pull_requests(workspace.pull_requests.clone());
-
-    Task::try_new(
-        workspace.name.clone(),
-        workspace.name.clone(),
-        workspace.path.clone(),
-        workspace.branch.clone(),
-        vec![worktree],
-    )
-    .expect("replay bootstrap task should decode")
 }
 
 impl ReplayDeleteProjectCompletion {

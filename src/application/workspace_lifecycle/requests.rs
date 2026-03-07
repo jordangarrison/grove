@@ -2,11 +2,6 @@ use std::path::PathBuf;
 
 use super::{MergeWorkspaceRequest, UpdateWorkspaceFromBaseRequest};
 
-pub(super) fn workspace_name_is_valid(name: &str) -> bool {
-    name.chars()
-        .all(|character| character.is_ascii_alphanumeric() || character == '-' || character == '_')
-}
-
 pub(super) fn resolve_repo_root(project_path: Option<&PathBuf>) -> Result<PathBuf, String> {
     if let Some(path) = project_path {
         return Ok(path.clone());

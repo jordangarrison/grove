@@ -1,5 +1,4 @@
 use crate::application::task_discovery::{TaskBootstrapData, TaskDiscoveryState};
-use crate::infrastructure::adapters::BootstrapData;
 use crate::infrastructure::config::ProjectConfig;
 use crate::infrastructure::paths::tasks_root;
 use std::collections::HashMap;
@@ -10,10 +9,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 use super::bootstrap_config::{AppDependencies, load_runtime_config};
-use super::bootstrap_discovery::{bootstrap_data_for_projects, bootstrap_task_data_for_root};
+use super::bootstrap_discovery::bootstrap_task_data_for_root;
 use super::*;
-#[cfg(test)]
-use crate::infrastructure::paths::refer_to_same_location;
 use crate::ui::mouse::clamp_sidebar_ratio;
 
 impl GroveApp {
@@ -44,84 +41,16 @@ impl GroveApp {
             debug_record_start_ts,
         };
 
-        if let Some(tasks_root) = tasks_root() {
-            let bootstrap = bootstrap_task_data_for_root(tasks_root.as_path());
-            return Self::from_task_parts_with_clipboard_and_projects(
-                bootstrap,
-                config.projects,
-                dependencies,
-            );
-        }
-
-        let bootstrap = bootstrap_data_for_projects(&config.projects);
-        Self::from_parts_with_clipboard_and_projects(bootstrap, config.projects, dependencies)
-    }
-
-    #[cfg(test)]
-    fn projects_from_bootstrap(bootstrap: &BootstrapData) -> Vec<ProjectConfig> {
-        let mut projects = Vec::new();
-        for workspace in &bootstrap.workspaces {
-            let Some(project_path) = workspace.project_path.as_ref() else {
-                continue;
-            };
-            let project_name = workspace.project_name.clone().unwrap_or_else(|| {
-                project_path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .map_or_else(|| project_path.display().to_string(), ToString::to_string)
+        let bootstrap = tasks_root()
+            .map(|tasks_root| bootstrap_task_data_for_root(tasks_root.as_path()))
+            .unwrap_or(TaskBootstrapData {
+                tasks: Vec::new(),
+                discovery_state: TaskDiscoveryState::Empty,
             });
-
-            if projects.iter().any(|project: &ProjectConfig| {
-                project.name == project_name || refer_to_same_location(&project.path, project_path)
-            }) {
-                continue;
-            }
-            projects.push(ProjectConfig {
-                name: project_name,
-                path: project_path.clone(),
-                defaults: Default::default(),
-            });
-        }
-        projects
+        Self::from_task_parts_with_clipboard_and_projects(bootstrap, config.projects, dependencies)
     }
 
-    #[cfg(test)]
-    pub(super) fn from_parts(
-        bootstrap: BootstrapData,
-        tmux_input: Box<dyn TmuxInput>,
-        config_path: PathBuf,
-        event_log: Box<dyn EventLogger>,
-        debug_record_start_ts: Option<u64>,
-    ) -> Self {
-        let projects = Self::projects_from_bootstrap(&bootstrap);
-        Self::from_parts_with_clipboard_and_projects(
-            bootstrap,
-            projects,
-            AppDependencies {
-                tmux_input,
-                clipboard: Box::new(SystemClipboardAccess::default()),
-                config_path,
-                event_log,
-                debug_record_start_ts,
-            },
-        )
-    }
-
-    pub(super) fn from_parts_with_clipboard_and_projects(
-        bootstrap: BootstrapData,
-        projects: Vec<ProjectConfig>,
-        dependencies: AppDependencies,
-    ) -> Self {
-        Self::from_state_with_clipboard_and_projects(
-            bootstrap.repo_name,
-            AppState::from_workspaces(bootstrap.workspaces),
-            bootstrap.discovery_state,
-            projects,
-            dependencies,
-        )
-    }
-
-    fn from_task_parts_with_clipboard_and_projects(
+    pub(super) fn from_task_parts_with_clipboard_and_projects(
         bootstrap: TaskBootstrapData,
         projects: Vec<ProjectConfig>,
         dependencies: AppDependencies,
@@ -288,6 +217,22 @@ impl GroveApp {
         app.reconcile_workspace_attention_tracking();
         app.refresh_preview_summary();
         app
+    }
+
+    pub(super) fn from_task_state(
+        repo_name: String,
+        state: AppState,
+        discovery_state: DiscoveryState,
+        projects: Vec<ProjectConfig>,
+        dependencies: AppDependencies,
+    ) -> Self {
+        Self::from_state_with_clipboard_and_projects(
+            repo_name,
+            state,
+            discovery_state,
+            projects,
+            dependencies,
+        )
     }
 }
 

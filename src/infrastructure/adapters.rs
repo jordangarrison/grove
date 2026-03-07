@@ -1,6 +1,4 @@
-use std::collections::HashSet;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::Path;
 
 use crate::domain::Workspace;
 
@@ -15,20 +13,6 @@ use parser::{parse_branch_activity, parse_worktree_porcelain};
 use workspace::build_workspaces;
 #[cfg(test)]
 use workspace::workspace_name_from_path;
-
-const TMUX_SESSION_PREFIX: &str = "grove-ws-";
-
-pub trait GitAdapter {
-    fn list_workspaces(&self) -> Result<Vec<Workspace>, GitAdapterError>;
-}
-
-pub trait MultiplexerAdapter {
-    fn running_sessions(&self) -> HashSet<String>;
-}
-
-pub trait SystemAdapter {
-    fn repo_name(&self) -> String;
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GitAdapterError {
@@ -54,39 +38,6 @@ pub(crate) enum DiscoveryState {
     Error(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct BootstrapData {
-    pub repo_name: String,
-    pub workspaces: Vec<Workspace>,
-    pub discovery_state: DiscoveryState,
-}
-
-pub(crate) fn bootstrap_data(
-    git: &impl GitAdapter,
-    _multiplexer: &impl MultiplexerAdapter,
-    system: &impl SystemAdapter,
-) -> BootstrapData {
-    let repo_name = system.repo_name();
-
-    match git.list_workspaces() {
-        Ok(workspaces) if workspaces.is_empty() => BootstrapData {
-            repo_name,
-            workspaces,
-            discovery_state: DiscoveryState::Empty,
-        },
-        Ok(workspaces) => BootstrapData {
-            repo_name,
-            workspaces,
-            discovery_state: DiscoveryState::Ready,
-        },
-        Err(error) => BootstrapData {
-            repo_name,
-            workspaces: Vec::new(),
-            discovery_state: DiscoveryState::Error(error.message()),
-        },
-    }
-}
-
 pub(crate) fn benchmark_discovery_from_synthetic_fixture(
     porcelain_worktrees: &str,
     branch_activity: &str,
@@ -98,162 +49,18 @@ pub(crate) fn benchmark_discovery_from_synthetic_fixture(
     build_workspaces(&parsed_worktrees, repo_root, repo_name, &activity_by_branch)
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct CommandGitAdapter {
-    repo_root: Option<PathBuf>,
-}
-
-impl CommandGitAdapter {
-    pub fn for_repo(repo_root: PathBuf) -> Self {
-        Self {
-            repo_root: Some(repo_root),
-        }
-    }
-
-    fn repo_root(&self) -> Option<&Path> {
-        self.repo_root.as_deref()
-    }
-
-    fn run_git(&self, args: &[&str]) -> Result<String, GitAdapterError> {
-        let mut command = Command::new("git");
-        if let Some(repo_root) = self.repo_root() {
-            command.current_dir(repo_root);
-        }
-        let output = command
-            .args(args)
-            .output()
-            .map_err(|error| GitAdapterError::CommandFailed(error.to_string()))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8(output.stderr).map_err(|error| {
-                GitAdapterError::InvalidUtf8(format!("stderr decode failed: {error}"))
-            })?;
-            return Err(GitAdapterError::CommandFailed(stderr.trim().to_string()));
-        }
-
-        String::from_utf8(output.stdout)
-            .map_err(|error| GitAdapterError::InvalidUtf8(format!("stdout decode failed: {error}")))
-    }
-}
-
-impl GitAdapter for CommandGitAdapter {
-    fn list_workspaces(&self) -> Result<Vec<Workspace>, GitAdapterError> {
-        let repo_root_raw = self.run_git(&["rev-parse", "--show-toplevel"])?;
-        let repo_root = PathBuf::from(repo_root_raw.trim());
-        let repo_name = repo_root
-            .file_name()
-            .and_then(|name| name.to_str())
-            .map(ToOwned::to_owned)
-            .ok_or_else(|| {
-                GitAdapterError::ParseError(format!(
-                    "could not derive repo name from '{}'",
-                    repo_root.display()
-                ))
-            })?;
-
-        let activity_raw = self.run_git(&[
-            "for-each-ref",
-            "--format=%(refname:short) %(committerdate:unix)",
-            "refs/heads",
-        ])?;
-        let activity_by_branch = parser::parse_branch_activity(&activity_raw);
-
-        let porcelain_raw = self.run_git(&["worktree", "list", "--porcelain"])?;
-        let parsed_worktrees = parser::parse_worktree_porcelain(&porcelain_raw)?;
-
-        workspace::build_workspaces(
-            &parsed_worktrees,
-            &repo_root,
-            &repo_name,
-            &activity_by_branch,
-        )
-    }
-}
-
-pub struct CommandMultiplexerAdapter;
-
-impl MultiplexerAdapter for CommandMultiplexerAdapter {
-    fn running_sessions(&self) -> HashSet<String> {
-        let output = Command::new("tmux")
-            .args(["list-sessions", "-F", "#{session_name}"])
-            .output();
-
-        match output {
-            Ok(output) if output.status.success() => {
-                let stdout = String::from_utf8(output.stdout);
-                match stdout {
-                    Ok(content) => content
-                        .lines()
-                        .filter(|name| name.starts_with(TMUX_SESSION_PREFIX))
-                        .map(ToOwned::to_owned)
-                        .collect(),
-                    Err(_) => HashSet::new(),
-                }
-            }
-            _ => HashSet::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct CommandSystemAdapter {
-    repo_root: Option<PathBuf>,
-}
-
-impl CommandSystemAdapter {
-    pub fn for_repo(repo_root: PathBuf) -> Self {
-        Self {
-            repo_root: Some(repo_root),
-        }
-    }
-}
-
-impl SystemAdapter for CommandSystemAdapter {
-    fn repo_name(&self) -> String {
-        if let Some(repo_root) = self.repo_root.as_ref()
-            && let Some(name) = repo_root.file_name().and_then(|value| value.to_str())
-        {
-            return name.to_string();
-        }
-
-        let output = Command::new("git")
-            .args(["rev-parse", "--show-toplevel"])
-            .output();
-
-        if let Ok(output) = output
-            && output.status.success()
-            && let Ok(stdout) = String::from_utf8(output.stdout)
-        {
-            let root = PathBuf::from(stdout.trim());
-            if let Some(name) = root.file_name().and_then(|value| value.to_str()) {
-                return name.to_string();
-            }
-        }
-
-        std::env::current_dir()
-            .ok()
-            .and_then(|path| {
-                path.file_name()
-                    .and_then(|value| value.to_str().map(str::to_string))
-            })
-            .unwrap_or_else(|| "unknown".to_string())
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use std::collections::{HashMap, HashSet};
+    use std::collections::HashMap;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use super::{
-        BootstrapData, DiscoveryState, GitAdapter, GitAdapterError, MultiplexerAdapter,
-        SystemAdapter, bootstrap_data, build_workspaces, parse_branch_activity,
-        parse_worktree_porcelain, workspace_name_from_path,
+        GitAdapterError, build_workspaces, parse_branch_activity, parse_worktree_porcelain,
+        workspace_name_from_path,
     };
-
-    use crate::domain::{AgentType, Workspace, WorkspaceStatus};
+    use crate::domain::{AgentType, WorkspaceStatus};
 
     #[derive(Debug)]
     struct TestDir {
@@ -278,71 +85,6 @@ mod tests {
     impl Drop for TestDir {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.path);
-        }
-    }
-
-    struct FakeMultiplexerAdapter {
-        running: HashSet<String>,
-    }
-
-    impl MultiplexerAdapter for FakeMultiplexerAdapter {
-        fn running_sessions(&self) -> HashSet<String> {
-            self.running.clone()
-        }
-    }
-
-    struct FakeSystemAdapter;
-
-    impl SystemAdapter for FakeSystemAdapter {
-        fn repo_name(&self) -> String {
-            "grove".to_string()
-        }
-    }
-
-    struct FakeGitSuccess;
-
-    impl GitAdapter for FakeGitSuccess {
-        fn list_workspaces(&self) -> Result<Vec<Workspace>, GitAdapterError> {
-            Ok(vec![
-                Workspace::try_new(
-                    "grove".to_string(),
-                    PathBuf::from("/repos/grove"),
-                    "main".to_string(),
-                    Some(1_700_000_300),
-                    AgentType::Claude,
-                    WorkspaceStatus::Main,
-                    true,
-                )
-                .expect("workspace should be valid"),
-                Workspace::try_new(
-                    "feature-a".to_string(),
-                    PathBuf::from("/repos/grove-feature-a"),
-                    "feature-a".to_string(),
-                    Some(1_700_000_200),
-                    AgentType::Codex,
-                    WorkspaceStatus::Idle,
-                    false,
-                )
-                .expect("workspace should be valid"),
-            ])
-        }
-    }
-
-    struct FakeGitEmpty;
-
-    impl GitAdapter for FakeGitEmpty {
-        fn list_workspaces(&self) -> Result<Vec<Workspace>, GitAdapterError> {
-            Ok(Vec::new())
-        }
-    }
-
-    struct FakeGitError;
-
-    impl GitAdapter for FakeGitError {
-        fn list_workspaces(&self) -> Result<Vec<Workspace>, GitAdapterError> {
-            Err(GitAdapterError::CommandFailed(
-                "fatal: not a git repository".to_string(),
-            ))
         }
     }
 
@@ -439,51 +181,5 @@ mod tests {
 
         let main = workspace_name_from_path(Path::new("/repos/grove"), "grove", true);
         assert_eq!(main, "grove");
-    }
-
-    #[test]
-    fn bootstrap_data_reports_ready_for_successful_discovery() {
-        let data: BootstrapData = bootstrap_data(
-            &FakeGitSuccess,
-            &FakeMultiplexerAdapter {
-                running: HashSet::from(["grove-ws-feature-a".to_string()]),
-            },
-            &FakeSystemAdapter,
-        );
-
-        assert_eq!(data.repo_name, "grove");
-        assert_eq!(data.workspaces.len(), 2);
-        assert_eq!(data.discovery_state, DiscoveryState::Ready);
-        assert_eq!(data.workspaces[1].status, WorkspaceStatus::Idle);
-    }
-
-    #[test]
-    fn bootstrap_data_reports_empty_state() {
-        let data = bootstrap_data(
-            &FakeGitEmpty,
-            &FakeMultiplexerAdapter {
-                running: HashSet::new(),
-            },
-            &FakeSystemAdapter,
-        );
-        assert_eq!(data.discovery_state, DiscoveryState::Empty);
-    }
-
-    #[test]
-    fn bootstrap_data_reports_error_state() {
-        let data = bootstrap_data(
-            &FakeGitError,
-            &FakeMultiplexerAdapter {
-                running: HashSet::new(),
-            },
-            &FakeSystemAdapter,
-        );
-
-        match data.discovery_state {
-            DiscoveryState::Error(message) => {
-                assert!(message.contains("not a git repository"));
-            }
-            other => panic!("expected error state, got: {other:?}"),
-        }
     }
 }

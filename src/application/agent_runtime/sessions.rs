@@ -44,6 +44,16 @@ pub fn session_name_for_workspace(workspace_name: &str) -> String {
 }
 
 pub fn session_name_for_workspace_ref(workspace: &Workspace) -> String {
+    if let Some(task_slug) = workspace.task_slug.as_deref() {
+        return session_name_for_task_worktree(
+            task_slug,
+            workspace
+                .project_name
+                .as_deref()
+                .unwrap_or(workspace.name.as_str()),
+        );
+    }
+
     session_name_for_workspace_in_project(workspace.project_name.as_deref(), &workspace.name)
 }
 

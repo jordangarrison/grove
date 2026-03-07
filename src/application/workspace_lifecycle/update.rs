@@ -4,7 +4,7 @@ use super::UpdateWorkspaceFromBaseRequest;
 
 pub(super) fn update_workspace_from_base_with_session_stopper(
     request: UpdateWorkspaceFromBaseRequest,
-    _stop_sessions: impl Fn(Option<&str>, &str),
+    _stop_sessions: impl Fn(Option<&str>, Option<&str>, &str),
 ) -> (Result<(), String>, Vec<String>) {
     let warnings = Vec::new();
 

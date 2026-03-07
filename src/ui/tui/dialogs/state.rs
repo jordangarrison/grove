@@ -133,6 +133,7 @@ impl DeleteDialogState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct MergeDialogState {
+    pub(super) task_slug: Option<String>,
     pub(super) project_name: Option<String>,
     pub(super) project_path: Option<PathBuf>,
     pub(super) workspace_name: String,
@@ -146,6 +147,7 @@ pub(super) struct MergeDialogState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct UpdateFromBaseDialogState {
+    pub(super) task_slug: Option<String>,
     pub(super) project_name: Option<String>,
     pub(super) project_path: Option<PathBuf>,
     pub(super) is_main_workspace: bool,

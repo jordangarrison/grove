@@ -5,8 +5,6 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-#[path = "workspace_lifecycle/create.rs"]
-mod create;
 #[path = "workspace_lifecycle/delete.rs"]
 mod delete;
 #[path = "workspace_lifecycle/git_ops.rs"]
@@ -15,8 +13,6 @@ mod git_ops;
 mod markers;
 #[path = "workspace_lifecycle/merge.rs"]
 mod merge;
-#[path = "workspace_lifecycle/paths.rs"]
-mod paths;
 #[path = "workspace_lifecycle/requests.rs"]
 mod requests;
 #[path = "workspace_lifecycle/update.rs"]
@@ -24,7 +20,6 @@ mod update;
 
 const GROVE_DIR: &str = ".grove";
 const GROVE_BASE_MARKER_FILE: &str = ".grove/base";
-const GROVE_SETUP_SCRIPT_FILE: &str = ".grove/setup.sh";
 const GROVE_GIT_EXCLUDE_ENTRIES: [&str; 1] = [".grove/"];
 const ENV_FILES_TO_COPY: [&str; 4] = [
     ".env",
@@ -40,8 +35,6 @@ pub enum WorkspaceLifecycleError {
     EmptyBaseBranch,
     EmptyExistingBranch,
     InvalidPullRequestNumber,
-    RepoNameUnavailable,
-    HomeDirectoryUnavailable,
     GitCommandFailed(String),
     Io(String),
 }
@@ -56,10 +49,6 @@ pub fn workspace_lifecycle_error_message(error: &WorkspaceLifecycleError) -> Str
         WorkspaceLifecycleError::EmptyExistingBranch => "existing branch is required".to_string(),
         WorkspaceLifecycleError::InvalidPullRequestNumber => {
             "pull request number is required".to_string()
-        }
-        WorkspaceLifecycleError::RepoNameUnavailable => "repo name unavailable".to_string(),
-        WorkspaceLifecycleError::HomeDirectoryUnavailable => {
-            "home directory unavailable".to_string()
         }
         WorkspaceLifecycleError::GitCommandFailed(message) => {
             format!("git command failed: {message}")
@@ -76,80 +65,8 @@ pub enum WorkspaceMarkerError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BranchMode {
-    NewBranch { base_branch: String },
-    ExistingBranch { existing_branch: String },
-    PullRequest { number: u64, base_branch: String },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CreateWorkspaceRequest {
-    pub workspace_name: String,
-    pub branch_mode: BranchMode,
-}
-
-impl CreateWorkspaceRequest {
-    pub fn validate(&self) -> Result<(), WorkspaceLifecycleError> {
-        if self.workspace_name.is_empty() {
-            return Err(WorkspaceLifecycleError::EmptyWorkspaceName);
-        }
-        if !requests::workspace_name_is_valid(&self.workspace_name) {
-            return Err(WorkspaceLifecycleError::InvalidWorkspaceName);
-        }
-
-        match &self.branch_mode {
-            BranchMode::NewBranch { base_branch } => {
-                if base_branch.trim().is_empty() {
-                    return Err(WorkspaceLifecycleError::EmptyBaseBranch);
-                }
-            }
-            BranchMode::ExistingBranch { existing_branch } => {
-                if existing_branch.trim().is_empty() {
-                    return Err(WorkspaceLifecycleError::EmptyExistingBranch);
-                }
-            }
-            BranchMode::PullRequest {
-                number,
-                base_branch,
-            } => {
-                if *number == 0 {
-                    return Err(WorkspaceLifecycleError::InvalidPullRequestNumber);
-                }
-                if base_branch.trim().is_empty() {
-                    return Err(WorkspaceLifecycleError::EmptyBaseBranch);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn branch_name(&self) -> String {
-        match &self.branch_mode {
-            BranchMode::NewBranch { .. } => self.workspace_name.clone(),
-            BranchMode::ExistingBranch { existing_branch } => existing_branch.clone(),
-            BranchMode::PullRequest { .. } => self.workspace_name.clone(),
-        }
-    }
-
-    pub fn marker_base_branch(&self) -> String {
-        match &self.branch_mode {
-            BranchMode::NewBranch { base_branch } => base_branch.clone(),
-            BranchMode::ExistingBranch { existing_branch } => existing_branch.clone(),
-            BranchMode::PullRequest { base_branch, .. } => base_branch.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CreateWorkspaceResult {
-    pub workspace_path: PathBuf,
-    pub branch: String,
-    pub warnings: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeleteWorkspaceRequest {
+    pub task_slug: Option<String>,
     pub project_name: Option<String>,
     pub project_path: Option<PathBuf>,
     pub workspace_name: String,
@@ -162,6 +79,7 @@ pub struct DeleteWorkspaceRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MergeWorkspaceRequest {
+    pub task_slug: Option<String>,
     pub project_name: Option<String>,
     pub project_path: Option<PathBuf>,
     pub workspace_name: String,
@@ -174,6 +92,7 @@ pub struct MergeWorkspaceRequest {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UpdateWorkspaceFromBaseRequest {
+    pub task_slug: Option<String>,
     pub project_name: Option<String>,
     pub project_path: Option<PathBuf>,
     pub workspace_name: String,
@@ -200,7 +119,12 @@ pub trait SetupCommandRunner {
 }
 
 pub trait SessionTerminator {
-    fn stop_workspace_sessions(&self, project_name: Option<&str>, workspace_name: &str);
+    fn stop_workspace_sessions(
+        &self,
+        task_slug: Option<&str>,
+        project_name: Option<&str>,
+        workspace_name: &str,
+    );
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -216,21 +140,6 @@ pub struct SetupCommandContext {
     pub main_worktree_path: PathBuf,
     pub workspace_path: PathBuf,
     pub worktree_branch: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorkspaceSetupTemplate {
-    pub auto_run_setup_commands: bool,
-    pub commands: Vec<String>,
-}
-
-impl Default for WorkspaceSetupTemplate {
-    fn default() -> Self {
-        Self {
-            auto_run_setup_commands: true,
-            commands: Vec::new(),
-        }
-    }
 }
 
 pub struct CommandGitRunner;
@@ -319,34 +228,13 @@ impl SetupCommandRunner for CommandSetupCommandRunner {
 struct NoopSessionTerminator;
 
 impl SessionTerminator for NoopSessionTerminator {
-    fn stop_workspace_sessions(&self, _project_name: Option<&str>, _workspace_name: &str) {}
-}
-
-pub fn create_workspace(
-    repo_root: &Path,
-    request: &CreateWorkspaceRequest,
-    git_runner: &impl GitCommandRunner,
-    setup_script_runner: &impl SetupScriptRunner,
-) -> Result<CreateWorkspaceResult, WorkspaceLifecycleError> {
-    create::create_workspace(repo_root, request, git_runner, setup_script_runner)
-}
-
-pub fn create_workspace_with_template(
-    repo_root: &Path,
-    request: &CreateWorkspaceRequest,
-    setup_template: Option<&WorkspaceSetupTemplate>,
-    git_runner: &impl GitCommandRunner,
-    setup_script_runner: &impl SetupScriptRunner,
-    setup_command_runner: &impl SetupCommandRunner,
-) -> Result<CreateWorkspaceResult, WorkspaceLifecycleError> {
-    create::create_workspace_with_template(
-        repo_root,
-        request,
-        setup_template,
-        git_runner,
-        setup_script_runner,
-        setup_command_runner,
-    )
+    fn stop_workspace_sessions(
+        &self,
+        _task_slug: Option<&str>,
+        _project_name: Option<&str>,
+        _workspace_name: &str,
+    ) {
+    }
 }
 
 pub fn delete_workspace(request: DeleteWorkspaceRequest) -> (Result<(), String>, Vec<String>) {
@@ -357,14 +245,14 @@ pub fn delete_workspace_with_terminator(
     request: DeleteWorkspaceRequest,
     session_terminator: &impl SessionTerminator,
 ) -> (Result<(), String>, Vec<String>) {
-    delete_workspace_with_session_stopper(request, |project_name, workspace_name| {
-        session_terminator.stop_workspace_sessions(project_name, workspace_name);
+    delete_workspace_with_session_stopper(request, |task_slug, project_name, workspace_name| {
+        session_terminator.stop_workspace_sessions(task_slug, project_name, workspace_name);
     })
 }
 
 pub(crate) fn delete_workspace_with_session_stopper(
     request: DeleteWorkspaceRequest,
-    stop_sessions: impl Fn(Option<&str>, &str),
+    stop_sessions: impl Fn(Option<&str>, Option<&str>, &str),
 ) -> (Result<(), String>, Vec<String>) {
     delete::delete_workspace_with_session_stopper(request, stop_sessions)
 }
@@ -377,14 +265,14 @@ pub fn merge_workspace_with_terminator(
     request: MergeWorkspaceRequest,
     session_terminator: &impl SessionTerminator,
 ) -> (Result<(), String>, Vec<String>) {
-    merge_workspace_with_session_stopper(request, |project_name, workspace_name| {
-        session_terminator.stop_workspace_sessions(project_name, workspace_name);
+    merge_workspace_with_session_stopper(request, |task_slug, project_name, workspace_name| {
+        session_terminator.stop_workspace_sessions(task_slug, project_name, workspace_name);
     })
 }
 
 pub(crate) fn merge_workspace_with_session_stopper(
     request: MergeWorkspaceRequest,
-    stop_sessions: impl Fn(Option<&str>, &str),
+    stop_sessions: impl Fn(Option<&str>, Option<&str>, &str),
 ) -> (Result<(), String>, Vec<String>) {
     merge::merge_workspace_with_session_stopper(request, stop_sessions)
 }
@@ -399,23 +287,19 @@ pub fn update_workspace_from_base_with_terminator(
     request: UpdateWorkspaceFromBaseRequest,
     session_terminator: &impl SessionTerminator,
 ) -> (Result<(), String>, Vec<String>) {
-    update_workspace_from_base_with_session_stopper(request, |project_name, workspace_name| {
-        session_terminator.stop_workspace_sessions(project_name, workspace_name);
-    })
+    update_workspace_from_base_with_session_stopper(
+        request,
+        |task_slug, project_name, workspace_name| {
+            session_terminator.stop_workspace_sessions(task_slug, project_name, workspace_name);
+        },
+    )
 }
 
 pub(crate) fn update_workspace_from_base_with_session_stopper(
     request: UpdateWorkspaceFromBaseRequest,
-    stop_sessions: impl Fn(Option<&str>, &str),
+    stop_sessions: impl Fn(Option<&str>, Option<&str>, &str),
 ) -> (Result<(), String>, Vec<String>) {
     update::update_workspace_from_base_with_session_stopper(request, stop_sessions)
-}
-
-pub(crate) fn workspace_directory_path(
-    repo_root: &Path,
-    workspace_name: &str,
-) -> Result<PathBuf, WorkspaceLifecycleError> {
-    paths::workspace_directory_path(repo_root, workspace_name)
 }
 
 pub(crate) fn ensure_grove_git_exclude_entries(
@@ -541,20 +425,20 @@ pub fn write_workspace_base_marker(
 #[cfg(test)]
 mod tests {
     use super::{
-        BranchMode, CreateWorkspaceRequest, DeleteWorkspaceRequest, GitCommandRunner,
-        MergeWorkspaceRequest, SetupCommandContext, SetupCommandRunner, SetupScriptContext,
-        SetupScriptRunner, UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError,
-        WorkspaceMarkerError, WorkspaceSetupTemplate, copy_env_files, create_workspace,
-        create_workspace_with_template, delete_workspace, ensure_grove_git_exclude_entries,
-        merge_workspace, merge_workspace_with_session_stopper, read_workspace_markers,
-        update_workspace_from_base, update_workspace_from_base_with_session_stopper,
-        workspace_directory_path, workspace_lifecycle_error_message, write_workspace_base_marker,
+        DeleteWorkspaceRequest, MergeWorkspaceRequest, UpdateWorkspaceFromBaseRequest,
+        WorkspaceLifecycleError, WorkspaceMarkerError, copy_env_files, delete_workspace,
+        ensure_grove_git_exclude_entries, merge_workspace, merge_workspace_with_session_stopper,
+        read_workspace_markers, update_workspace_from_base,
+        update_workspace_from_base_with_session_stopper, workspace_lifecycle_error_message,
+        write_workspace_base_marker,
     };
     use std::cell::RefCell;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::process::Command;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    type SessionStopCall = (Option<String>, Option<String>, String);
 
     #[derive(Debug)]
     struct TestDir {
@@ -580,383 +464,6 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.path);
         }
-    }
-
-    #[derive(Default)]
-    struct StubGitRunner {
-        calls: RefCell<Vec<Vec<String>>>,
-        outcomes: RefCell<Vec<Result<(), String>>>,
-    }
-
-    impl StubGitRunner {
-        fn calls(&self) -> Vec<Vec<String>> {
-            self.calls.borrow().clone()
-        }
-    }
-
-    impl GitCommandRunner for StubGitRunner {
-        fn run(&self, _repo_root: &Path, args: &[String]) -> Result<(), String> {
-            self.calls.borrow_mut().push(args.to_vec());
-            if self.outcomes.borrow().is_empty() {
-                return Ok(());
-            }
-            self.outcomes.borrow_mut().remove(0)
-        }
-    }
-
-    #[derive(Default)]
-    struct StubSetupRunner {
-        calls: RefCell<Vec<SetupScriptContext>>,
-        outcomes: RefCell<Vec<Result<(), String>>>,
-    }
-
-    impl StubSetupRunner {
-        fn with_outcomes(outcomes: Vec<Result<(), String>>) -> Self {
-            Self {
-                calls: RefCell::new(Vec::new()),
-                outcomes: RefCell::new(outcomes),
-            }
-        }
-
-        fn calls(&self) -> Vec<SetupScriptContext> {
-            self.calls.borrow().clone()
-        }
-    }
-
-    impl SetupScriptRunner for StubSetupRunner {
-        fn run(&self, context: &SetupScriptContext) -> Result<(), String> {
-            self.calls.borrow_mut().push(context.clone());
-            if self.outcomes.borrow().is_empty() {
-                return Ok(());
-            }
-            self.outcomes.borrow_mut().remove(0)
-        }
-    }
-
-    #[derive(Default)]
-    struct StubSetupCommandRunner {
-        calls: RefCell<Vec<(SetupCommandContext, String)>>,
-        outcomes: RefCell<Vec<Result<(), String>>>,
-    }
-
-    impl StubSetupCommandRunner {
-        fn with_outcomes(outcomes: Vec<Result<(), String>>) -> Self {
-            Self {
-                calls: RefCell::new(Vec::new()),
-                outcomes: RefCell::new(outcomes),
-            }
-        }
-
-        fn calls(&self) -> Vec<(SetupCommandContext, String)> {
-            self.calls.borrow().clone()
-        }
-    }
-
-    impl SetupCommandRunner for StubSetupCommandRunner {
-        fn run(&self, context: &SetupCommandContext, command: &str) -> Result<(), String> {
-            self.calls
-                .borrow_mut()
-                .push((context.clone(), command.to_string()));
-            if self.outcomes.borrow().is_empty() {
-                return Ok(());
-            }
-            self.outcomes.borrow_mut().remove(0)
-        }
-    }
-
-    #[test]
-    fn create_request_validation_distinguishes_workspace_slug_and_existing_branch() {
-        let invalid = CreateWorkspaceRequest {
-            workspace_name: "feature auth".to_string(),
-            branch_mode: BranchMode::NewBranch {
-                base_branch: "main".to_string(),
-            },
-        };
-
-        assert_eq!(
-            invalid.validate(),
-            Err(WorkspaceLifecycleError::InvalidWorkspaceName)
-        );
-
-        let valid_existing_branch = CreateWorkspaceRequest {
-            workspace_name: "feature_auth".to_string(),
-            branch_mode: BranchMode::ExistingBranch {
-                existing_branch: "feature/auth.v2".to_string(),
-            },
-        };
-
-        assert_eq!(valid_existing_branch.validate(), Ok(()));
-        assert_eq!(valid_existing_branch.branch_name(), "feature/auth.v2");
-    }
-
-    #[test]
-    fn create_workspace_new_branch_sequences_git_markers_git_exclude_and_env_copy() {
-        let temp = TestDir::new("create-new");
-        let repo_root = temp.path.join("grove");
-        fs::create_dir_all(&repo_root).expect("repo dir should exist");
-        fs::write(repo_root.join(".env"), "A=1\n").expect(".env should be written");
-        fs::write(repo_root.join(".env.local"), "B=2\n").expect(".env.local should be written");
-        fs::write(repo_root.join(".gitignore"), "/dist/\n").expect(".gitignore should be writable");
-
-        let git = StubGitRunner::default();
-        let setup = StubSetupRunner::default();
-        let request = CreateWorkspaceRequest {
-            workspace_name: "feature_a".to_string(),
-            branch_mode: BranchMode::NewBranch {
-                base_branch: "main".to_string(),
-            },
-        };
-
-        let result =
-            create_workspace(&repo_root, &request, &git, &setup).expect("create should succeed");
-        let expected_workspace_path = workspace_directory_path(&repo_root, "feature_a")
-            .expect("path derivation should succeed");
-
-        assert_eq!(result.workspace_path, expected_workspace_path);
-        assert!(result.warnings.is_empty());
-        assert_eq!(
-            git.calls(),
-            vec![vec![
-                "worktree".to_string(),
-                "add".to_string(),
-                "-b".to_string(),
-                "feature_a".to_string(),
-                expected_workspace_path.to_string_lossy().to_string(),
-                "main".to_string(),
-            ]]
-        );
-
-        assert!(!result.workspace_path.join(".grove/agent").exists());
-        assert_eq!(
-            fs::read_to_string(result.workspace_path.join(".grove/base"))
-                .expect("base marker should be readable")
-                .trim(),
-            "main"
-        );
-        assert_eq!(
-            fs::read_to_string(result.workspace_path.join(".env")).expect(".env should copy"),
-            "A=1\n"
-        );
-        assert_eq!(
-            fs::read_to_string(result.workspace_path.join(".env.local"))
-                .expect(".env.local should copy"),
-            "B=2\n"
-        );
-
-        let git_exclude = fs::read_to_string(repo_root.join(".git/info/exclude"))
-            .expect("git exclude should exist");
-        assert!(git_exclude.contains(".grove/"));
-        assert_eq!(
-            fs::read_to_string(repo_root.join(".gitignore"))
-                .expect(".gitignore should be readable"),
-            "/dist/\n"
-        );
-    }
-
-    #[test]
-    fn create_workspace_existing_branch_uses_attach_command_and_marker_branch() {
-        let temp = TestDir::new("create-existing");
-        let repo_root = temp.path.join("grove");
-        fs::create_dir_all(&repo_root).expect("repo dir should exist");
-
-        let git = StubGitRunner::default();
-        let setup = StubSetupRunner::default();
-        let request = CreateWorkspaceRequest {
-            workspace_name: "resume_auth".to_string(),
-            branch_mode: BranchMode::ExistingBranch {
-                existing_branch: "feature/auth.v2".to_string(),
-            },
-        };
-
-        let result =
-            create_workspace(&repo_root, &request, &git, &setup).expect("create should succeed");
-        let expected_workspace_path = workspace_directory_path(&repo_root, "resume_auth")
-            .expect("path derivation should succeed");
-
-        assert_eq!(
-            git.calls(),
-            vec![vec![
-                "worktree".to_string(),
-                "add".to_string(),
-                expected_workspace_path.to_string_lossy().to_string(),
-                "feature/auth.v2".to_string(),
-            ]]
-        );
-        assert_eq!(
-            fs::read_to_string(result.workspace_path.join(".grove/base"))
-                .expect("base marker should be readable")
-                .trim(),
-            "feature/auth.v2"
-        );
-        assert!(!result.workspace_path.join(".grove/agent").exists());
-    }
-
-    #[test]
-    fn create_workspace_pull_request_fetches_head_and_creates_workspace_branch() {
-        let temp = TestDir::new("create-pr");
-        let repo_root = temp.path.join("grove");
-        fs::create_dir_all(&repo_root).expect("repo dir should exist");
-
-        let git = StubGitRunner::default();
-        let setup = StubSetupRunner::default();
-        let request = CreateWorkspaceRequest {
-            workspace_name: "pr-3484".to_string(),
-            branch_mode: BranchMode::PullRequest {
-                number: 3484,
-                base_branch: "main".to_string(),
-            },
-        };
-
-        let result =
-            create_workspace(&repo_root, &request, &git, &setup).expect("create should succeed");
-        let expected_workspace_path = workspace_directory_path(&repo_root, "pr-3484")
-            .expect("path derivation should succeed");
-
-        assert_eq!(
-            git.calls(),
-            vec![
-                vec![
-                    "fetch".to_string(),
-                    "origin".to_string(),
-                    "pull/3484/head".to_string(),
-                ],
-                vec![
-                    "worktree".to_string(),
-                    "add".to_string(),
-                    "-b".to_string(),
-                    "pr-3484".to_string(),
-                    expected_workspace_path.to_string_lossy().to_string(),
-                    "FETCH_HEAD".to_string(),
-                ],
-            ]
-        );
-        assert_eq!(result.workspace_path, expected_workspace_path);
-        assert_eq!(
-            fs::read_to_string(result.workspace_path.join(".grove/base"))
-                .expect("base marker should be readable")
-                .trim(),
-            "main"
-        );
-    }
-
-    #[test]
-    fn create_workspace_setup_script_failure_is_warning_not_failure() {
-        let temp = TestDir::new("setup-warning");
-        let repo_root = temp.path.join("grove");
-        fs::create_dir_all(&repo_root).expect("repo dir should exist");
-        fs::create_dir_all(repo_root.join(".grove")).expect(".grove dir should exist");
-        fs::write(
-            repo_root.join(".grove/setup.sh"),
-            "#!/usr/bin/env bash\nexit 1\n",
-        )
-        .expect("setup script should exist");
-
-        let git = StubGitRunner::default();
-        let setup = StubSetupRunner::with_outcomes(vec![Err("script exploded".to_string())]);
-        let request = CreateWorkspaceRequest {
-            workspace_name: "feature_b".to_string(),
-            branch_mode: BranchMode::NewBranch {
-                base_branch: "main".to_string(),
-            },
-        };
-
-        let result =
-            create_workspace(&repo_root, &request, &git, &setup).expect("create should succeed");
-        assert_eq!(result.warnings.len(), 1);
-        assert!(result.warnings[0].contains("script exploded"));
-
-        let setup_calls = setup.calls();
-        assert_eq!(setup_calls.len(), 1);
-        assert_eq!(setup_calls[0].main_worktree_path, repo_root);
-        let expected_workspace_path =
-            workspace_directory_path(&setup_calls[0].main_worktree_path, "feature_b")
-                .expect("path derivation should succeed");
-        assert_eq!(setup_calls[0].workspace_path, expected_workspace_path);
-        assert_eq!(setup_calls[0].worktree_branch, "feature_b");
-    }
-
-    #[test]
-    fn create_workspace_template_commands_run_after_setup_script() {
-        let temp = TestDir::new("template-order");
-        let repo_root = temp.path.join("grove");
-        fs::create_dir_all(&repo_root).expect("repo dir should exist");
-        fs::create_dir_all(repo_root.join(".grove")).expect(".grove dir should exist");
-        fs::write(
-            repo_root.join(".grove/setup.sh"),
-            "#!/usr/bin/env bash\nexit 0\n",
-        )
-        .expect("setup script should exist");
-
-        let git = StubGitRunner::default();
-        let setup = StubSetupRunner::default();
-        let setup_commands = StubSetupCommandRunner::default();
-        let request = CreateWorkspaceRequest {
-            workspace_name: "feature_c".to_string(),
-            branch_mode: BranchMode::NewBranch {
-                base_branch: "main".to_string(),
-            },
-        };
-        let template = WorkspaceSetupTemplate {
-            auto_run_setup_commands: true,
-            commands: vec![
-                "direnv allow".to_string(),
-                "nix develop -c just bootstrap".to_string(),
-            ],
-        };
-
-        let result = create_workspace_with_template(
-            &repo_root,
-            &request,
-            Some(&template),
-            &git,
-            &setup,
-            &setup_commands,
-        )
-        .expect("create should succeed");
-
-        assert!(result.warnings.is_empty());
-        assert_eq!(setup.calls().len(), 1);
-        let command_calls = setup_commands.calls();
-        assert_eq!(command_calls.len(), 2);
-        assert_eq!(command_calls[0].1, "direnv allow");
-        assert_eq!(command_calls[1].1, "nix develop -c just bootstrap");
-    }
-
-    #[test]
-    fn create_workspace_template_command_failure_is_warning_not_failure() {
-        let temp = TestDir::new("template-warning");
-        let repo_root = temp.path.join("grove");
-        fs::create_dir_all(&repo_root).expect("repo dir should exist");
-
-        let git = StubGitRunner::default();
-        let setup = StubSetupRunner::default();
-        let setup_commands =
-            StubSetupCommandRunner::with_outcomes(vec![Err("direnv failed".to_string()), Ok(())]);
-        let request = CreateWorkspaceRequest {
-            workspace_name: "feature_d".to_string(),
-            branch_mode: BranchMode::NewBranch {
-                base_branch: "main".to_string(),
-            },
-        };
-        let template = WorkspaceSetupTemplate {
-            auto_run_setup_commands: true,
-            commands: vec!["direnv allow".to_string(), "echo ready".to_string()],
-        };
-
-        let result = create_workspace_with_template(
-            &repo_root,
-            &request,
-            Some(&template),
-            &git,
-            &setup,
-            &setup_commands,
-        )
-        .expect("create should succeed");
-
-        assert_eq!(result.warnings.len(), 1);
-        assert!(result.warnings[0].contains("direnv allow"));
-        assert!(result.warnings[0].contains("direnv failed"));
-        assert_eq!(setup_commands.calls().len(), 2);
     }
 
     #[test]
@@ -1092,35 +599,6 @@ mod tests {
     }
 
     #[test]
-    fn workspace_directory_path_uses_global_grove_root_with_repo_bucket() {
-        let repo_root = Path::new("/repos/grove");
-        let first = workspace_directory_path(repo_root, "feature_a")
-            .expect("path derivation should succeed");
-        let second = workspace_directory_path(repo_root, "feature_a")
-            .expect("path derivation should succeed");
-
-        assert_eq!(first, second);
-        assert_eq!(
-            first.file_name().and_then(|name| name.to_str()),
-            Some("grove-feature_a")
-        );
-
-        let expected_root = dirs::home_dir()
-            .expect("home directory should be available")
-            .join(".grove")
-            .join("workspaces");
-        assert!(first.starts_with(expected_root));
-
-        let bucket = first
-            .parent()
-            .and_then(|path| path.file_name())
-            .and_then(|name| name.to_str())
-            .expect("bucket name should exist");
-        assert!(bucket.starts_with("grove-"));
-        assert_ne!(bucket, "grove-");
-    }
-
-    #[test]
     fn workspace_lifecycle_error_messages_are_user_friendly() {
         assert_eq!(
             workspace_lifecycle_error_message(&WorkspaceLifecycleError::InvalidWorkspaceName),
@@ -1132,10 +610,6 @@ mod tests {
             )),
             "git command failed: boom"
         );
-        assert_eq!(
-            workspace_lifecycle_error_message(&WorkspaceLifecycleError::HomeDirectoryUnavailable),
-            "home directory unavailable"
-        );
     }
 
     #[test]
@@ -1146,6 +620,7 @@ mod tests {
         init_git_repo(&repo_root);
 
         let request = DeleteWorkspaceRequest {
+            task_slug: None,
             project_name: None,
             project_path: Some(repo_root.clone()),
             workspace_name: "feature-x".to_string(),
@@ -1169,6 +644,7 @@ mod tests {
         init_git_repo(&repo_root);
 
         let request = DeleteWorkspaceRequest {
+            task_slug: None,
             project_name: None,
             project_path: Some(repo_root.clone()),
             workspace_name: "feature-y".to_string(),
@@ -1212,6 +688,7 @@ mod tests {
         let original_cwd = std::env::current_dir().expect("cwd should be available");
         std::env::set_current_dir(&repo_root).expect("should switch cwd to repo");
         let request = DeleteWorkspaceRequest {
+            task_slug: None,
             project_name: None,
             project_path: None,
             workspace_name: "feature-z".to_string(),
@@ -1255,6 +732,7 @@ mod tests {
         run_git(&workspace_path, &["commit", "-m", "add feature"]);
 
         let request = MergeWorkspaceRequest {
+            task_slug: None,
             project_name: None,
             project_path: Some(repo_root.clone()),
             workspace_name: "feature-merge".to_string(),
@@ -1308,6 +786,7 @@ mod tests {
         fs::write(workspace_path.join("dirty.txt"), "dirty\n").expect("dirty file should exist");
 
         let workspace_dirty_request = MergeWorkspaceRequest {
+            task_slug: None,
             project_name: None,
             project_path: Some(repo_root.clone()),
             workspace_name: "feature-dirty".to_string(),
@@ -1332,6 +811,7 @@ mod tests {
         run_git(&workspace_path, &["commit", "-m", "clean workspace branch"]);
 
         let base_dirty_request = MergeWorkspaceRequest {
+            task_slug: None,
             project_name: None,
             project_path: Some(repo_root.clone()),
             workspace_name: "feature-dirty".to_string(),
@@ -1373,8 +853,9 @@ mod tests {
         );
         fs::write(workspace_path.join("dirty.txt"), "dirty\n").expect("dirty file should exist");
 
-        let stop_calls: RefCell<Vec<(Option<String>, String)>> = RefCell::new(Vec::new());
+        let stop_calls: RefCell<Vec<SessionStopCall>> = RefCell::new(Vec::new());
         let request = MergeWorkspaceRequest {
+            task_slug: Some("feature-no-stop".to_string()),
             project_name: Some("grove-project".to_string()),
             project_path: Some(repo_root),
             workspace_name: "feature-no-stop".to_string(),
@@ -1386,10 +867,12 @@ mod tests {
         };
 
         let (result, warnings) =
-            merge_workspace_with_session_stopper(request, |project, workspace| {
-                stop_calls
-                    .borrow_mut()
-                    .push((project.map(ToOwned::to_owned), workspace.to_string()));
+            merge_workspace_with_session_stopper(request, |task_slug, project, workspace| {
+                stop_calls.borrow_mut().push((
+                    task_slug.map(ToOwned::to_owned),
+                    project.map(ToOwned::to_owned),
+                    workspace.to_string(),
+                ));
             });
 
         assert!(warnings.is_empty());
@@ -1429,8 +912,9 @@ mod tests {
         run_git(&workspace_path, &["add", "feature.txt"]);
         run_git(&workspace_path, &["commit", "-m", "add feature"]);
 
-        let stop_calls: RefCell<Vec<(Option<String>, String)>> = RefCell::new(Vec::new());
+        let stop_calls: RefCell<Vec<SessionStopCall>> = RefCell::new(Vec::new());
         let request = MergeWorkspaceRequest {
+            task_slug: Some("feature-cleanup-stop".to_string()),
             project_name: Some("grove-project".to_string()),
             project_path: Some(repo_root),
             workspace_name: "feature-cleanup-stop".to_string(),
@@ -1442,10 +926,12 @@ mod tests {
         };
 
         let (result, warnings) =
-            merge_workspace_with_session_stopper(request, |project, workspace| {
-                stop_calls
-                    .borrow_mut()
-                    .push((project.map(ToOwned::to_owned), workspace.to_string()));
+            merge_workspace_with_session_stopper(request, |task_slug, project, workspace| {
+                stop_calls.borrow_mut().push((
+                    task_slug.map(ToOwned::to_owned),
+                    project.map(ToOwned::to_owned),
+                    workspace.to_string(),
+                ));
             });
 
         assert_eq!(result, Ok(()));
@@ -1457,6 +943,7 @@ mod tests {
         assert_eq!(
             *stop_calls.borrow(),
             vec![(
+                Some("feature-cleanup-stop".to_string()),
                 Some("grove-project".to_string()),
                 "feature-cleanup-stop".to_string()
             )]
@@ -1485,8 +972,9 @@ mod tests {
         );
         fs::write(workspace_path.join("dirty.txt"), "dirty\n").expect("dirty file should exist");
 
-        let stop_calls: RefCell<Vec<(Option<String>, String)>> = RefCell::new(Vec::new());
+        let stop_calls: RefCell<Vec<SessionStopCall>> = RefCell::new(Vec::new());
         let request = UpdateWorkspaceFromBaseRequest {
+            task_slug: Some("feature-update-no-stop".to_string()),
             project_name: Some("grove-project".to_string()),
             project_path: Some(repo_root),
             workspace_name: "feature-update-no-stop".to_string(),
@@ -1495,12 +983,16 @@ mod tests {
             base_branch,
         };
 
-        let (result, warnings) =
-            update_workspace_from_base_with_session_stopper(request, |project, workspace| {
-                stop_calls
-                    .borrow_mut()
-                    .push((project.map(ToOwned::to_owned), workspace.to_string()));
-            });
+        let (result, warnings) = update_workspace_from_base_with_session_stopper(
+            request,
+            |task_slug, project, workspace| {
+                stop_calls.borrow_mut().push((
+                    task_slug.map(ToOwned::to_owned),
+                    project.map(ToOwned::to_owned),
+                    workspace.to_string(),
+                ));
+            },
+        );
         assert!(warnings.is_empty());
         let error = result.expect_err("dirty workspace should block update");
         assert!(
@@ -1540,6 +1032,7 @@ mod tests {
         run_git(&repo_root, &["commit", "-m", "base change"]);
 
         let request = UpdateWorkspaceFromBaseRequest {
+            task_slug: None,
             project_name: None,
             project_path: Some(repo_root),
             workspace_name: "feature-sync".to_string(),
@@ -1580,6 +1073,7 @@ mod tests {
         fs::write(workspace_path.join("dirty.txt"), "dirty\n").expect("dirty file should exist");
 
         let request = UpdateWorkspaceFromBaseRequest {
+            task_slug: None,
             project_name: None,
             project_path: Some(repo_root),
             workspace_name: "feature-sync-dirty".to_string(),
@@ -1637,6 +1131,7 @@ mod tests {
         );
 
         let request = UpdateWorkspaceFromBaseRequest {
+            task_slug: None,
             project_name: None,
             project_path: Some(repo_root.clone()),
             workspace_name: "grove".to_string(),
@@ -1675,6 +1170,7 @@ mod tests {
         );
 
         let request = UpdateWorkspaceFromBaseRequest {
+            task_slug: None,
             project_name: None,
             project_path: Some(repo_root),
             workspace_name: "feature-sync".to_string(),

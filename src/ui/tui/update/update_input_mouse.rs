@@ -154,7 +154,7 @@ impl GroveApp {
         };
 
         if row != self.state.selected_index {
-            self.state.selected_index = row;
+            self.state.select_index(row);
             self.handle_workspace_selection_changed();
         }
     }
@@ -167,7 +167,7 @@ impl GroveApp {
             return;
         }
 
-        self.state.selected_index = index;
+        self.state.select_index(index);
         self.handle_workspace_selection_changed();
     }
 

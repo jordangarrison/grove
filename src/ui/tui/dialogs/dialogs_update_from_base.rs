@@ -118,6 +118,7 @@ impl GroveApp {
         };
 
         self.set_update_from_base_dialog(UpdateFromBaseDialogState {
+            task_slug: workspace.task_slug.clone(),
             project_name: workspace.project_name.clone(),
             project_path: workspace.project_path.clone(),
             is_main_workspace: workspace.is_main,
@@ -188,6 +189,7 @@ impl GroveApp {
         let workspace_branch = dialog.workspace_branch.clone();
         let base_branch = dialog.base_branch.clone();
         let request = UpdateWorkspaceFromBaseRequest {
+            task_slug: dialog.task_slug,
             project_name: dialog.project_name,
             project_path: dialog.project_path,
             workspace_name: dialog.workspace_name,

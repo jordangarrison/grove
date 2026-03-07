@@ -386,8 +386,6 @@ mod tests {
     }
 
     fn repository(path: PathBuf) -> RepositoryConfig {
-        let mut defaults = ProjectDefaults::default();
-        defaults.base_branch = "main".to_string();
         RepositoryConfig {
             name: path
                 .file_name()
@@ -395,7 +393,10 @@ mod tests {
                 .map(str::to_string)
                 .unwrap_or_else(|| "repo".to_string()),
             path,
-            defaults,
+            defaults: ProjectDefaults {
+                base_branch: "main".to_string(),
+                ..ProjectDefaults::default()
+            },
         }
     }
 
@@ -500,10 +501,14 @@ mod tests {
         fs::create_dir_all(&flohome).expect("flohome repo should exist");
         fs::create_dir_all(&fastly).expect("fastly repo should exist");
 
-        let mut flohome_defaults = ProjectDefaults::default();
-        flohome_defaults.base_branch = "develop".to_string();
-        let mut fastly_defaults = ProjectDefaults::default();
-        fastly_defaults.base_branch = "master".to_string();
+        let flohome_defaults = ProjectDefaults {
+            base_branch: "develop".to_string(),
+            ..ProjectDefaults::default()
+        };
+        let fastly_defaults = ProjectDefaults {
+            base_branch: "master".to_string(),
+            ..ProjectDefaults::default()
+        };
 
         let request = CreateTaskRequest {
             task_name: "flohome-launch".to_string(),

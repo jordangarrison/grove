@@ -77,7 +77,9 @@ pub(super) struct WorkspaceStatusCapture {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct RefreshWorkspacesCompletion {
     pub(super) preferred_workspace_path: Option<PathBuf>,
-    pub(super) bootstrap: BootstrapData,
+    pub(super) repo_name: String,
+    pub(super) discovery_state: DiscoveryState,
+    pub(super) tasks: Vec<Task>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

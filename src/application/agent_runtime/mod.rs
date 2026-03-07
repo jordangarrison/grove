@@ -130,6 +130,7 @@ pub(crate) enum SessionActivity {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaunchRequest {
+    pub task_slug: Option<String>,
     pub project_name: Option<String>,
     pub workspace_name: String,
     pub workspace_path: PathBuf,
@@ -1259,6 +1260,7 @@ mod tests {
         #[test]
         fn execute_launch_request_with_result_for_mode_includes_workspace_context() {
             let request = LaunchRequest {
+                task_slug: None,
                 project_name: Some("project.one".to_string()),
                 workspace_name: "auth-flow".to_string(),
                 workspace_path: PathBuf::from("/repos/project.one/worktrees/auth-flow"),
@@ -1520,7 +1522,7 @@ mod tests {
         #[test]
         fn kill_workspace_session_command_uses_project_scoped_tmux_session_name() {
             assert_eq!(
-                kill_workspace_session_command(Some("project.one"), "feature/auth.v2"),
+                kill_workspace_session_command(None, Some("project.one"), "feature/auth.v2"),
                 vec![
                     "tmux".to_string(),
                     "kill-session".to_string(),
@@ -1533,7 +1535,7 @@ mod tests {
         #[test]
         fn kill_workspace_session_commands_include_agent_git_and_shell_sessions() {
             assert_eq!(
-                kill_workspace_session_commands(Some("project.one"), "feature/auth.v2"),
+                kill_workspace_session_commands(None, Some("project.one"), "feature/auth.v2"),
                 vec![
                     vec![
                         "tmux".to_string(),
@@ -1560,26 +1562,31 @@ mod tests {
         #[test]
         fn workspace_session_name_matches_accepts_numbered_agent_and_shell_tabs() {
             assert!(workspace_session_name_matches(
+                None,
                 Some("project.one"),
                 "feature/auth.v2",
                 "grove-ws-project-one-feature-auth-v2-agent-1",
             ));
             assert!(workspace_session_name_matches(
+                None,
                 Some("project.one"),
                 "feature/auth.v2",
                 "grove-ws-project-one-feature-auth-v2-shell-2",
             ));
             assert!(workspace_session_name_matches(
+                None,
                 Some("project.one"),
                 "feature/auth.v2",
                 "grove-ws-project-one-feature-auth-v2-git",
             ));
             assert!(!workspace_session_name_matches(
+                None,
                 Some("project.one"),
                 "feature/auth.v2",
                 "grove-ws-project-one-feature-auth-v2-agent-x",
             ));
             assert!(!workspace_session_name_matches(
+                None,
                 Some("project.one"),
                 "feature/auth.v2",
                 "grove-ws-project-one-other-agent-1",
@@ -1597,6 +1604,7 @@ mod tests {
             ];
             assert_eq!(
                 workspace_session_names_for_cleanup(
+                    None,
                     Some("project.one"),
                     "feature/auth.v2",
                     sessions.as_slice(),
@@ -1610,6 +1618,7 @@ mod tests {
             );
             assert_eq!(
                 kill_workspace_session_commands_for_existing_sessions(
+                    None,
                     Some("project.one"),
                     "feature/auth.v2",
                     sessions.as_slice(),
@@ -1646,6 +1655,7 @@ mod tests {
         #[test]
         fn launch_plan_with_workspace_init_runs_before_agent() {
             let request = LaunchRequest {
+                task_slug: None,
                 project_name: None,
                 workspace_name: "auth-flow".to_string(),
                 workspace_path: PathBuf::from("/repos/grove-auth-flow"),
@@ -2204,6 +2214,7 @@ mod tests {
         #[test]
         fn launch_plan_without_prompt_sends_agent_directly() {
             let request = LaunchRequest {
+                task_slug: None,
                 project_name: None,
                 workspace_name: "auth-flow".to_string(),
                 workspace_path: PathBuf::from("/repos/grove-auth-flow"),
@@ -2236,6 +2247,7 @@ mod tests {
         #[test]
         fn launch_plan_with_workspace_init_wraps_agent_start_command() {
             let request = LaunchRequest {
+                task_slug: None,
                 project_name: None,
                 workspace_name: "auth-flow".to_string(),
                 workspace_path: PathBuf::from("/repos/grove-auth-flow"),
@@ -2275,6 +2287,7 @@ mod tests {
         #[test]
         fn launch_plan_with_non_direnv_init_does_not_wrap_agent_command_in_direnv_exec() {
             let request = LaunchRequest {
+                task_slug: None,
                 project_name: None,
                 workspace_name: "auth-flow".to_string(),
                 workspace_path: PathBuf::from("/repos/grove-auth-flow"),
@@ -2298,6 +2311,7 @@ mod tests {
         #[test]
         fn launch_plan_with_capture_dimensions_resizes_before_send_keys() {
             let request = LaunchRequest {
+                task_slug: None,
                 project_name: None,
                 workspace_name: "auth-flow".to_string(),
                 workspace_path: PathBuf::from("/repos/grove-auth-flow"),
@@ -2330,6 +2344,7 @@ mod tests {
         #[test]
         fn launch_plan_with_agent_env_exports_before_agent_start() {
             let request = LaunchRequest {
+                task_slug: None,
                 project_name: None,
                 workspace_name: "auth-flow".to_string(),
                 workspace_path: PathBuf::from("/repos/grove-auth-flow"),
@@ -2370,6 +2385,7 @@ mod tests {
         #[test]
         fn launch_plan_with_prompt_writes_launcher_script() {
             let request = LaunchRequest {
+                task_slug: None,
                 project_name: None,
                 workspace_name: "db_migration".to_string(),
                 workspace_path: PathBuf::from("/repos/grove-db_migration"),

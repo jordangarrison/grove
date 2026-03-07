@@ -5,6 +5,5 @@
 //! - Service implementations orchestrate application workflows.
 //! - Lower-level modules remain internal implementation details.
 
-pub mod discovery_service;
 pub mod runtime_service;
 pub mod workspace_service;

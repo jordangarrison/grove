@@ -5,37 +5,41 @@ use crate::application::agent_runtime::{
     kill_workspace_session_commands, kill_workspace_session_commands_for_existing_sessions,
 };
 use crate::application::workspace_lifecycle::{
-    CreateWorkspaceRequest, CreateWorkspaceResult, DeleteWorkspaceRequest, GitCommandRunner,
-    MergeWorkspaceRequest, SessionTerminator, SetupCommandRunner, SetupScriptRunner,
-    UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError, WorkspaceSetupTemplate,
-    create_workspace_with_template as lifecycle_create_workspace_with_template,
+    DeleteWorkspaceRequest, MergeWorkspaceRequest, SessionTerminator,
+    UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError,
     delete_workspace_with_terminator as lifecycle_delete_workspace_with_terminator,
     merge_workspace_with_terminator as lifecycle_merge_workspace_with_terminator,
     update_workspace_from_base_with_terminator as lifecycle_update_workspace_from_base_with_terminator,
     workspace_lifecycle_error_message as lifecycle_workspace_lifecycle_error_message,
     write_workspace_base_marker as lifecycle_write_workspace_base_marker,
 };
-use crate::infrastructure::process::execute_command;
-use crate::infrastructure::process::stderr_trimmed;
+use crate::infrastructure::process::{execute_command, stderr_trimmed};
 
 #[derive(Debug, Clone, Copy, Default)]
 struct RuntimeSessionTerminator;
 
 impl SessionTerminator for RuntimeSessionTerminator {
-    fn stop_workspace_sessions(&self, project_name: Option<&str>, workspace_name: &str) {
+    fn stop_workspace_sessions(
+        &self,
+        task_slug: Option<&str>,
+        project_name: Option<&str>,
+        workspace_name: &str,
+    ) {
         let commands = match list_tmux_session_names() {
             Ok(existing_sessions) => {
                 if existing_sessions.is_empty() {
                     return;
                 }
                 kill_workspace_session_commands_for_existing_sessions(
+                    task_slug,
                     project_name,
                     workspace_name,
                     existing_sessions.as_slice(),
                 )
             }
-            Err(_) => kill_workspace_session_commands(project_name, workspace_name),
+            Err(_) => kill_workspace_session_commands(task_slug, project_name, workspace_name),
         };
+
         for command in commands {
             if command.is_empty() {
                 continue;
@@ -68,145 +72,27 @@ fn list_tmux_session_names() -> Result<Vec<String>, String> {
         .collect())
 }
 
-pub(crate) trait WorkspaceService {
-    fn create_workspace_with_template<G, S, C>(
-        &self,
-        repo_root: &Path,
-        request: &CreateWorkspaceRequest,
-        setup_template: Option<&WorkspaceSetupTemplate>,
-        git_runner: &G,
-        setup_script_runner: &S,
-        setup_command_runner: &C,
-    ) -> Result<CreateWorkspaceResult, WorkspaceLifecycleError>
-    where
-        G: GitCommandRunner,
-        S: SetupScriptRunner,
-        C: SetupCommandRunner;
-
-    fn delete_workspace(
-        &self,
-        request: DeleteWorkspaceRequest,
-    ) -> (Result<(), String>, Vec<String>);
-
-    fn merge_workspace(&self, request: MergeWorkspaceRequest) -> (Result<(), String>, Vec<String>);
-
-    fn update_workspace_from_base(
-        &self,
-        request: UpdateWorkspaceFromBaseRequest,
-    ) -> (Result<(), String>, Vec<String>);
-
-    fn workspace_lifecycle_error_message(&self, error: &WorkspaceLifecycleError) -> String;
-
-    fn write_workspace_base_marker(
-        &self,
-        workspace_path: &Path,
-        base_branch: &str,
-    ) -> Result<(), WorkspaceLifecycleError>;
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct CommandWorkspaceService;
-
-impl WorkspaceService for CommandWorkspaceService {
-    fn create_workspace_with_template<G, S, C>(
-        &self,
-        repo_root: &Path,
-        request: &CreateWorkspaceRequest,
-        setup_template: Option<&WorkspaceSetupTemplate>,
-        git_runner: &G,
-        setup_script_runner: &S,
-        setup_command_runner: &C,
-    ) -> Result<CreateWorkspaceResult, WorkspaceLifecycleError>
-    where
-        G: GitCommandRunner,
-        S: SetupScriptRunner,
-        C: SetupCommandRunner,
-    {
-        lifecycle_create_workspace_with_template(
-            repo_root,
-            request,
-            setup_template,
-            git_runner,
-            setup_script_runner,
-            setup_command_runner,
-        )
-    }
-
-    fn delete_workspace(
-        &self,
-        request: DeleteWorkspaceRequest,
-    ) -> (Result<(), String>, Vec<String>) {
-        lifecycle_delete_workspace_with_terminator(request, &RuntimeSessionTerminator)
-    }
-
-    fn merge_workspace(&self, request: MergeWorkspaceRequest) -> (Result<(), String>, Vec<String>) {
-        lifecycle_merge_workspace_with_terminator(request, &RuntimeSessionTerminator)
-    }
-
-    fn update_workspace_from_base(
-        &self,
-        request: UpdateWorkspaceFromBaseRequest,
-    ) -> (Result<(), String>, Vec<String>) {
-        lifecycle_update_workspace_from_base_with_terminator(request, &RuntimeSessionTerminator)
-    }
-
-    fn workspace_lifecycle_error_message(&self, error: &WorkspaceLifecycleError) -> String {
-        lifecycle_workspace_lifecycle_error_message(error)
-    }
-
-    fn write_workspace_base_marker(
-        &self,
-        workspace_path: &Path,
-        base_branch: &str,
-    ) -> Result<(), WorkspaceLifecycleError> {
-        lifecycle_write_workspace_base_marker(workspace_path, base_branch)
-    }
-}
-
-pub fn create_workspace_with_template<G, S, C>(
-    repo_root: &Path,
-    request: &CreateWorkspaceRequest,
-    setup_template: Option<&WorkspaceSetupTemplate>,
-    git_runner: &G,
-    setup_script_runner: &S,
-    setup_command_runner: &C,
-) -> Result<CreateWorkspaceResult, WorkspaceLifecycleError>
-where
-    G: GitCommandRunner,
-    S: SetupScriptRunner,
-    C: SetupCommandRunner,
-{
-    CommandWorkspaceService.create_workspace_with_template(
-        repo_root,
-        request,
-        setup_template,
-        git_runner,
-        setup_script_runner,
-        setup_command_runner,
-    )
-}
-
 pub fn delete_workspace(request: DeleteWorkspaceRequest) -> (Result<(), String>, Vec<String>) {
-    CommandWorkspaceService.delete_workspace(request)
+    lifecycle_delete_workspace_with_terminator(request, &RuntimeSessionTerminator)
 }
 
 pub fn merge_workspace(request: MergeWorkspaceRequest) -> (Result<(), String>, Vec<String>) {
-    CommandWorkspaceService.merge_workspace(request)
+    lifecycle_merge_workspace_with_terminator(request, &RuntimeSessionTerminator)
 }
 
 pub fn update_workspace_from_base(
     request: UpdateWorkspaceFromBaseRequest,
 ) -> (Result<(), String>, Vec<String>) {
-    CommandWorkspaceService.update_workspace_from_base(request)
+    lifecycle_update_workspace_from_base_with_terminator(request, &RuntimeSessionTerminator)
 }
 
 pub fn workspace_lifecycle_error_message(error: &WorkspaceLifecycleError) -> String {
-    CommandWorkspaceService.workspace_lifecycle_error_message(error)
+    lifecycle_workspace_lifecycle_error_message(error)
 }
 
 pub fn write_workspace_base_marker(
     workspace_path: &Path,
     base_branch: &str,
 ) -> Result<(), WorkspaceLifecycleError> {
-    CommandWorkspaceService.write_workspace_base_marker(workspace_path, base_branch)
+    lifecycle_write_workspace_base_marker(workspace_path, base_branch)
 }

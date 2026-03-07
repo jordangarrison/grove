@@ -111,6 +111,7 @@ pub struct PullRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Workspace {
     pub name: String,
+    pub task_slug: Option<String>,
     pub path: PathBuf,
     pub project_name: Option<String>,
     pub project_path: Option<PathBuf>,
@@ -199,6 +200,7 @@ impl Workspace {
 
         Ok(Self {
             name,
+            task_slug: None,
             path,
             project_name: None,
             project_path: None,
@@ -222,6 +224,11 @@ impl Workspace {
     pub fn with_project_context(mut self, project_name: String, project_path: PathBuf) -> Self {
         self.project_name = Some(project_name);
         self.project_path = Some(project_path);
+        self
+    }
+
+    pub fn with_task_slug(mut self, task_slug: Option<String>) -> Self {
+        self.task_slug = task_slug;
         self
     }
 

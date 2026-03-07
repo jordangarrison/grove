@@ -18,6 +18,7 @@ pub fn launch_request_for_workspace(
     capture_rows: Option<u16>,
 ) -> LaunchRequest {
     LaunchRequest {
+        task_slug: workspace.task_slug.clone(),
         project_name: workspace.project_name.clone(),
         workspace_name: workspace.name.clone(),
         workspace_path: workspace.path.clone(),
@@ -54,10 +55,24 @@ pub fn tmux_launch_error_indicates_duplicate_session(error: &str) -> bool {
 }
 
 pub fn build_launch_plan(request: &LaunchRequest) -> LaunchPlan {
-    let session_name = session_name_for_workspace_in_project(
-        request.project_name.as_deref(),
-        &request.workspace_name,
-    );
+    let session_name = request
+        .task_slug
+        .as_deref()
+        .map(|task_slug| {
+            super::sessions::session_name_for_task_worktree(
+                task_slug,
+                request
+                    .project_name
+                    .as_deref()
+                    .unwrap_or(&request.workspace_name),
+            )
+        })
+        .unwrap_or_else(|| {
+            session_name_for_workspace_in_project(
+                request.project_name.as_deref(),
+                &request.workspace_name,
+            )
+        });
     let agent_cmd = build_agent_command(request.agent, request.skip_permissions);
     let launch_agent_cmd = launch_command_with_workspace_init(
         &request.workspace_path,
@@ -84,6 +99,7 @@ pub fn build_task_launch_plan(request: &super::TaskLaunchRequest) -> LaunchPlan 
         request.workspace_init_command.as_deref(),
     );
     let shared = LaunchRequest {
+        task_slug: None,
         project_name: None,
         workspace_name: request.task_slug.clone(),
         workspace_path: request.task_root.clone(),
@@ -113,6 +129,7 @@ pub fn build_shell_launch_plan(request: &ShellLaunchRequest) -> LaunchPlan {
         request.workspace_init_command.as_deref(),
     );
     let shared = LaunchRequest {
+        task_slug: None,
         project_name: None,
         workspace_name: request.session_name.clone(),
         workspace_path: request.workspace_path.clone(),

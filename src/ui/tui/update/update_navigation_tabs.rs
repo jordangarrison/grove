@@ -336,20 +336,14 @@ impl GroveApp {
         match kind {
             WorkspaceTabKind::Home => None,
             WorkspaceTabKind::Git => Some(git_session_name_for_workspace(workspace)),
-            WorkspaceTabKind::Agent => {
-                let workspace_name = format!("{}-agent-{ordinal}", workspace.name);
-                Some(session_name_for_workspace_in_project(
-                    workspace.project_name.as_deref(),
-                    workspace_name.as_str(),
-                ))
-            }
-            WorkspaceTabKind::Shell => {
-                let workspace_name = format!("{}-shell-{ordinal}", workspace.name);
-                Some(session_name_for_workspace_in_project(
-                    workspace.project_name.as_deref(),
-                    workspace_name.as_str(),
-                ))
-            }
+            WorkspaceTabKind::Agent => Some(format!(
+                "{}-agent-{ordinal}",
+                session_name_for_workspace_ref(workspace)
+            )),
+            WorkspaceTabKind::Shell => Some(format!(
+                "{}-shell-{ordinal}",
+                session_name_for_workspace_ref(workspace)
+            )),
         }
     }
 

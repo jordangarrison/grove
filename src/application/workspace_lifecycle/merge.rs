@@ -2,7 +2,7 @@ use super::MergeWorkspaceRequest;
 
 pub(super) fn merge_workspace_with_session_stopper(
     request: MergeWorkspaceRequest,
-    stop_sessions: impl Fn(Option<&str>, &str),
+    stop_sessions: impl Fn(Option<&str>, Option<&str>, &str),
 ) -> (Result<(), String>, Vec<String>) {
     let mut warnings = Vec::new();
 
@@ -55,6 +55,7 @@ pub(super) fn merge_workspace_with_session_stopper(
 
     if request.cleanup_workspace {
         stop_sessions(
+            request.task_slug.as_deref(),
             request.project_name.as_deref(),
             request.workspace_name.as_str(),
         );

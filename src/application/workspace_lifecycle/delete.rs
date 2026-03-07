@@ -2,11 +2,12 @@ use super::DeleteWorkspaceRequest;
 
 pub(super) fn delete_workspace_with_session_stopper(
     request: DeleteWorkspaceRequest,
-    stop_sessions: impl Fn(Option<&str>, &str),
+    stop_sessions: impl Fn(Option<&str>, Option<&str>, &str),
 ) -> (Result<(), String>, Vec<String>) {
     let mut warnings = Vec::new();
     if request.kill_tmux_sessions {
         stop_sessions(
+            request.task_slug.as_deref(),
             request.project_name.as_deref(),
             request.workspace_name.as_str(),
         );

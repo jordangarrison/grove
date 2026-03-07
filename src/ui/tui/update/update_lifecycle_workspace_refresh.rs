@@ -10,34 +10,25 @@ struct RefreshedAppState {
     state: AppState,
 }
 
-fn refreshed_app_state(
-    tasks_root_path: Option<&Path>,
-    projects: &[ProjectConfig],
-) -> RefreshedAppState {
-    if let Some(tasks_root_path) = tasks_root_path {
-        let bootstrap = bootstrap_task_data_for_root(tasks_root_path);
-        let repo_name = if bootstrap.tasks.is_empty() {
+fn refreshed_app_state(tasks_root_path: Option<&Path>) -> RefreshedAppState {
+    let bootstrap = tasks_root_path
+        .map(bootstrap_task_data_for_root)
+        .unwrap_or_else(|| crate::application::task_discovery::TaskBootstrapData {
+            tasks: Vec::new(),
+            discovery_state: TaskDiscoveryState::Empty,
+        });
+    RefreshedAppState {
+        repo_name: if bootstrap.tasks.is_empty() {
             "tasks".to_string()
         } else {
             format!("{} tasks", bootstrap.tasks.len())
-        };
-        let discovery_state = match bootstrap.discovery_state {
+        },
+        discovery_state: match bootstrap.discovery_state {
             TaskDiscoveryState::Ready => DiscoveryState::Ready,
             TaskDiscoveryState::Empty => DiscoveryState::Empty,
             TaskDiscoveryState::Error(message) => DiscoveryState::Error(message),
-        };
-        return RefreshedAppState {
-            repo_name,
-            discovery_state,
-            state: AppState::new(bootstrap.tasks),
-        };
-    }
-
-    let bootstrap = bootstrap_data_for_projects(projects);
-    RefreshedAppState {
-        repo_name: bootstrap.repo_name,
-        discovery_state: bootstrap.discovery_state,
-        state: AppState::from_workspaces(bootstrap.workspaces),
+        },
+        state: AppState::new(bootstrap.tasks),
     }
 }
 
@@ -94,13 +85,11 @@ impl GroveApp {
     }
 
     pub(super) fn refresh_workspaces(&mut self, preferred_workspace_path: Option<PathBuf>) {
-        if let Some(tasks_root_path) = self.resolved_tasks_root() {
-            self.refresh_workspaces_sync_with_root(preferred_workspace_path, Some(tasks_root_path));
-            return;
-        }
-
         if !self.tmux_input.supports_background_launch() {
-            self.refresh_workspaces_sync_with_root(preferred_workspace_path, None);
+            self.refresh_workspaces_sync_with_root(
+                preferred_workspace_path,
+                self.resolved_tasks_root(),
+            );
             return;
         }
 
@@ -109,13 +98,15 @@ impl GroveApp {
         }
 
         let target_path = preferred_workspace_path.or_else(|| self.selected_workspace_path());
-        let projects = self.projects.clone();
+        let tasks_root_path = self.resolved_tasks_root();
         self.dialogs.refresh_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let bootstrap = bootstrap_data_for_projects(&projects);
+            let refreshed = refreshed_app_state(tasks_root_path.as_deref());
             Msg::RefreshWorkspacesCompleted(RefreshWorkspacesCompletion {
                 preferred_workspace_path: target_path,
-                bootstrap,
+                repo_name: refreshed.repo_name,
+                discovery_state: refreshed.discovery_state,
+                tasks: refreshed.state.tasks,
             })
         }));
     }
@@ -128,20 +119,14 @@ impl GroveApp {
         let target_path = preferred_workspace_path.or_else(|| self.selected_workspace_path());
         let previous_mode = self.state.mode;
         let previous_focus = self.state.focus;
-        let refreshed = refreshed_app_state(tasks_root_path.as_deref(), &self.projects);
+        let refreshed = refreshed_app_state(tasks_root_path.as_deref());
 
         self.repo_name = refreshed.repo_name;
         self.discovery_state = refreshed.discovery_state;
         self.state = refreshed.state;
         if let Some(path) = target_path
-            && let Some(index) = self
-                .state
-                .workspaces
-                .iter()
-                .position(|workspace| workspace.path == path)
-        {
-            self.state.selected_index = index;
-        }
+            && self.state.select_workspace_path(path)
+        {}
         self.reconcile_task_order();
         self.reorder_tasks_for_task_order();
         self.state.mode = previous_mode;
@@ -161,18 +146,12 @@ impl GroveApp {
         let previous_mode = self.state.mode;
         let previous_focus = self.state.focus;
 
-        self.repo_name = completion.bootstrap.repo_name;
-        self.discovery_state = completion.bootstrap.discovery_state;
-        self.state = AppState::from_workspaces(completion.bootstrap.workspaces);
+        self.repo_name = completion.repo_name;
+        self.discovery_state = completion.discovery_state;
+        self.state = AppState::new(completion.tasks);
         if let Some(path) = completion.preferred_workspace_path
-            && let Some(index) = self
-                .state
-                .workspaces
-                .iter()
-                .position(|workspace| workspace.path == path)
-        {
-            self.state.selected_index = index;
-        }
+            && self.state.select_workspace_path(path)
+        {}
         self.reconcile_task_order();
         self.reorder_tasks_for_task_order();
         self.state.mode = previous_mode;
@@ -261,7 +240,7 @@ mod tests {
         let raw = encode_task_manifest(&task).expect("task manifest should encode");
         fs::write(task_dir.join("task.toml"), raw).expect("task manifest should write");
 
-        let refreshed = refreshed_app_state(Some(temp.path.as_path()), &[]);
+        let refreshed = refreshed_app_state(Some(temp.path.as_path()));
 
         assert_eq!(refreshed.repo_name, "1 tasks");
         assert_eq!(refreshed.discovery_state, DiscoveryState::Ready);

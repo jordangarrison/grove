@@ -43,8 +43,7 @@ use crate::application::agent_runtime::{
     CommandExecutionMode, LivePreviewTarget, OutputDigest, SessionActivity, ShellLaunchRequest,
     TaskLaunchRequest, WorkspaceStatusTarget, agent_supports_in_pane_restart, execute_command_with,
     git_session_name_for_workspace, infer_workspace_skip_permissions, poll_interval,
-    restart_workspace_in_pane_with_io, session_name_for_task, session_name_for_workspace_in_project,
-    session_name_for_workspace_ref,
+    restart_workspace_in_pane_with_io, session_name_for_task, session_name_for_workspace_ref,
     shell_session_name_for_workspace, tmux_launch_error_indicates_duplicate_session,
     trimmed_nonempty, workspace_can_enter_interactive, workspace_can_start_agent,
     workspace_can_stop_agent,
@@ -81,7 +80,7 @@ use crate::application::workspace_lifecycle::{
     MergeWorkspaceRequest, UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError,
 };
 use crate::domain::{AgentType, Task, Workspace, WorkspaceStatus};
-use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
+use crate::infrastructure::adapters::DiscoveryState;
 use crate::infrastructure::config::{
     AgentEnvDefaults, GroveConfig, ProjectConfig, ThemeName, WorkspaceAttentionAckConfig,
 };
@@ -101,7 +100,6 @@ use bootstrap_config::{
     project_display_name, read_workspace_init_command, read_workspace_launch_prompt,
     read_workspace_skip_permissions, write_workspace_init_command, write_workspace_skip_permissions,
 };
-use bootstrap_discovery::bootstrap_data_for_projects;
 use terminal::{
     ClipboardAccess, CommandTmuxInput, SystemClipboardAccess, TmuxInput, parse_cursor_metadata,
 };

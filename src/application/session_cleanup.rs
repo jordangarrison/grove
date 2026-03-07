@@ -1,20 +1,11 @@
-use std::collections::HashSet;
-use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::application::agent_runtime::{
-    TMUX_SESSION_PREFIX, kill_task_session_commands, task_session_names_for_cleanup,
-    workspace_session_name_matches,
+    kill_task_session_commands, task_session_names_for_cleanup,
 };
 use crate::application::task_discovery::bootstrap_task_data_for_root;
-use crate::application::workspace_discovery::discover_bootstrap_data;
-use crate::domain::{Task, Workspace};
-use crate::infrastructure::adapters::{
-    CommandGitAdapter, CommandSystemAdapter, DiscoveryState, MultiplexerAdapter,
-};
-use crate::infrastructure::config::ProjectConfig;
-use crate::infrastructure::paths::refer_to_same_location;
+use crate::domain::Task;
 use crate::infrastructure::paths::tasks_root;
 use crate::infrastructure::process::{execute_command, stderr_trimmed};
 
@@ -61,24 +52,10 @@ struct SessionRecord {
     attached_clients: u32,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-struct NoopMultiplexerAdapter;
-
-impl MultiplexerAdapter for NoopMultiplexerAdapter {
-    fn running_sessions(&self) -> HashSet<String> {
-        HashSet::new()
-    }
-}
-
 pub fn plan_session_cleanup(options: SessionCleanupOptions) -> Result<SessionCleanupPlan, String> {
-    if let Some(task_root) = tasks_root() {
-        let bootstrap = bootstrap_task_data_for_root(task_root.as_path());
-        return plan_session_cleanup_for_tasks(bootstrap.tasks.as_slice(), options);
-    }
-
-    let projects = cleanup_projects()?;
-    let workspaces = discover_workspaces_for_projects(projects.as_slice());
-    plan_session_cleanup_for_workspaces(workspaces.as_slice(), options)
+    let task_root = tasks_root().ok_or_else(|| "task root unavailable".to_string())?;
+    let bootstrap = bootstrap_task_data_for_root(task_root.as_path());
+    plan_session_cleanup_for_tasks(bootstrap.tasks.as_slice(), options)
 }
 
 pub fn plan_session_cleanup_for_tasks(
@@ -89,20 +66,6 @@ pub fn plan_session_cleanup_for_tasks(
     let now_unix_secs = now_unix_secs();
     Ok(plan_session_cleanup_from_task_inputs(
         tasks,
-        sessions.as_slice(),
-        options,
-        now_unix_secs,
-    ))
-}
-
-pub fn plan_session_cleanup_for_workspaces(
-    workspaces: &[Workspace],
-    options: SessionCleanupOptions,
-) -> Result<SessionCleanupPlan, String> {
-    let sessions = list_tmux_sessions()?;
-    let now_unix_secs = now_unix_secs();
-    Ok(plan_session_cleanup_from_inputs(
-        workspaces,
         sessions.as_slice(),
         options,
         now_unix_secs,
@@ -147,72 +110,6 @@ pub fn cleanup_commands_for_task(task: &Task) -> Vec<Vec<String>> {
     kill_task_session_commands(task)
 }
 
-fn cleanup_projects() -> Result<Vec<ProjectConfig>, String> {
-    let mut projects = match crate::infrastructure::config::load() {
-        Ok(loaded) => loaded.config.projects,
-        Err(_) => Vec::new(),
-    };
-
-    if let Some(repo_root) = current_repo_root() {
-        let exists = projects
-            .iter()
-            .any(|project| refer_to_same_location(project.path.as_path(), repo_root.as_path()));
-        if !exists {
-            projects.push(ProjectConfig {
-                name: project_display_name(repo_root.as_path()),
-                path: repo_root,
-                defaults: Default::default(),
-            });
-        }
-    }
-
-    if projects.is_empty() {
-        return Err("no projects configured and no current git repository detected".to_string());
-    }
-
-    Ok(projects)
-}
-
-fn current_repo_root() -> Option<PathBuf> {
-    let output = Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-
-    let stdout = String::from_utf8(output.stdout).ok()?;
-    let trimmed = stdout.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    let path = PathBuf::from(trimmed);
-    path.canonicalize().ok().or(Some(path))
-}
-
-fn project_display_name(path: &std::path::Path) -> String {
-    path.file_name()
-        .and_then(|value| value.to_str())
-        .map(str::to_string)
-        .unwrap_or_else(|| path.display().to_string())
-}
-
-fn discover_workspaces_for_projects(projects: &[ProjectConfig]) -> Vec<Workspace> {
-    let multiplexer = NoopMultiplexerAdapter;
-    let mut workspaces = Vec::new();
-    for project in projects {
-        let git = CommandGitAdapter::for_repo(project.path.clone());
-        let system = CommandSystemAdapter::for_repo(project.path.clone());
-        let bootstrap = discover_bootstrap_data(&git, &multiplexer, &system);
-        if matches!(bootstrap.discovery_state, DiscoveryState::Ready) {
-            workspaces.extend(bootstrap.workspaces);
-        }
-    }
-    workspaces
-}
-
 fn list_tmux_sessions() -> Result<Vec<SessionRecord>, String> {
     let output = Command::new("tmux")
         .args([
@@ -232,6 +129,10 @@ fn list_tmux_sessions() -> Result<Vec<SessionRecord>, String> {
 
     let stdout = String::from_utf8(output.stdout)
         .map_err(|error| format!("tmux output invalid UTF-8: {error}"))?;
+    Ok(parse_tmux_sessions_output(stdout.as_str()))
+}
+
+fn parse_tmux_sessions_output(stdout: &str) -> Vec<SessionRecord> {
     let mut sessions = Vec::new();
     for raw_line in stdout.lines() {
         let line = raw_line.trim();
@@ -251,7 +152,7 @@ fn list_tmux_sessions() -> Result<Vec<SessionRecord>, String> {
         };
 
         let name = name_part.trim().to_string();
-        if name.is_empty() || !name.starts_with(TMUX_SESSION_PREFIX) {
+        if name.is_empty() || !is_grove_managed_session(name.as_str()) {
             continue;
         }
 
@@ -264,48 +165,7 @@ fn list_tmux_sessions() -> Result<Vec<SessionRecord>, String> {
         });
     }
 
-    Ok(sessions)
-}
-
-fn plan_session_cleanup_from_inputs(
-    workspaces: &[Workspace],
-    sessions: &[SessionRecord],
-    options: SessionCleanupOptions,
-    now_unix_secs: u64,
-) -> SessionCleanupPlan {
-    let mut candidates = Vec::new();
-    let mut skipped_attached = Vec::new();
-
-    for session in sessions {
-        let reason = match cleanup_reason(session, workspaces, options.include_stale, now_unix_secs)
-        {
-            Some(reason) => reason,
-            None => continue,
-        };
-        let age_secs = session
-            .created_unix_secs
-            .and_then(|created| now_unix_secs.checked_sub(created));
-        let entry = SessionCleanupEntry {
-            session_name: session.name.clone(),
-            reason,
-            created_unix_secs: session.created_unix_secs,
-            age_secs,
-            attached_clients: session.attached_clients,
-        };
-
-        if !options.include_attached && session.attached_clients > 0 {
-            skipped_attached.push(entry);
-        } else {
-            candidates.push(entry);
-        }
-    }
-
-    candidates.sort_by(|left, right| left.session_name.cmp(&right.session_name));
-    skipped_attached.sort_by(|left, right| left.session_name.cmp(&right.session_name));
-    SessionCleanupPlan {
-        candidates,
-        skipped_attached,
-    }
+    sessions
 }
 
 fn plan_session_cleanup_from_task_inputs(
@@ -349,30 +209,6 @@ fn plan_session_cleanup_from_task_inputs(
     }
 }
 
-fn cleanup_reason(
-    session: &SessionRecord,
-    workspaces: &[Workspace],
-    include_stale: bool,
-    now_unix_secs: u64,
-) -> Option<SessionCleanupReason> {
-    let belongs_to_workspace = workspaces.iter().any(|workspace| {
-        workspace_session_name_matches(
-            workspace.project_name.as_deref(),
-            workspace.name.as_str(),
-            session.name.as_str(),
-        )
-    });
-    if !belongs_to_workspace {
-        return Some(SessionCleanupReason::Orphaned);
-    }
-
-    if include_stale && stale_auxiliary_session(session, now_unix_secs) {
-        return Some(SessionCleanupReason::StaleAuxiliary);
-    }
-
-    None
-}
-
 fn cleanup_reason_for_tasks(
     session: &SessionRecord,
     tasks: &[Task],
@@ -392,6 +228,12 @@ fn cleanup_reason_for_tasks(
     }
 
     None
+}
+
+fn is_grove_managed_session(session_name: &str) -> bool {
+    session_name.starts_with("grove-task-")
+        || session_name.starts_with("grove-wt-")
+        || session_name.starts_with("grove-ws-")
 }
 
 fn stale_auxiliary_session(session: &SessionRecord, now_unix_secs: u64) -> bool {
@@ -433,24 +275,10 @@ fn now_unix_secs() -> u64 {
 mod tests {
     use super::{
         SessionCleanupOptions, SessionCleanupReason, SessionRecord, cleanup_commands_for_task,
-        plan_session_cleanup_from_inputs,
+        parse_tmux_sessions_output, plan_session_cleanup_from_task_inputs,
     };
-    use crate::domain::{AgentType, Task, Workspace, WorkspaceStatus, Worktree};
+    use crate::domain::{AgentType, Task, WorkspaceStatus, Worktree};
     use std::path::PathBuf;
-
-    fn fixture_workspace(name: &str) -> Workspace {
-        Workspace::try_new(
-            name.to_string(),
-            PathBuf::from(format!("/tmp/grove-{name}")),
-            name.to_string(),
-            Some(1_700_000_000),
-            AgentType::Claude,
-            WorkspaceStatus::Idle,
-            false,
-        )
-        .expect("workspace should be valid")
-        .with_project_context("grove".to_string(), PathBuf::from("/tmp/grove"))
-    }
 
     fn fixture_task() -> Task {
         Task::try_new(
@@ -499,23 +327,46 @@ mod tests {
     }
 
     #[test]
-    fn plan_marks_orphan_sessions() {
-        let workspace = fixture_workspace("feature-a");
+    fn parse_tmux_sessions_output_keeps_task_and_worktree_sessions() {
+        let sessions = parse_tmux_sessions_output(
+            [
+                "grove-task-flohome-launch\t1700000100\t0",
+                "grove-wt-flohome-launch-flohome\t1700000200\t1",
+                "grove-ws-legacy-feature\t1700000300\t0",
+                "random-session\t1700000400\t0",
+            ]
+            .join("\n")
+            .as_str(),
+        );
+
+        let names = sessions
+            .iter()
+            .map(|session| session.name.as_str())
+            .collect::<Vec<&str>>();
+        assert!(names.contains(&"grove-task-flohome-launch"));
+        assert!(names.contains(&"grove-wt-flohome-launch-flohome"));
+        assert!(names.contains(&"grove-ws-legacy-feature"));
+        assert!(!names.contains(&"random-session"));
+    }
+
+    #[test]
+    fn plan_marks_orphan_task_sessions() {
+        let task = fixture_task();
         let sessions = vec![
             SessionRecord {
-                name: "grove-ws-grove-feature-a".to_string(),
+                name: "grove-wt-flohome-launch-flohome".to_string(),
                 created_unix_secs: Some(1_700_000_100),
                 attached_clients: 0,
             },
             SessionRecord {
-                name: "grove-ws-grove-lost".to_string(),
+                name: "grove-wt-flohome-launch-lost".to_string(),
                 created_unix_secs: Some(1_700_000_050),
                 attached_clients: 0,
             },
         ];
 
-        let plan = plan_session_cleanup_from_inputs(
-            &[workspace],
+        let plan = plan_session_cleanup_from_task_inputs(
+            &[task],
             sessions.as_slice(),
             SessionCleanupOptions {
                 include_stale: false,
@@ -525,22 +376,25 @@ mod tests {
         );
 
         assert_eq!(plan.candidates.len(), 1);
-        assert_eq!(plan.candidates[0].session_name, "grove-ws-grove-lost");
+        assert_eq!(
+            plan.candidates[0].session_name,
+            "grove-wt-flohome-launch-lost"
+        );
         assert_eq!(plan.candidates[0].reason, SessionCleanupReason::Orphaned);
         assert!(plan.skipped_attached.is_empty());
     }
 
     #[test]
     fn plan_includes_stale_auxiliary_only_when_opted_in() {
-        let workspace = fixture_workspace("feature-a");
+        let task = fixture_task();
         let stale_git = SessionRecord {
-            name: "grove-ws-grove-feature-a-git".to_string(),
+            name: "grove-wt-flohome-launch-flohome-git".to_string(),
             created_unix_secs: Some(1_700_000_000),
             attached_clients: 0,
         };
 
-        let without_stale = plan_session_cleanup_from_inputs(
-            std::slice::from_ref(&workspace),
+        let without_stale = plan_session_cleanup_from_task_inputs(
+            std::slice::from_ref(&task),
             std::slice::from_ref(&stale_git),
             SessionCleanupOptions {
                 include_stale: false,
@@ -550,8 +404,8 @@ mod tests {
         );
         assert!(without_stale.candidates.is_empty());
 
-        let with_stale = plan_session_cleanup_from_inputs(
-            &[workspace],
+        let with_stale = plan_session_cleanup_from_task_inputs(
+            &[task],
             &[stale_git],
             SessionCleanupOptions {
                 include_stale: true,
@@ -568,15 +422,15 @@ mod tests {
 
     #[test]
     fn plan_skips_attached_by_default() {
-        let workspace = fixture_workspace("feature-a");
+        let task = fixture_task();
         let orphan_attached = SessionRecord {
-            name: "grove-ws-grove-lost".to_string(),
+            name: "grove-wt-flohome-launch-lost".to_string(),
             created_unix_secs: Some(1_700_000_100),
             attached_clients: 1,
         };
 
-        let default_plan = plan_session_cleanup_from_inputs(
-            std::slice::from_ref(&workspace),
+        let default_plan = plan_session_cleanup_from_task_inputs(
+            std::slice::from_ref(&task),
             std::slice::from_ref(&orphan_attached),
             SessionCleanupOptions {
                 include_stale: false,
@@ -587,8 +441,8 @@ mod tests {
         assert!(default_plan.candidates.is_empty());
         assert_eq!(default_plan.skipped_attached.len(), 1);
 
-        let include_attached_plan = plan_session_cleanup_from_inputs(
-            &[workspace],
+        let include_attached_plan = plan_session_cleanup_from_task_inputs(
+            &[task],
             &[orphan_attached],
             SessionCleanupOptions {
                 include_stale: false,
@@ -602,27 +456,27 @@ mod tests {
 
     #[test]
     fn plan_recognizes_numbered_agent_and_shell_sessions_as_expected() {
-        let workspace = fixture_workspace("feature-a");
+        let task = fixture_task();
         let sessions = vec![
             SessionRecord {
-                name: "grove-ws-grove-feature-a-agent-1".to_string(),
+                name: "grove-wt-flohome-launch-flohome-agent-1".to_string(),
                 created_unix_secs: Some(1_700_000_100),
                 attached_clients: 0,
             },
             SessionRecord {
-                name: "grove-ws-grove-feature-a-shell-2".to_string(),
+                name: "grove-wt-flohome-launch-flohome-shell-2".to_string(),
                 created_unix_secs: Some(1_700_000_100),
                 attached_clients: 0,
             },
             SessionRecord {
-                name: "grove-ws-grove-lost-agent-1".to_string(),
+                name: "grove-wt-flohome-launch-lost-agent-1".to_string(),
                 created_unix_secs: Some(1_700_000_100),
                 attached_clients: 0,
             },
         ];
 
-        let plan = plan_session_cleanup_from_inputs(
-            &[workspace],
+        let plan = plan_session_cleanup_from_task_inputs(
+            &[task],
             sessions.as_slice(),
             SessionCleanupOptions {
                 include_stale: false,
@@ -633,22 +487,22 @@ mod tests {
         assert_eq!(plan.candidates.len(), 1);
         assert_eq!(
             plan.candidates[0].session_name,
-            "grove-ws-grove-lost-agent-1"
+            "grove-wt-flohome-launch-lost-agent-1"
         );
         assert_eq!(plan.candidates[0].reason, SessionCleanupReason::Orphaned);
     }
 
     #[test]
     fn plan_marks_numbered_shell_session_stale_when_enabled() {
-        let workspace = fixture_workspace("feature-a");
+        let task = fixture_task();
         let sessions = vec![SessionRecord {
-            name: "grove-ws-grove-feature-a-shell-3".to_string(),
+            name: "grove-wt-flohome-launch-flohome-shell-3".to_string(),
             created_unix_secs: Some(1_700_000_000),
             attached_clients: 0,
         }];
 
-        let plan = plan_session_cleanup_from_inputs(
-            &[workspace],
+        let plan = plan_session_cleanup_from_task_inputs(
+            &[task],
             sessions.as_slice(),
             SessionCleanupOptions {
                 include_stale: true,

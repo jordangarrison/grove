@@ -270,19 +270,35 @@ pub fn execute_launch_plan_with_executor(
     execute_command_with(&launch_plan.launch_cmd, |command| executor.execute(command))
 }
 
+fn base_session_name_for_workspace_identity(
+    task_slug: Option<&str>,
+    project_name: Option<&str>,
+    workspace_name: &str,
+) -> String {
+    if let Some(task_slug) = task_slug {
+        return session_name_for_task_worktree(task_slug, project_name.unwrap_or(workspace_name));
+    }
+
+    session_name_for_workspace_in_project(project_name, workspace_name)
+}
+
 pub fn kill_workspace_session_command(
+    task_slug: Option<&str>,
     project_name: Option<&str>,
     workspace_name: &str,
 ) -> Vec<String> {
-    let session_name = session_name_for_workspace_in_project(project_name, workspace_name);
+    let session_name =
+        base_session_name_for_workspace_identity(task_slug, project_name, workspace_name);
     kill_tmux_session_command(&session_name)
 }
 
 pub fn kill_workspace_session_commands(
+    task_slug: Option<&str>,
     project_name: Option<&str>,
     workspace_name: &str,
 ) -> Vec<Vec<String>> {
-    let session_name = session_name_for_workspace_in_project(project_name, workspace_name);
+    let session_name =
+        base_session_name_for_workspace_identity(task_slug, project_name, workspace_name);
     vec![
         kill_tmux_session_command(&session_name),
         kill_tmux_session_command(&format!("{session_name}-git")),
@@ -322,15 +338,18 @@ fn session_name_matches_base_session(base_session_name: &str, session_name: &str
 }
 
 pub fn workspace_session_name_matches(
+    task_slug: Option<&str>,
     project_name: Option<&str>,
     workspace_name: &str,
     session_name: &str,
 ) -> bool {
-    let base_session_name = session_name_for_workspace_in_project(project_name, workspace_name);
+    let base_session_name =
+        base_session_name_for_workspace_identity(task_slug, project_name, workspace_name);
     session_name_matches_base_session(base_session_name.as_str(), session_name)
 }
 
 pub fn workspace_session_names_for_cleanup(
+    task_slug: Option<&str>,
     project_name: Option<&str>,
     workspace_name: &str,
     existing_sessions: &[String],
@@ -338,7 +357,7 @@ pub fn workspace_session_names_for_cleanup(
     let mut matched = Vec::new();
     let mut seen = HashSet::new();
     for session_name in existing_sessions {
-        if !workspace_session_name_matches(project_name, workspace_name, session_name) {
+        if !workspace_session_name_matches(task_slug, project_name, workspace_name, session_name) {
             continue;
         }
         if !seen.insert(session_name.clone()) {
@@ -350,11 +369,12 @@ pub fn workspace_session_names_for_cleanup(
 }
 
 pub fn kill_workspace_session_commands_for_existing_sessions(
+    task_slug: Option<&str>,
     project_name: Option<&str>,
     workspace_name: &str,
     existing_sessions: &[String],
 ) -> Vec<Vec<String>> {
-    workspace_session_names_for_cleanup(project_name, workspace_name, existing_sessions)
+    workspace_session_names_for_cleanup(task_slug, project_name, workspace_name, existing_sessions)
         .into_iter()
         .map(|session_name| kill_tmux_session_command(&session_name))
         .collect()

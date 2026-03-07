@@ -174,34 +174,18 @@ fn restore_state_selection_for_workspace_path(
     workspace_path: &Path,
     fallback_flat_index: usize,
 ) {
-    let Some((task_index, worktree_index, flat_index)) =
+    let Some((_, _, flat_index)) =
         selection_for_workspace_path(state.tasks.as_slice(), workspace_path)
     else {
         restore_state_selection_for_flat_index(state, fallback_flat_index);
         return;
     };
 
-    state.selected_task_index = task_index;
-    state.selected_worktree_index = worktree_index;
-    state.selected_index = flat_index;
+    state.select_index(flat_index);
 }
 
 fn restore_state_selection_for_flat_index(state: &mut AppState, flat_index: usize) {
-    if state.workspaces.is_empty() {
-        state.selected_task_index = 0;
-        state.selected_worktree_index = 0;
-        state.selected_index = 0;
-        return;
-    }
-
-    let bounded_index = flat_index.min(state.workspaces.len().saturating_sub(1));
-    state.selected_index = bounded_index;
-    if let Some((task_index, worktree_index)) =
-        selection_for_flat_index(state.tasks.as_slice(), bounded_index)
-    {
-        state.selected_task_index = task_index;
-        state.selected_worktree_index = worktree_index;
-    }
+    state.select_index(flat_index);
 }
 
 fn selection_for_workspace_path(
@@ -214,21 +198,6 @@ fn selection_for_workspace_path(
         for (worktree_index, worktree) in task.worktrees.iter().enumerate() {
             if refer_to_same_location(worktree.path.as_path(), workspace_path) {
                 return Some((task_index, worktree_index, flat_index));
-            }
-            flat_index = flat_index.saturating_add(1);
-        }
-    }
-
-    None
-}
-
-fn selection_for_flat_index(tasks: &[Task], selected_index: usize) -> Option<(usize, usize)> {
-    let mut flat_index = 0usize;
-
-    for (task_index, task) in tasks.iter().enumerate() {
-        for (worktree_index, _) in task.worktrees.iter().enumerate() {
-            if flat_index == selected_index {
-                return Some((task_index, worktree_index));
             }
             flat_index = flat_index.saturating_add(1);
         }

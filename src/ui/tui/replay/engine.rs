@@ -99,9 +99,16 @@ pub fn replay_debug_record(path: &Path, options: &ReplayOptions) -> io::Result<R
 }
 
 pub(crate) fn app_from_bootstrap(snapshot: &ReplayBootstrapSnapshot) -> GroveApp {
-    let bootstrap = snapshot.to_bootstrap_data();
-    let mut app = GroveApp::from_parts_with_clipboard_and_projects(
-        bootstrap,
+    let tasks = snapshot.to_tasks();
+    let selected_index = flat_index_for_task_selection(
+        tasks.as_slice(),
+        snapshot.selected_task_index,
+        snapshot.selected_worktree_index,
+    );
+    let mut app = GroveApp::from_task_state(
+        snapshot.repo_name.clone(),
+        AppState::new(tasks),
+        snapshot.discovery_state.to_discovery_state(),
         snapshot.projects.clone(),
         AppDependencies {
             tmux_input: Box::new(ReplayTmuxInput),
@@ -111,27 +118,7 @@ pub(crate) fn app_from_bootstrap(snapshot: &ReplayBootstrapSnapshot) -> GroveApp
             debug_record_start_ts: None,
         },
     );
-
-    let tasks = snapshot.to_tasks();
-    let selected_index = flat_index_for_task_selection(
-        tasks.as_slice(),
-        snapshot.selected_task_index,
-        snapshot.selected_worktree_index,
-    );
-    app.state = AppState::new(tasks);
-    app.state.selected_index = selected_index;
-    app.state.selected_task_index = snapshot
-        .selected_task_index
-        .min(app.state.tasks.len().saturating_sub(1));
-    app.state.selected_worktree_index = app
-        .state
-        .selected_task()
-        .map(|task| {
-            snapshot
-                .selected_worktree_index
-                .min(task.worktrees.len().saturating_sub(1))
-        })
-        .unwrap_or(0);
+    app.state.select_index(selected_index);
     app.sync_workspace_tab_maps();
     app.refresh_preview_summary();
     app.state.focus = snapshot.focus.to_focus();

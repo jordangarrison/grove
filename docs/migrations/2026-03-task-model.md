@@ -13,11 +13,7 @@ Grove now treats a `task` as the top-level unit.
 Behavior changes:
 
 - creating from the TUI creates one task, with one or more repository worktrees
-- refresh reloads task manifests when the task root exists
+- refresh reloads task manifests from the task root only
 - Home-tab launch, stop, and preview operate on the task-root parent agent
 - session cleanup now targets both task-root and worktree sessions
-
-Compatibility:
-
-- legacy single-workspace repos are treated as single-worktree tasks during fallback discovery
-- tmux session naming remains stable for legacy workspace-scoped sessions only where fallback discovery is still in use
+- tmux session families are task-native, `grove-task-*` and `grove-wt-*`

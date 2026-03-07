@@ -616,7 +616,12 @@ fn flatten_benchmark_tasks(tasks: &[Task]) -> Vec<Workspace> {
             task.worktrees
                 .iter()
                 .map(|worktree| Workspace {
-                    name: worktree.repository_name.clone(),
+                    name: if task.worktrees.len() == 1 {
+                        task.name.clone()
+                    } else {
+                        worktree.repository_name.clone()
+                    },
+                    task_slug: Some(task.slug.clone()),
                     path: worktree.path.clone(),
                     project_name: Some(worktree.repository_name.clone()),
                     project_path: Some(worktree.repository_path.clone()),
@@ -624,12 +629,12 @@ fn flatten_benchmark_tasks(tasks: &[Task]) -> Vec<Workspace> {
                     base_branch: worktree.base_branch.clone(),
                     last_activity_unix_secs: worktree.last_activity_unix_secs,
                     agent: worktree.agent,
-                    status: if worktree.status == WorkspaceStatus::Main {
-                        WorkspaceStatus::Idle
+                    status: if worktree.is_main_checkout() {
+                        WorkspaceStatus::Main
                     } else {
                         worktree.status
                     },
-                    is_main: false,
+                    is_main: worktree.is_main_checkout(),
                     is_orphaned: worktree.is_orphaned,
                     supported_agent: worktree.supported_agent,
                     pull_requests: worktree.pull_requests.clone(),

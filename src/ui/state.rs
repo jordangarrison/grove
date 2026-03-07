@@ -1,4 +1,6 @@
 use crate::domain::{Task, Workspace, WorkspaceStatus, Worktree};
+use crate::infrastructure::paths::refer_to_same_location;
+use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaneFocus {
@@ -80,21 +82,6 @@ impl AppState {
         state
     }
 
-    pub fn from_workspaces(workspaces: Vec<Workspace>) -> Self {
-        let tasks = tasks_from_workspaces(workspaces.as_slice());
-        let mut state = Self {
-            tasks,
-            workspaces,
-            selected_task_index: 0,
-            selected_worktree_index: 0,
-            selected_index: 0,
-            focus: PaneFocus::WorkspaceList,
-            mode: UiMode::List,
-        };
-        state.sync_selection_fields();
-        state
-    }
-
     pub fn selected_task(&self) -> Option<&Task> {
         selection_for_flat_index(self.tasks.as_slice(), self.selected_index)
             .and_then(|(task_index, _)| self.tasks.get(task_index))
@@ -117,6 +104,32 @@ impl AppState {
     #[cfg(test)]
     pub fn selected_workspace_mut(&mut self) -> Option<&mut Workspace> {
         self.workspaces.get_mut(self.selected_index)
+    }
+
+    pub fn select_index(&mut self, index: usize) -> bool {
+        if self.workspaces.is_empty() {
+            self.selected_index = 0;
+            self.selected_task_index = 0;
+            self.selected_worktree_index = 0;
+            return false;
+        }
+
+        let bounded = index.min(self.workspaces.len().saturating_sub(1));
+        let changed = bounded != self.selected_index;
+        self.selected_index = bounded;
+        self.sync_selection_fields();
+        changed
+    }
+
+    pub fn select_workspace_path(&mut self, workspace_path: impl AsRef<Path>) -> bool {
+        let Some(index) = self.workspaces.iter().position(|workspace| {
+            refer_to_same_location(workspace.path.as_path(), workspace_path.as_ref())
+        }) else {
+            return false;
+        };
+
+        self.select_index(index);
+        true
     }
 
     fn sync_selection_fields(&mut self) {
@@ -150,9 +163,15 @@ fn flatten_tasks_as_workspaces(tasks: &[Task]) -> Vec<Workspace> {
         .collect()
 }
 
-fn workspace_from_task_worktree(_task: &Task, worktree: &Worktree) -> Workspace {
+fn workspace_from_task_worktree(task: &Task, worktree: &Worktree) -> Workspace {
+    let is_main = worktree.is_main_checkout();
     Workspace {
-        name: worktree.repository_name.clone(),
+        name: if task.worktrees.len() == 1 {
+            task.name.clone()
+        } else {
+            worktree.repository_name.clone()
+        },
+        task_slug: Some(task.slug.clone()),
         path: worktree.path.clone(),
         project_name: Some(worktree.repository_name.clone()),
         project_path: Some(worktree.repository_path.clone()),
@@ -160,12 +179,12 @@ fn workspace_from_task_worktree(_task: &Task, worktree: &Worktree) -> Workspace 
         base_branch: worktree.base_branch.clone(),
         last_activity_unix_secs: worktree.last_activity_unix_secs,
         agent: worktree.agent,
-        status: if worktree.status == WorkspaceStatus::Main {
-            WorkspaceStatus::Idle
+        status: if is_main {
+            WorkspaceStatus::Main
         } else {
             worktree.status
         },
-        is_main: false,
+        is_main,
         is_orphaned: worktree.is_orphaned,
         supported_agent: worktree.supported_agent,
         pull_requests: worktree.pull_requests.clone(),
@@ -185,44 +204,6 @@ fn selection_for_flat_index(tasks: &[Task], selected_index: usize) -> Option<(us
     }
 
     None
-}
-
-fn tasks_from_workspaces(workspaces: &[Workspace]) -> Vec<Task> {
-    workspaces
-        .iter()
-        .map(|workspace| {
-            let repository_path = workspace
-                .project_path
-                .clone()
-                .unwrap_or_else(|| workspace.path.clone());
-            let repository_name = workspace.project_name.clone().unwrap_or_else(|| {
-                repository_path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .map_or_else(|| workspace.name.clone(), ToString::to_string)
-            });
-
-            Task {
-                name: workspace.name.clone(),
-                slug: workspace.name.clone(),
-                root_path: workspace.path.clone(),
-                branch: workspace.branch.clone(),
-                worktrees: vec![Worktree {
-                    repository_name,
-                    repository_path,
-                    path: workspace.path.clone(),
-                    branch: workspace.branch.clone(),
-                    base_branch: workspace.base_branch.clone(),
-                    last_activity_unix_secs: workspace.last_activity_unix_secs,
-                    agent: workspace.agent,
-                    status: workspace.status,
-                    is_orphaned: workspace.is_orphaned,
-                    supported_agent: workspace.supported_agent,
-                    pull_requests: workspace.pull_requests.clone(),
-                }],
-            }
-        })
-        .collect()
 }
 
 pub fn reduce(state: &mut AppState, action: Action) {
@@ -327,15 +308,55 @@ mod tests {
 
         reduce(&mut state, Action::MoveSelectionDown);
         assert_eq!(state.selected_index, 1);
+        assert_eq!(state.selected_task_index, 1);
+        assert_eq!(state.selected_worktree_index, 0);
 
         reduce(&mut state, Action::MoveSelectionDown);
         reduce(&mut state, Action::MoveSelectionDown);
-        assert_eq!(state.selected_index, 2);
+        assert_eq!(state.selected_index, 3);
+        assert_eq!(state.selected_task_index, 2);
+        assert_eq!(state.selected_worktree_index, 0);
 
         reduce(&mut state, Action::MoveSelectionUp);
         reduce(&mut state, Action::MoveSelectionUp);
         reduce(&mut state, Action::MoveSelectionUp);
         assert_eq!(state.selected_index, 0);
+        assert_eq!(state.selected_task_index, 0);
+        assert_eq!(state.selected_worktree_index, 0);
+    }
+
+    #[test]
+    fn select_index_syncs_task_and_worktree_indices() {
+        let mut state = fixture_state();
+
+        state.select_index(2);
+
+        assert_eq!(state.selected_index, 2);
+        assert_eq!(state.selected_task_index, 1);
+        assert_eq!(state.selected_worktree_index, 1);
+        assert_eq!(
+            state.selected_task().map(|task| task.slug.as_str()),
+            Some("flohome-launch")
+        );
+        assert_eq!(
+            state
+                .selected_worktree()
+                .map(|worktree| worktree.repository_name.as_str()),
+            Some("terraform-fastly")
+        );
+    }
+
+    #[test]
+    fn select_workspace_path_restores_selection_fields() {
+        let mut state = fixture_state();
+
+        let selected =
+            state.select_workspace_path(PathBuf::from("/tasks/flohome-launch/terraform-fastly"));
+
+        assert!(selected);
+        assert_eq!(state.selected_index, 2);
+        assert_eq!(state.selected_task_index, 1);
+        assert_eq!(state.selected_worktree_index, 1);
     }
 
     #[test]

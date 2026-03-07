@@ -90,8 +90,6 @@ pub struct ProjectDefaults {
     pub workspace_init_command: String,
     #[serde(default)]
     pub agent_env: AgentEnvDefaults,
-    #[serde(default, rename = "setup_commands", skip_serializing)]
-    legacy_setup_commands: Vec<String>,
 }
 
 pub type RepositoryDefaults = ProjectDefaults;
@@ -104,23 +102,6 @@ pub struct AgentEnvDefaults {
     pub codex: Vec<String>,
     #[serde(default)]
     pub opencode: Vec<String>,
-}
-
-impl ProjectDefaults {
-    fn normalize_legacy_fields(&mut self) {
-        if self.workspace_init_command.trim().is_empty() {
-            let migrated = self
-                .legacy_setup_commands
-                .iter()
-                .map(String::as_str)
-                .map(str::trim)
-                .find(|command| !command.is_empty())
-                .unwrap_or_default()
-                .to_string();
-            self.workspace_init_command = migrated;
-        }
-        self.legacy_setup_commands.clear();
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -240,11 +221,8 @@ pub fn load_projects_from_path(path: &Path) -> Result<GroveConfig, String> {
         Err(error) => return Err(format!("projects config read failed: {error}")),
     };
 
-    let mut projects = toml::from_str::<ProjectsStateConfig>(&raw)
+    let projects = toml::from_str::<ProjectsStateConfig>(&raw)
         .map_err(|error| format!("projects config parse failed: {error}"))?;
-    for project in &mut projects.projects {
-        project.defaults.normalize_legacy_fields();
-    }
     Ok(GroveConfig {
         sidebar_width_pct: default_sidebar_width_pct(),
         theme: ThemeName::default(),
@@ -363,7 +341,6 @@ mod tests {
                 base_branch: "main".to_string(),
                 workspace_init_command: "direnv allow".to_string(),
                 agent_env: AgentEnvDefaults::default(),
-                ..RepositoryDefaults::default()
             },
         };
 
@@ -389,7 +366,6 @@ mod tests {
                         codex: vec!["CODEX_CONFIG_DIR=~/.codex-work".to_string()],
                         opencode: Vec::new(),
                     },
-                    ..ProjectDefaults::default()
                 },
             }],
             task_order: vec!["grove".to_string(), "task-workflow".to_string()],
@@ -440,26 +416,6 @@ mod tests {
         assert_eq!(
             loaded.projects[0].defaults.agent_env,
             AgentEnvDefaults::default()
-        );
-
-        cleanup_files(path.as_path());
-    }
-
-    #[test]
-    fn load_project_with_legacy_setup_commands_migrates_first_to_workspace_init_command() {
-        let path = unique_temp_path("legacy-setup-migration");
-        let projects_path = projects_path_for(path.as_path());
-        fs::write(
-            &projects_path,
-            "[[projects]]\nname = \"grove\"\npath = \"/repos/grove\"\n[projects.defaults]\nsetup_commands = [\"\", \"direnv allow\", \"nix develop -c true\"]\n",
-        )
-        .expect("fixture should write");
-
-        let loaded = load_from_path(&path).expect("legacy setup should load");
-        assert_eq!(loaded.projects.len(), 1);
-        assert_eq!(
-            loaded.projects[0].defaults.workspace_init_command,
-            "direnv allow"
         );
 
         cleanup_files(path.as_path());
