@@ -728,6 +728,16 @@ impl WorkspaceTabsState {
         self.tabs.insert(0, home.clone());
         self.active_tab_id = home.id;
     }
+
+    pub(super) fn set_home_title(&mut self, title: &str) {
+        if let Some(home) = self
+            .tabs
+            .iter_mut()
+            .find(|tab| tab.kind == WorkspaceTabKind::Home)
+        {
+            home.title = title.to_string();
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

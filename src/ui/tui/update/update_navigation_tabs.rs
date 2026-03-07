@@ -17,6 +17,36 @@ struct RestoredTmuxTabMetadata {
 }
 
 impl GroveApp {
+    fn home_tab_title_for_workspace(&self, workspace: &Workspace) -> &'static str {
+        workspace
+            .task_slug
+            .as_deref()
+            .and_then(|task_slug| self.state.tasks.iter().find(|task| task.slug == task_slug))
+            .filter(|task| task.root_path != workspace.path)
+            .map(|_| "Task Home")
+            .unwrap_or_else(|| WorkspaceTabKind::Home.label())
+    }
+
+    fn sync_home_tab_titles(&mut self) {
+        let titles = self
+            .state
+            .workspaces
+            .iter()
+            .map(|workspace| {
+                (
+                    workspace.path.clone(),
+                    self.home_tab_title_for_workspace(workspace),
+                )
+            })
+            .collect::<Vec<(PathBuf, &str)>>();
+
+        for (workspace_path, home_title) in titles {
+            if let Some(tabs) = self.workspace_tabs.get_mut(workspace_path.as_path()) {
+                tabs.set_home_title(home_title);
+            }
+        }
+    }
+
     pub(super) fn sync_workspace_tab_maps(&mut self) {
         let workspace_paths = self
             .state
@@ -40,6 +70,7 @@ impl GroveApp {
                 .or_insert(workspace.agent);
         }
 
+        self.sync_home_tab_titles();
         self.sync_preview_tab_from_active_workspace_tab();
     }
 
@@ -187,6 +218,7 @@ impl GroveApp {
             }
         }
 
+        self.sync_home_tab_titles();
         self.sync_preview_tab_from_active_workspace_tab();
     }
 

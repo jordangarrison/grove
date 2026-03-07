@@ -1,6 +1,6 @@
 use super::*;
 
-static COMMAND_META: [UiCommandMeta; 39] = [
+static COMMAND_META: [UiCommandMeta; 40] = [
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
             id: "palette:toggle_focus",
@@ -576,6 +576,24 @@ static COMMAND_META: [UiCommandMeta; 39] = [
     },
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
+            id: "palette:start_parent_agent",
+            title: "Start Parent Agent",
+            description: "Open the task-root parent agent launch dialog (A)",
+            tags: &["parent", "agent", "task", "root", "A"],
+            category: "Task",
+        }),
+        help_hints: &[HelpHintSpec {
+            context: HelpHintContext::Workspace,
+            label: "A start parent agent",
+        }],
+        keybindings: &[KeybindingSpec {
+            scope: KeybindingScope::NonInteractive,
+            code: KeyCodeMatch::Char('A'),
+            modifiers: KeyModifiersMatch::Any,
+        }],
+    },
+    UiCommandMeta {
+        palette: Some(PaletteCommandSpec {
             id: "palette:new_shell_tab",
             title: "New Shell Tab",
             description: "Launch a new shell tab for the selected workspace (s)",
@@ -977,25 +995,26 @@ impl UiCommand {
             UiCommand::NewWorkspace => &COMMAND_META[17],
             UiCommand::EditWorkspace => &COMMAND_META[18],
             UiCommand::StartAgent => &COMMAND_META[19],
-            UiCommand::OpenShellTab => &COMMAND_META[20],
-            UiCommand::OpenGitTab => &COMMAND_META[21],
-            UiCommand::RenameActiveTab => &COMMAND_META[22],
-            UiCommand::StopAgent => &COMMAND_META[23],
-            UiCommand::RestartAgent => &COMMAND_META[24],
-            UiCommand::DeleteWorkspace => &COMMAND_META[25],
-            UiCommand::MergeWorkspace => &COMMAND_META[26],
-            UiCommand::UpdateFromBase => &COMMAND_META[27],
-            UiCommand::RefreshWorkspaces => &COMMAND_META[28],
-            UiCommand::OpenProjects => &COMMAND_META[29],
-            UiCommand::ReorderTasks => &COMMAND_META[30],
-            UiCommand::DeleteProject => &COMMAND_META[31],
-            UiCommand::OpenSettings => &COMMAND_META[32],
-            UiCommand::ToggleMouseCapture => &COMMAND_META[33],
-            UiCommand::ToggleUnsafe => &COMMAND_META[34],
-            UiCommand::CleanupSessions => &COMMAND_META[35],
-            UiCommand::OpenHelp => &COMMAND_META[36],
-            UiCommand::OpenCommandPalette => &COMMAND_META[37],
-            UiCommand::Quit => &COMMAND_META[38],
+            UiCommand::StartParentAgent => &COMMAND_META[20],
+            UiCommand::OpenShellTab => &COMMAND_META[21],
+            UiCommand::OpenGitTab => &COMMAND_META[22],
+            UiCommand::RenameActiveTab => &COMMAND_META[23],
+            UiCommand::StopAgent => &COMMAND_META[24],
+            UiCommand::RestartAgent => &COMMAND_META[25],
+            UiCommand::DeleteWorkspace => &COMMAND_META[26],
+            UiCommand::MergeWorkspace => &COMMAND_META[27],
+            UiCommand::UpdateFromBase => &COMMAND_META[28],
+            UiCommand::RefreshWorkspaces => &COMMAND_META[29],
+            UiCommand::OpenProjects => &COMMAND_META[30],
+            UiCommand::ReorderTasks => &COMMAND_META[31],
+            UiCommand::DeleteProject => &COMMAND_META[32],
+            UiCommand::OpenSettings => &COMMAND_META[33],
+            UiCommand::ToggleMouseCapture => &COMMAND_META[34],
+            UiCommand::ToggleUnsafe => &COMMAND_META[35],
+            UiCommand::CleanupSessions => &COMMAND_META[36],
+            UiCommand::OpenHelp => &COMMAND_META[37],
+            UiCommand::OpenCommandPalette => &COMMAND_META[38],
+            UiCommand::Quit => &COMMAND_META[39],
         }
     }
 }

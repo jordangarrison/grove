@@ -55,7 +55,7 @@ impl GroveApp {
 
     pub(super) fn selected_live_preview_session_if_ready(&self) -> Option<String> {
         match self.preview_tab {
-            PreviewTab::Home => None,
+            PreviewTab::Home => self.selected_task_preview_session_if_ready(),
             PreviewTab::Git => {
                 let workspace = self.state.selected_workspace()?;
                 let session_name = git_session_name_for_workspace(workspace);

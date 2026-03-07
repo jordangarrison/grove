@@ -13,6 +13,10 @@ impl GroveApp {
         let dialog_height = 16u16;
         let theme = self.active_ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
+        let title = match dialog.target {
+            LaunchDialogTarget::WorkspaceTab => "New Agent Tab",
+            LaunchDialogTarget::ParentTask(_) => "Start Parent Agent",
+        };
         let focused = |field| dialog.focused_field == field;
         let start_focused = focused(LaunchDialogField::StartButton);
         let cancel_focused = focused(LaunchDialogField::CancelButton);
@@ -77,7 +81,7 @@ impl GroveApp {
             ModalDialogSpec {
                 dialog_width,
                 dialog_height,
-                title: "New Agent Tab",
+                title,
                 theme,
                 border_color: theme.mauve,
                 hit_id: HIT_ID_LAUNCH_DIALOG,

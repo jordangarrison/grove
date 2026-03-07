@@ -243,14 +243,14 @@ impl GroveApp {
             .as_ref()
             .err()
             .is_some_and(|error| tmux_launch_error_indicates_duplicate_session(error));
+        let task_root_launch = self
+            .state
+            .tasks
+            .iter()
+            .any(|task| task.root_path == completion.workspace_path);
 
         if completion.result.is_ok() || reused_existing_session {
-            if self
-                .state
-                .tasks
-                .iter()
-                .any(|task| task.root_path == completion.workspace_path)
-            {
+            if task_root_launch {
                 self.session
                     .agent_sessions
                     .mark_ready(completion.session_name.clone());
@@ -285,7 +285,11 @@ impl GroveApp {
             }
             self.telemetry.event_log.log(event);
             self.session.last_tmux_error = None;
-            self.show_success_toast("agent started");
+            if reused_existing_session && task_root_launch {
+                self.show_info_toast("parent agent already running");
+            } else {
+                self.show_success_toast("agent started");
+            }
             self.poll_preview();
             return;
         }
@@ -301,14 +305,7 @@ impl GroveApp {
         let Some(dialog) = self.take_launch_dialog() else {
             return;
         };
-        let workspace_name = if self.selected_home_tab_targets_task_root() {
-            self.state
-                .selected_task()
-                .map(|task| task.name.clone())
-                .unwrap_or_default()
-        } else {
-            self.selected_workspace_name().unwrap_or_default()
-        };
+        let workspace_name = self.selected_workspace_name().unwrap_or_default();
         self.log_dialog_event_with_fields(
             "launch",
             "dialog_confirmed",
@@ -346,23 +343,22 @@ impl GroveApp {
             init_command,
             skip_permissions,
         };
-        if self.selected_home_tab_targets_task_root() {
-            let Some(task) = self.state.selected_task().cloned() else {
-                self.show_error_toast("agent tab launch failed: no task selected");
-                return;
-            };
-            self.start_task_agent_with_options(
-                task,
-                dialog.agent,
-                options.prompt,
-                options.init_command,
-                options.skip_permissions,
-            );
-            return;
-        }
-        if let Err(error) = self.launch_new_agent_tab(dialog.agent, options) {
-            self.session.last_tmux_error = Some(error.clone());
-            self.show_error_toast(format!("agent tab launch failed: {error}"));
+        match dialog.target {
+            LaunchDialogTarget::WorkspaceTab => {
+                if let Err(error) = self.launch_new_agent_tab(dialog.agent, options) {
+                    self.session.last_tmux_error = Some(error.clone());
+                    self.show_error_toast(format!("agent tab launch failed: {error}"));
+                }
+            }
+            LaunchDialogTarget::ParentTask(task) => {
+                self.start_task_agent_with_options(
+                    task,
+                    dialog.agent,
+                    options.prompt,
+                    options.init_command,
+                    options.skip_permissions,
+                );
+            }
         }
     }
 }

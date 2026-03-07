@@ -77,7 +77,14 @@ impl StartAgentConfigState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum LaunchDialogTarget {
+    WorkspaceTab,
+    ParentTask(Task),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct LaunchDialogState {
+    pub(super) target: LaunchDialogTarget,
     pub(super) agent: AgentType,
     pub(super) start_config: StartAgentConfigState,
     pub(super) focused_field: LaunchDialogField,

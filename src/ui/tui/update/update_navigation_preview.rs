@@ -479,6 +479,8 @@ impl GroveApp {
             "Workspace Home",
             format!("Workspace: {}", workspace.name).as_str(),
             "Launch tabs here, or create another workspace when needed.",
+            "Press 'n' to create a workspace.",
+            "Then use 'a' for agent tabs, 's' for shell tabs, 'g' for git tab.",
         )
     }
 
@@ -487,6 +489,8 @@ impl GroveApp {
             "Task Home",
             format!("Task: {}", task.name).as_str(),
             "Launch a parent agent here for planning and cross-repository coordination.",
+            "Press 'A' to start parent agent.",
+            "Then use 'a' for workspace agent tabs, 's' for shell tabs, 'g' for git tab.",
         )
     }
 
@@ -495,10 +499,19 @@ impl GroveApp {
             "Base Worktree",
             "This is your repo root.",
             "Create focused workspaces here, or launch tabs directly in base.",
+            "Press 'n' to create a workspace.",
+            "Then use 'a' for agent tabs, 's' for shell tabs, 'g' for git tab.",
         )
     }
 
-    fn home_splash(&self, title: &str, subtitle: &str, summary: &str) -> String {
+    fn home_splash(
+        &self,
+        title: &str,
+        subtitle: &str,
+        summary: &str,
+        primary_action: &str,
+        secondary_action: &str,
+    ) -> String {
         const G: &str = "\x1b[38;2;166;227;161m";
         const T: &str = "\x1b[38;2;250;179;135m";
         const R: &str = "\x1b[0m";
@@ -528,8 +541,8 @@ impl GroveApp {
             String::new(),
             "--------------------------------------------------".to_string(),
             String::new(),
-            "Press 'n' to create a workspace.".to_string(),
-            "Then use 'a' for agent tabs, 's' for shell tabs, 'g' for git tab.".to_string(),
+            primary_action.to_string(),
+            secondary_action.to_string(),
             String::new(),
             "Each workspace has its own directory and branch.".to_string(),
             "Run agents in parallel without branch hopping.".to_string(),

@@ -157,7 +157,10 @@ impl GroveApp {
             | UiCommand::PageDown
             | UiCommand::ScrollBottom => in_preview_scroll,
             UiCommand::PreviousTab | UiCommand::NextTab => in_preview_focus,
-            UiCommand::RenameActiveTab | UiCommand::StopAgent | UiCommand::RestartAgent => {
+            UiCommand::RenameActiveTab
+            | UiCommand::StopAgent
+            | UiCommand::RestartAgent
+            | UiCommand::StartParentAgent => {
                 self.state.mode == UiMode::Preview
                     && self.state.focus == PaneFocus::Preview
                     && match command {
@@ -168,6 +171,7 @@ impl GroveApp {
                         UiCommand::RestartAgent => self
                             .selected_active_tab()
                             .is_some_and(|tab| tab.kind != WorkspaceTabKind::Home),
+                        UiCommand::StartParentAgent => self.selected_home_tab_targets_task_root(),
                         _ => false,
                     }
             }

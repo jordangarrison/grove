@@ -141,6 +141,9 @@ impl GroveApp {
             UiCommand::StartAgent => {
                 self.open_start_dialog();
             }
+            UiCommand::StartParentAgent => {
+                self.open_start_parent_agent_dialog();
+            }
             UiCommand::OpenShellTab => {
                 self.open_new_shell_tab();
             }

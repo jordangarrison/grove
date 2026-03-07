@@ -114,6 +114,11 @@ impl GroveApp {
                     && !self.dialogs.restart_in_flight
                     && self.state.selected_workspace().is_some()
             }
+            UiCommand::StartParentAgent => {
+                !self.dialogs.start_in_flight
+                    && !self.dialogs.restart_in_flight
+                    && self.selected_home_tab_targets_task_root()
+            }
             UiCommand::OpenShellTab => self.state.selected_workspace().is_some(),
             UiCommand::OpenGitTab => self.state.selected_workspace().is_some(),
             UiCommand::RenameActiveTab => self

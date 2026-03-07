@@ -217,16 +217,17 @@ mod tests {
         DeleteWorkspaceCompletion, EditDialogField, GroveApp, HIT_ID_CREATE_DIALOG_TAB,
         HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST,
         HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW, HelpHintContext, LaunchDialogField,
-        LaunchDialogState, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField,
-        MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification,
-        PreviewPollCompletion, PreviewTab, ProjectAddDialogField, ProjectDefaultsDialogField,
-        RefreshWorkspacesCompletion, SettingsDialogField, StartAgentCompletion,
-        StartAgentConfigField, StartAgentConfigState, StopAgentCompletion, StopDialogField,
-        TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT,
-        WorkspaceAttention, WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceTab,
-        WorkspaceTabKind, WorkspaceTabRuntimeState, ansi_16_color, ansi_lines_to_styled_lines,
-        ansi_lines_to_styled_lines_for_theme, decode_create_dialog_tab_hit_data,
-        decode_workspace_pr_hit_data, parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
+        LaunchDialogState, LaunchDialogTarget, LazygitLaunchCompletion, LivePreviewCapture,
+        MergeDialogField, MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS,
+        PendingResizeVerification, PreviewPollCompletion, PreviewTab, ProjectAddDialogField,
+        ProjectDefaultsDialogField, RefreshWorkspacesCompletion, SettingsDialogField,
+        StartAgentCompletion, StartAgentConfigField, StartAgentConfigState, StopAgentCompletion,
+        StopDialogField, TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField,
+        WORKSPACE_ITEM_HEIGHT, WorkspaceAttention, WorkspaceShellLaunchCompletion,
+        WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind, WorkspaceTabRuntimeState,
+        ansi_16_color, ansi_lines_to_styled_lines, ansi_lines_to_styled_lines_for_theme,
+        decode_create_dialog_tab_hit_data, decode_workspace_pr_hit_data, parse_cursor_metadata,
+        ui_theme, ui_theme_for, usize_to_u64,
     };
     use crate::application::interactive::InteractiveState;
     use crate::application::services::runtime_service::workspace_status_targets_for_polling_with_live_preview;
@@ -2258,6 +2259,7 @@ mod tests {
     fn modal_dialog_renders_over_sidebar() {
         let mut app = fixture_app();
         app.set_launch_dialog(LaunchDialogState {
+            target: LaunchDialogTarget::WorkspaceTab,
             agent: AgentType::Claude,
             start_config: StartAgentConfigState::new(
                 String::new(),
@@ -2274,9 +2276,21 @@ mod tests {
     }
 
     #[test]
+    fn parent_agent_launch_dialog_uses_parent_title() {
+        let mut app = fixture_task_app();
+        focus_home_preview_tab(&mut app);
+        app.open_start_parent_agent_dialog();
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            assert!(find_row_containing(frame, "Start Parent Agent", 0, frame.width()).is_some());
+        });
+    }
+
+    #[test]
     fn launch_dialog_uses_opaque_background_fill() {
         let mut app = fixture_app();
         app.set_launch_dialog(LaunchDialogState {
+            target: LaunchDialogTarget::WorkspaceTab,
             agent: AgentType::Claude,
             start_config: StartAgentConfigState::new(
                 String::new(),
@@ -3515,6 +3529,95 @@ mod tests {
     }
 
     #[test]
+    fn command_palette_lists_start_parent_agent_on_task_home() {
+        let mut app = fixture_task_app();
+        focus_home_preview_tab(&mut app);
+
+        let list_ids: Vec<String> = app
+            .build_command_palette_actions()
+            .into_iter()
+            .map(|action| action.id)
+            .collect();
+        let parent_id = UiCommand::StartParentAgent
+            .palette_spec()
+            .map(|spec| spec.id)
+            .expect("parent agent command should be palette discoverable");
+
+        assert!(list_ids.iter().any(|id| id == parent_id));
+    }
+
+    #[test]
+    fn command_palette_hides_start_parent_agent_off_task_home() {
+        let mut app = fixture_task_app();
+        focus_agent_preview_tab(&mut app);
+
+        let list_ids: Vec<String> = app
+            .build_command_palette_actions()
+            .into_iter()
+            .map(|action| action.id)
+            .collect();
+        let parent_id = UiCommand::StartParentAgent
+            .palette_spec()
+            .map(|spec| spec.id)
+            .expect("parent agent command should be palette discoverable");
+
+        assert!(!list_ids.iter().any(|id| id == parent_id));
+    }
+
+    #[test]
+    fn task_home_keybind_upper_a_opens_parent_agent_launch_dialog() {
+        let mut app = fixture_task_app();
+        focus_home_preview_tab(&mut app);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('A'))
+                    .with_modifiers(Modifiers::SHIFT)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+
+        assert!(app.launch_dialog().is_some());
+    }
+
+    #[test]
+    fn task_home_start_parent_agent_launches_task_root_session() {
+        let (mut app, commands, _captures, _cursor_captures, _calls) =
+            fixture_task_app_with_calls(Vec::new(), Vec::new());
+        focus_home_preview_tab(&mut app);
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Key(
+                KeyEvent::new(KeyCode::Char('A'))
+                    .with_modifiers(Modifiers::SHIFT)
+                    .with_kind(KeyEventKind::Press),
+            ),
+        );
+        app.confirm_start_dialog();
+
+        assert_eq!(app.preview_tab, PreviewTab::Home);
+        assert!(
+            app.session
+                .agent_sessions
+                .is_ready("grove-task-flohome-launch")
+        );
+        assert!(commands.borrow().iter().any(|command| {
+            command
+                == &vec![
+                    "tmux".to_string(),
+                    "new-session".to_string(),
+                    "-d".to_string(),
+                    "-s".to_string(),
+                    "grove-task-flohome-launch".to_string(),
+                    "-c".to_string(),
+                    "/tasks/flohome-launch".to_string(),
+                ]
+        }));
+    }
+
+    #[test]
     fn ui_command_palette_ids_are_unique_and_roundtrip() {
         let mut ids = std::collections::HashSet::new();
         for command in UiCommand::all() {
@@ -3590,12 +3693,12 @@ mod tests {
                 .iter()
                 .filter(|command| command.meta().palette.is_some())
                 .count(),
-            36
+            37
         );
         assert_eq!(UiCommand::help_hints_for(HelpHintContext::Global).len(), 13);
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::Workspace).len(),
-            13
+            14
         );
         assert_eq!(UiCommand::help_hints_for(HelpHintContext::List).len(), 2);
         assert_eq!(
@@ -3953,6 +4056,18 @@ mod tests {
     }
 
     #[test]
+    fn keybind_help_lists_start_parent_agent() {
+        let mut app = fixture_task_app();
+        app.dialogs.keybind_help_open = true;
+
+        with_rendered_frame(&app, 160, 28, |frame| {
+            let has_parent_agent = (0..frame.height())
+                .any(|row| row_text(frame, row, 0, frame.width()).contains("A start parent agent"));
+            assert!(has_parent_agent);
+        });
+    }
+
+    #[test]
     fn keybind_help_lists_projects_modal_shortcuts_without_truncation() {
         let mut app = fixture_app();
         app.dialogs.keybind_help_open = true;
@@ -4022,6 +4137,7 @@ mod tests {
     fn launch_dialog_keeps_compact_footer() {
         let mut app = fixture_app();
         app.set_launch_dialog(LaunchDialogState {
+            target: LaunchDialogTarget::WorkspaceTab,
             agent: AgentType::Claude,
             start_config: StartAgentConfigState::new(
                 String::new(),
@@ -4227,6 +4343,7 @@ mod tests {
     fn status_row_keeps_compact_footer_in_launch_dialog() {
         let mut app = fixture_app();
         app.set_launch_dialog(LaunchDialogState {
+            target: LaunchDialogTarget::WorkspaceTab,
             agent: AgentType::Claude,
             start_config: StartAgentConfigState::new(
                 String::new(),
@@ -4923,7 +5040,7 @@ mod tests {
             }
 
             #[test]
-            fn task_home_tab_launches_parent_agent_in_task_root_session() {
+            fn task_home_tab_launches_selected_workspace_agent_tab() {
                 let (mut app, commands, _captures, _cursor_captures, _calls) =
                     fixture_task_app_with_calls(Vec::new(), Vec::new());
                 focus_home_preview_tab(&mut app);
@@ -4931,11 +5048,11 @@ mod tests {
                 app.open_start_dialog();
                 app.confirm_start_dialog();
 
-                assert_eq!(app.preview_tab, PreviewTab::Home);
+                assert_eq!(app.preview_tab, PreviewTab::Agent);
                 assert!(
                     app.session
                         .agent_sessions
-                        .is_ready("grove-task-flohome-launch")
+                        .is_ready("grove-wt-flohome-launch-flohome-agent-1")
                 );
                 assert!(commands.borrow().iter().any(|command| {
                     command
@@ -4944,9 +5061,9 @@ mod tests {
                             "new-session".to_string(),
                             "-d".to_string(),
                             "-s".to_string(),
-                            "grove-task-flohome-launch".to_string(),
+                            "grove-wt-flohome-launch-flohome-agent-1".to_string(),
                             "-c".to_string(),
-                            "/tasks/flohome-launch".to_string(),
+                            "/tasks/flohome-launch/flohome".to_string(),
                         ]
                 }));
             }
@@ -5311,6 +5428,7 @@ mod tests {
                 let mut app = fixture_app();
                 select_workspace(&mut app, 1);
                 app.set_launch_dialog(LaunchDialogState {
+                    target: LaunchDialogTarget::WorkspaceTab,
                     agent: AgentType::Codex,
                     start_config: StartAgentConfigState::new(
                         String::new(),
@@ -5340,6 +5458,7 @@ mod tests {
                 select_workspace(&mut app, 1);
                 app.preview_tab = PreviewTab::Shell;
                 app.set_launch_dialog(LaunchDialogState {
+                    target: LaunchDialogTarget::WorkspaceTab,
                     agent: AgentType::Codex,
                     start_config: StartAgentConfigState::new(
                         "bugfix-tab".to_string(),
@@ -5372,6 +5491,7 @@ mod tests {
                 select_workspace(&mut app, 1);
                 app.preview_tab = PreviewTab::Shell;
                 app.set_launch_dialog(LaunchDialogState {
+                    target: LaunchDialogTarget::WorkspaceTab,
                     agent: AgentType::Codex,
                     start_config: StartAgentConfigState::new(
                         String::new(),
@@ -5404,6 +5524,7 @@ mod tests {
                 select_workspace(&mut app, 1);
                 app.preview_tab = PreviewTab::Shell;
                 app.set_launch_dialog(LaunchDialogState {
+                    target: LaunchDialogTarget::WorkspaceTab,
                     agent: AgentType::Codex,
                     start_config: StartAgentConfigState::new(
                         String::new(),
@@ -5437,6 +5558,7 @@ mod tests {
                 select_workspace(&mut app, 0);
                 app.preview_tab = PreviewTab::Shell;
                 app.set_launch_dialog(LaunchDialogState {
+                    target: LaunchDialogTarget::WorkspaceTab,
                     agent: AgentType::Claude,
                     start_config: StartAgentConfigState::new(
                         String::new(),
@@ -5470,6 +5592,12 @@ mod tests {
                 select_workspace(&mut app, 1);
                 app.preview_tab = PreviewTab::Home;
                 app.set_launch_dialog(LaunchDialogState {
+                    target: LaunchDialogTarget::ParentTask(
+                        app.state
+                            .selected_task()
+                            .cloned()
+                            .expect("task should exist"),
+                    ),
                     agent: AgentType::Codex,
                     start_config: StartAgentConfigState::new(
                         String::new(),
@@ -5700,12 +5828,32 @@ mod tests {
 
                 let combined = app.preview.lines.join("\n");
                 assert!(combined.contains("Task Home"));
-                assert!(combined.contains("Then use 'a' for agent tabs"));
+                assert!(combined.contains("Press 'A' to start parent agent."));
+                assert!(combined.contains("Then use 'a' for workspace agent tabs"));
                 assert!(combined.contains(
                     "Launch a parent agent here for planning and cross-repository coordination."
                 ));
                 assert!(!combined.contains("Preparing session for feature-a"));
                 assert!(!combined.contains("No sessions running in this workspace."));
+            }
+
+            #[test]
+            fn multi_repo_workspace_home_tab_title_indicates_task_scope() {
+                let app = fixture_app();
+                let workspace = app
+                    .state
+                    .workspaces
+                    .get(1)
+                    .expect("feature workspace should exist");
+                let tabs = app
+                    .workspace_tabs
+                    .get(workspace.path.as_path())
+                    .expect("workspace tabs should exist");
+                let home = tabs
+                    .find_kind(WorkspaceTabKind::Home)
+                    .expect("home tab should exist");
+
+                assert_eq!(home.title, "Task Home");
             }
 
             #[test]
@@ -8814,6 +8962,10 @@ mod tests {
                     app.selected_task_preview_session_if_ready().as_deref(),
                     Some("grove-task-feature-a")
                 );
+                assert!(
+                    app.status_bar_line()
+                        .contains("parent agent already running")
+                );
                 assert!(!app.status_bar_line().contains("agent start failed"));
             }
 
@@ -9772,6 +9924,35 @@ mod tests {
                     }),
                 );
                 assert_eq!(app.preview.lines, vec!["fresh-output".to_string()]);
+            }
+
+            #[test]
+            fn task_home_preview_poll_applies_parent_session_capture() {
+                let mut app = fixture_background_app(WorkspaceStatus::Idle);
+                select_workspace(&mut app, 1);
+                app.preview_tab = PreviewTab::Home;
+                app.session
+                    .agent_sessions
+                    .mark_ready("grove-task-feature-a".to_string());
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::PreviewPollCompleted(PreviewPollCompletion {
+                        generation: 1,
+                        live_capture: Some(LivePreviewCapture {
+                            session: "grove-task-feature-a".to_string(),
+                            scrollback_lines: 600,
+                            include_escape_sequences: false,
+                            capture_ms: 1,
+                            total_ms: 1,
+                            result: Ok("task-home-output\n".to_string()),
+                        }),
+                        cursor_capture: None,
+                        workspace_status_captures: Vec::new(),
+                    }),
+                );
+
+                assert_eq!(app.preview.lines, vec!["task-home-output".to_string()]);
             }
 
             #[test]
