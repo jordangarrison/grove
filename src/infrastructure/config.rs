@@ -77,6 +77,8 @@ pub struct ProjectConfig {
     pub defaults: ProjectDefaults,
 }
 
+pub type RepositoryConfig = ProjectConfig;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct ProjectDefaults {
     #[serde(default)]
@@ -88,6 +90,8 @@ pub struct ProjectDefaults {
     #[serde(default, rename = "setup_commands", skip_serializing)]
     legacy_setup_commands: Vec<String>,
 }
+
+pub type RepositoryDefaults = ProjectDefaults;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct AgentEnvDefaults {
@@ -296,8 +300,9 @@ pub fn save_to_path(path: &Path, config: &GroveConfig) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AgentEnvDefaults, GroveConfig, ProjectConfig, ProjectDefaults, ThemeName, load_from_path,
-        projects_path_for, save_global_to_path, save_projects_to_path, save_to_path,
+        AgentEnvDefaults, GroveConfig, ProjectConfig, ProjectDefaults, RepositoryConfig,
+        RepositoryDefaults, ThemeName, load_from_path, projects_path_for, save_global_to_path,
+        save_projects_to_path, save_to_path,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -331,6 +336,24 @@ mod tests {
                 launch_skip_permissions: false,
             }
         );
+    }
+
+    #[test]
+    fn repository_aliases_share_project_config_shape() {
+        let repository = RepositoryConfig {
+            name: "grove".to_string(),
+            path: PathBuf::from("/repos/grove"),
+            defaults: RepositoryDefaults {
+                base_branch: "main".to_string(),
+                workspace_init_command: "direnv allow".to_string(),
+                agent_env: AgentEnvDefaults::default(),
+                ..RepositoryDefaults::default()
+            },
+        };
+
+        assert_eq!(repository.name, "grove");
+        assert_eq!(repository.path, PathBuf::from("/repos/grove"));
+        assert_eq!(repository.defaults.base_branch, "main");
     }
 
     #[test]

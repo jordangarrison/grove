@@ -126,11 +126,52 @@ pub struct Workspace {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Worktree {
+    pub repository_name: String,
+    pub repository_path: PathBuf,
+    pub path: PathBuf,
+    pub branch: String,
+    pub base_branch: Option<String>,
+    pub last_activity_unix_secs: Option<i64>,
+    pub agent: AgentType,
+    pub status: WorkspaceStatus,
+    pub is_orphaned: bool,
+    pub supported_agent: bool,
+    pub pull_requests: Vec<PullRequest>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Task {
+    pub name: String,
+    pub slug: String,
+    pub root_path: PathBuf,
+    pub branch: String,
+    pub worktrees: Vec<Worktree>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceValidationError {
     EmptyName,
     EmptyPath,
     EmptyBranch,
     MainWorkspaceMustUseMainStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorktreeValidationError {
+    EmptyRepositoryName,
+    EmptyRepositoryPath,
+    EmptyPath,
+    EmptyBranch,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TaskValidationError {
+    EmptyName,
+    EmptySlug,
+    EmptyRootPath,
+    EmptyBranch,
+    EmptyWorktrees,
 }
 
 impl Workspace {
@@ -200,11 +241,108 @@ impl Workspace {
     }
 }
 
+impl Worktree {
+    pub fn try_new(
+        repository_name: String,
+        repository_path: PathBuf,
+        path: PathBuf,
+        branch: String,
+        agent: AgentType,
+        status: WorkspaceStatus,
+    ) -> Result<Self, WorktreeValidationError> {
+        if repository_name.trim().is_empty() {
+            return Err(WorktreeValidationError::EmptyRepositoryName);
+        }
+        if repository_path.as_os_str().is_empty() {
+            return Err(WorktreeValidationError::EmptyRepositoryPath);
+        }
+        if path.as_os_str().is_empty() {
+            return Err(WorktreeValidationError::EmptyPath);
+        }
+        if branch.trim().is_empty() {
+            return Err(WorktreeValidationError::EmptyBranch);
+        }
+
+        Ok(Self {
+            repository_name,
+            repository_path,
+            path,
+            branch,
+            base_branch: None,
+            last_activity_unix_secs: None,
+            agent,
+            status,
+            is_orphaned: false,
+            supported_agent: true,
+            pull_requests: Vec::new(),
+        })
+    }
+
+    pub fn with_base_branch(mut self, base_branch: Option<String>) -> Self {
+        self.base_branch = base_branch;
+        self
+    }
+
+    pub fn with_last_activity_unix_secs(mut self, last_activity_unix_secs: Option<i64>) -> Self {
+        self.last_activity_unix_secs = last_activity_unix_secs;
+        self
+    }
+
+    pub fn with_supported_agent(mut self, supported_agent: bool) -> Self {
+        self.supported_agent = supported_agent;
+        self
+    }
+
+    pub fn with_orphaned(mut self, is_orphaned: bool) -> Self {
+        self.is_orphaned = is_orphaned;
+        self
+    }
+
+    pub fn with_pull_requests(mut self, pull_requests: Vec<PullRequest>) -> Self {
+        self.pull_requests = pull_requests;
+        self
+    }
+}
+
+impl Task {
+    pub fn try_new(
+        name: String,
+        slug: String,
+        root_path: PathBuf,
+        branch: String,
+        worktrees: Vec<Worktree>,
+    ) -> Result<Self, TaskValidationError> {
+        if name.trim().is_empty() {
+            return Err(TaskValidationError::EmptyName);
+        }
+        if slug.trim().is_empty() {
+            return Err(TaskValidationError::EmptySlug);
+        }
+        if root_path.as_os_str().is_empty() {
+            return Err(TaskValidationError::EmptyRootPath);
+        }
+        if branch.trim().is_empty() {
+            return Err(TaskValidationError::EmptyBranch);
+        }
+        if worktrees.is_empty() {
+            return Err(TaskValidationError::EmptyWorktrees);
+        }
+
+        Ok(Self {
+            name,
+            slug,
+            root_path,
+            branch,
+            worktrees,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        AgentType, PullRequest, PullRequestStatus, Workspace, WorkspaceStatus,
-        WorkspaceValidationError,
+        AgentType, PullRequest, PullRequestStatus, Task, TaskValidationError, Workspace,
+        WorkspaceStatus, WorkspaceValidationError, Worktree, WorktreeValidationError,
     };
     use std::path::PathBuf;
 
@@ -334,5 +472,133 @@ mod tests {
             backward = backward.previous();
         }
         assert_eq!(backward, AgentType::Claude);
+    }
+
+    #[test]
+    fn worktree_requires_repository_name_and_paths() {
+        assert_eq!(
+            Worktree::try_new(
+                "".to_string(),
+                PathBuf::from("/repos/flohome"),
+                PathBuf::from("/tasks/flohome-launch/flohome"),
+                "flohome-launch".to_string(),
+                AgentType::Codex,
+                WorkspaceStatus::Idle,
+            ),
+            Err(WorktreeValidationError::EmptyRepositoryName)
+        );
+        assert_eq!(
+            Worktree::try_new(
+                "flohome".to_string(),
+                PathBuf::new(),
+                PathBuf::from("/tasks/flohome-launch/flohome"),
+                "flohome-launch".to_string(),
+                AgentType::Codex,
+                WorkspaceStatus::Idle,
+            ),
+            Err(WorktreeValidationError::EmptyRepositoryPath)
+        );
+        assert_eq!(
+            Worktree::try_new(
+                "flohome".to_string(),
+                PathBuf::from("/repos/flohome"),
+                PathBuf::new(),
+                "flohome-launch".to_string(),
+                AgentType::Codex,
+                WorkspaceStatus::Idle,
+            ),
+            Err(WorktreeValidationError::EmptyPath)
+        );
+    }
+
+    #[test]
+    fn task_accepts_single_repository_worktree() {
+        let worktree = Worktree::try_new(
+            "flohome".to_string(),
+            PathBuf::from("/repos/flohome"),
+            PathBuf::from("/tmp/.grove/tasks/flohome-launch/flohome"),
+            "flohome-launch".to_string(),
+            AgentType::Codex,
+            WorkspaceStatus::Idle,
+        )
+        .expect("worktree should be valid");
+        let task = Task::try_new(
+            "flohome-launch".to_string(),
+            "flohome-launch".to_string(),
+            PathBuf::from("/tmp/.grove/tasks/flohome-launch"),
+            "flohome-launch".to_string(),
+            vec![worktree],
+        )
+        .expect("task should be valid");
+
+        assert_eq!(task.name, "flohome-launch");
+        assert_eq!(task.slug, "flohome-launch");
+        assert_eq!(task.branch, "flohome-launch");
+        assert_eq!(task.worktrees.len(), 1);
+        assert_eq!(task.worktrees[0].repository_name, "flohome");
+    }
+
+    #[test]
+    fn task_requires_non_empty_name_slug_root_and_worktrees() {
+        let worktree = Worktree::try_new(
+            "flohome".to_string(),
+            PathBuf::from("/repos/flohome"),
+            PathBuf::from("/tmp/.grove/tasks/flohome-launch/flohome"),
+            "flohome-launch".to_string(),
+            AgentType::Claude,
+            WorkspaceStatus::Idle,
+        )
+        .expect("worktree should be valid");
+
+        assert_eq!(
+            Task::try_new(
+                "".to_string(),
+                "flohome-launch".to_string(),
+                PathBuf::from("/tmp/.grove/tasks/flohome-launch"),
+                "flohome-launch".to_string(),
+                vec![worktree.clone()],
+            ),
+            Err(TaskValidationError::EmptyName)
+        );
+        assert_eq!(
+            Task::try_new(
+                "flohome-launch".to_string(),
+                "".to_string(),
+                PathBuf::from("/tmp/.grove/tasks/flohome-launch"),
+                "flohome-launch".to_string(),
+                vec![worktree.clone()],
+            ),
+            Err(TaskValidationError::EmptySlug)
+        );
+        assert_eq!(
+            Task::try_new(
+                "flohome-launch".to_string(),
+                "flohome-launch".to_string(),
+                PathBuf::new(),
+                "flohome-launch".to_string(),
+                vec![worktree.clone()],
+            ),
+            Err(TaskValidationError::EmptyRootPath)
+        );
+        assert_eq!(
+            Task::try_new(
+                "flohome-launch".to_string(),
+                "flohome-launch".to_string(),
+                PathBuf::from("/tmp/.grove/tasks/flohome-launch"),
+                "".to_string(),
+                vec![worktree.clone()],
+            ),
+            Err(TaskValidationError::EmptyBranch)
+        );
+        assert_eq!(
+            Task::try_new(
+                "flohome-launch".to_string(),
+                "flohome-launch".to_string(),
+                PathBuf::from("/tmp/.grove/tasks/flohome-launch"),
+                "flohome-launch".to_string(),
+                Vec::new(),
+            ),
+            Err(TaskValidationError::EmptyWorktrees)
+        );
     }
 }

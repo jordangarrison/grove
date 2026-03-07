@@ -5,5 +5,6 @@ pub mod preview;
 pub mod scale_benchmark;
 pub mod services;
 pub mod session_cleanup;
+pub mod task_lifecycle;
 pub mod workspace_discovery;
 pub mod workspace_lifecycle;
