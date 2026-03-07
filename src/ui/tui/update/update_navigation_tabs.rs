@@ -712,7 +712,7 @@ impl GroveApp {
         let mut launch_workspace = workspace.clone();
         launch_workspace.name = format!("{}-agent-{ordinal}", workspace.name);
         launch_workspace.agent = agent;
-        let request = launch_request_for_workspace(
+        let mut request = launch_request_for_workspace(
             &launch_workspace,
             options.prompt,
             options
@@ -723,6 +723,7 @@ impl GroveApp {
             Some(capture_cols),
             Some(capture_rows),
         );
+        request.session_name = Some(session_name.clone());
         self.session
             .agent_sessions
             .mark_in_flight(session_name.clone());

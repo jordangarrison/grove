@@ -130,6 +130,7 @@ pub(crate) enum SessionActivity {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaunchRequest {
+    pub session_name: Option<String>,
     pub task_slug: Option<String>,
     pub project_name: Option<String>,
     pub workspace_name: String,
@@ -1260,6 +1261,7 @@ mod tests {
         #[test]
         fn execute_launch_request_with_result_for_mode_includes_workspace_context() {
             let request = LaunchRequest {
+                session_name: None,
                 task_slug: None,
                 project_name: Some("project.one".to_string()),
                 workspace_name: "auth-flow".to_string(),
@@ -1655,6 +1657,7 @@ mod tests {
         #[test]
         fn launch_plan_with_workspace_init_runs_before_agent() {
             let request = LaunchRequest {
+                session_name: None,
                 task_slug: None,
                 project_name: None,
                 workspace_name: "auth-flow".to_string(),
@@ -2214,6 +2217,7 @@ mod tests {
         #[test]
         fn launch_plan_without_prompt_sends_agent_directly() {
             let request = LaunchRequest {
+                session_name: None,
                 task_slug: None,
                 project_name: None,
                 workspace_name: "auth-flow".to_string(),
@@ -2247,6 +2251,7 @@ mod tests {
         #[test]
         fn launch_plan_with_workspace_init_wraps_agent_start_command() {
             let request = LaunchRequest {
+                session_name: None,
                 task_slug: None,
                 project_name: None,
                 workspace_name: "auth-flow".to_string(),
@@ -2287,6 +2292,7 @@ mod tests {
         #[test]
         fn launch_plan_with_non_direnv_init_does_not_wrap_agent_command_in_direnv_exec() {
             let request = LaunchRequest {
+                session_name: None,
                 task_slug: None,
                 project_name: None,
                 workspace_name: "auth-flow".to_string(),
@@ -2311,6 +2317,7 @@ mod tests {
         #[test]
         fn launch_plan_with_capture_dimensions_resizes_before_send_keys() {
             let request = LaunchRequest {
+                session_name: None,
                 task_slug: None,
                 project_name: None,
                 workspace_name: "auth-flow".to_string(),
@@ -2344,6 +2351,7 @@ mod tests {
         #[test]
         fn launch_plan_with_agent_env_exports_before_agent_start() {
             let request = LaunchRequest {
+                session_name: None,
                 task_slug: None,
                 project_name: None,
                 workspace_name: "auth-flow".to_string(),
@@ -2385,6 +2393,7 @@ mod tests {
         #[test]
         fn launch_plan_with_prompt_writes_launcher_script() {
             let request = LaunchRequest {
+                session_name: None,
                 task_slug: None,
                 project_name: None,
                 workspace_name: "db_migration".to_string(),

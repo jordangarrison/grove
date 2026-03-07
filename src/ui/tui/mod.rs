@@ -579,6 +579,10 @@ mod tests {
         PathBuf::from("/tmp/.grove/tasks/feature-a/grove")
     }
 
+    fn feature_task_root_path() -> PathBuf {
+        PathBuf::from("/tmp/.grove/tasks/feature-a")
+    }
+
     fn main_workspace_session() -> String {
         crate::application::agent_runtime::session_name_for_task_worktree("grove", "grove")
     }
@@ -597,6 +601,10 @@ mod tests {
 
     fn feature_agent_tab_session(ordinal: usize) -> String {
         format!("{}-agent-{ordinal}", feature_workspace_session())
+    }
+
+    fn main_agent_tab_session(ordinal: usize) -> String {
+        format!("{}-agent-{ordinal}", main_workspace_session())
     }
 
     fn fixture_app() -> GroveApp {
@@ -5385,6 +5393,105 @@ mod tests {
                             feature_agent_tab_session(1),
                             "@grove_tab_title".to_string(),
                             "Codex 1".to_string(),
+                        ]
+                }));
+            }
+
+            #[test]
+            fn start_dialog_launches_numbered_agent_session_for_task_worktree() {
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+                select_workspace(&mut app, 1);
+                app.preview_tab = PreviewTab::Shell;
+                app.set_launch_dialog(LaunchDialogState {
+                    agent: AgentType::Codex,
+                    start_config: StartAgentConfigState::new(
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        false,
+                    ),
+                    focused_field: LaunchDialogField::StartButton,
+                });
+
+                app.confirm_start_dialog();
+
+                assert!(commands.borrow().iter().any(|command| {
+                    command
+                        == &vec![
+                            "tmux".to_string(),
+                            "new-session".to_string(),
+                            "-d".to_string(),
+                            "-s".to_string(),
+                            feature_agent_tab_session(1),
+                            "-c".to_string(),
+                            feature_workspace_path().to_string_lossy().to_string(),
+                        ]
+                }));
+            }
+
+            #[test]
+            fn start_dialog_launches_numbered_agent_session_for_base_worktree() {
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+                select_workspace(&mut app, 0);
+                app.preview_tab = PreviewTab::Shell;
+                app.set_launch_dialog(LaunchDialogState {
+                    agent: AgentType::Claude,
+                    start_config: StartAgentConfigState::new(
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        false,
+                    ),
+                    focused_field: LaunchDialogField::StartButton,
+                });
+
+                app.confirm_start_dialog();
+
+                assert!(commands.borrow().iter().any(|command| {
+                    command
+                        == &vec![
+                            "tmux".to_string(),
+                            "new-session".to_string(),
+                            "-d".to_string(),
+                            "-s".to_string(),
+                            main_agent_tab_session(1),
+                            "-c".to_string(),
+                            main_workspace_path().to_string_lossy().to_string(),
+                        ]
+                }));
+            }
+
+            #[test]
+            fn start_dialog_on_task_home_launches_task_session() {
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+                select_workspace(&mut app, 1);
+                app.preview_tab = PreviewTab::Home;
+                app.set_launch_dialog(LaunchDialogState {
+                    agent: AgentType::Codex,
+                    start_config: StartAgentConfigState::new(
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        false,
+                    ),
+                    focused_field: LaunchDialogField::StartButton,
+                });
+
+                app.confirm_start_dialog();
+
+                assert!(commands.borrow().iter().any(|command| {
+                    command
+                        == &vec![
+                            "tmux".to_string(),
+                            "new-session".to_string(),
+                            "-d".to_string(),
+                            "-s".to_string(),
+                            "grove-task-feature-a".to_string(),
+                            "-c".to_string(),
+                            feature_task_root_path().to_string_lossy().to_string(),
                         ]
                 }));
             }
