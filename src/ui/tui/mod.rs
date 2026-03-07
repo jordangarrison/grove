@@ -6508,8 +6508,8 @@ mod tests {
                 );
 
                 assert!(app.session.interactive.is_none());
-                assert_eq!(app.state.mode, UiMode::List);
-                assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+                assert_eq!(app.state.mode, UiMode::Preview);
+                assert_eq!(app.state.focus, PaneFocus::Preview);
                 assert!(commands.borrow().is_empty());
             }
 
@@ -6678,11 +6678,11 @@ mod tests {
                 );
                 ftui::Model::update(
                     &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('\\'))
+                            .with_modifiers(Modifiers::CTRL)
+                            .with_kind(KeyEventKind::Press),
+                    ),
                 );
 
                 assert_eq!(
@@ -6695,10 +6695,6 @@ mod tests {
                             feature_workspace_session()
                         ),
                         format!("paste-buffer:{}:14", feature_workspace_session()),
-                        format!(
-                            "exec:tmux send-keys -t {} Escape",
-                            feature_workspace_session()
-                        ),
                     ]
                 );
                 assert!(app.session.interactive.is_none());
