@@ -74,6 +74,7 @@ impl GroveApp {
         self.repo_name = bootstrap.repo_name;
         self.discovery_state = bootstrap.discovery_state;
         self.state = AppState::new(bootstrap.workspaces);
+        self.refresh_task_catalog();
         if let Some(path) = target_path
             && let Some(index) = self
                 .state
@@ -103,6 +104,7 @@ impl GroveApp {
         self.repo_name = completion.bootstrap.repo_name;
         self.discovery_state = completion.bootstrap.discovery_state;
         self.state = AppState::new(completion.bootstrap.workspaces);
+        self.refresh_task_catalog();
         if let Some(path) = completion.preferred_workspace_path
             && let Some(index) = self
                 .state

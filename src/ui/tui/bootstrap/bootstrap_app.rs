@@ -5,7 +5,7 @@ use std::env;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use super::bootstrap_config::{AppDependencies, load_runtime_config};
 use super::bootstrap_discovery::bootstrap_data_for_projects;
@@ -112,9 +112,15 @@ impl GroveApp {
         } = dependencies;
         let persisted_config = crate::infrastructure::config::load_from_path(&config_path)
             .unwrap_or_else(|_| GroveConfig::default());
+        #[cfg(not(test))]
+        let tasks_root = dirs::home_dir().map(|home| home.join(".grove").join("tasks"));
+        #[cfg(test)]
+        let tasks_root: Option<PathBuf> = None;
+        let tasks = Self::load_tasks_from_root(tasks_root.as_deref());
         let sidebar_width_pct = clamp_sidebar_ratio(persisted_config.sidebar_width_pct);
         let theme_name = persisted_config.theme;
         let launch_skip_permissions = persisted_config.launch_skip_permissions;
+        let task_order = persisted_config.task_order;
         let workspace_attention_ack_markers = persisted_config
             .attention_acks
             .into_iter()
@@ -133,7 +139,11 @@ impl GroveApp {
             Self::default_workspace_tabs_and_last_agent(&state.workspaces);
         let mut app = Self {
             repo_name: bootstrap.repo_name,
+            tasks_root,
+            tasks,
             projects,
+            task_order,
+            task_reorder: None,
             state,
             discovery_state: bootstrap.discovery_state,
             preview_tab: PreviewTab::Agent,
@@ -231,6 +241,8 @@ impl GroveApp {
             last_sidebar_mouse_scroll_at: None,
             last_sidebar_mouse_scroll_delta: 0,
         };
+        app.reconcile_task_order();
+        app.reorder_workspaces_for_task_order();
         app.sync_workspace_tab_maps();
         app.rebuild_workspace_tabs_from_tmux_metadata();
         app.reconcile_workspace_attention_tracking();

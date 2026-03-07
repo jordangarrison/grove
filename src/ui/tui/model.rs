@@ -75,7 +75,7 @@ use crate::application::workspace_lifecycle::{
     CreateWorkspaceRequest, CreateWorkspaceResult, DeleteWorkspaceRequest, MergeWorkspaceRequest,
     UpdateWorkspaceFromBaseRequest, WorkspaceLifecycleError,
 };
-use crate::domain::{AgentType, Workspace, WorkspaceStatus};
+use crate::domain::{AgentType, Task, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::{BootstrapData, DiscoveryState};
 use crate::infrastructure::config::{
     AgentEnvDefaults, GroveConfig, ProjectConfig, ThemeName, WorkspaceAttentionAckConfig,
@@ -136,6 +136,12 @@ struct SessionTracker {
     ready: HashSet<String>,
     failed: HashSet<String>,
     in_flight: HashSet<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TaskReorderState {
+    original_task_order: Vec<String>,
+    moving_task_slug: String,
 }
 
 impl SessionTracker {
@@ -260,7 +266,11 @@ struct TelemetryState {
 
 struct GroveApp {
     repo_name: String,
+    tasks_root: Option<PathBuf>,
+    tasks: Vec<Task>,
     projects: Vec<ProjectConfig>,
+    task_order: Vec<String>,
+    task_reorder: Option<TaskReorderState>,
     state: AppState,
     discovery_state: DiscoveryState,
     preview_tab: PreviewTab,

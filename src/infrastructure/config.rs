@@ -42,6 +42,8 @@ pub struct GroveConfig {
     #[serde(default)]
     pub projects: Vec<ProjectConfig>,
     #[serde(default)]
+    pub task_order: Vec<String>,
+    #[serde(default)]
     pub attention_acks: Vec<WorkspaceAttentionAckConfig>,
     #[serde(default)]
     pub launch_skip_permissions: bool,
@@ -57,6 +59,7 @@ impl Default for GroveConfig {
             sidebar_width_pct: default_sidebar_width_pct(),
             theme: ThemeName::default(),
             projects: Vec::new(),
+            task_order: Vec::new(),
             attention_acks: Vec::new(),
             launch_skip_permissions: false,
         }
@@ -151,6 +154,8 @@ struct ProjectsStateConfig {
     #[serde(default)]
     projects: Vec<ProjectConfig>,
     #[serde(default)]
+    task_order: Vec<String>,
+    #[serde(default)]
     attention_acks: Vec<WorkspaceAttentionAckConfig>,
 }
 
@@ -199,6 +204,7 @@ pub fn load_from_path(path: &Path) -> Result<GroveConfig, String> {
         sidebar_width_pct: settings.sidebar_width_pct,
         theme: settings.theme,
         projects: projects.projects,
+        task_order: projects.task_order,
         attention_acks: projects.attention_acks,
         launch_skip_permissions: settings.launch_skip_permissions,
     })
@@ -219,6 +225,7 @@ pub fn load_global_from_path(path: &Path) -> Result<GroveConfig, String> {
         sidebar_width_pct: settings.sidebar_width_pct,
         theme: settings.theme,
         projects: Vec::new(),
+        task_order: Vec::new(),
         attention_acks: Vec::new(),
         launch_skip_permissions: settings.launch_skip_permissions,
     })
@@ -242,6 +249,7 @@ pub fn load_projects_from_path(path: &Path) -> Result<GroveConfig, String> {
         sidebar_width_pct: default_sidebar_width_pct(),
         theme: ThemeName::default(),
         projects: projects.projects,
+        task_order: projects.task_order,
         attention_acks: projects.attention_acks,
         launch_skip_permissions: false,
     })
@@ -267,6 +275,7 @@ pub fn save_global_to_path(path: &Path, config: &GroveConfig) -> Result<(), Stri
 pub fn save_projects_to_path(
     path: &Path,
     projects: &[ProjectConfig],
+    task_order: &[String],
     attention_acks: &[WorkspaceAttentionAckConfig],
 ) -> Result<(), String> {
     let Some(parent) = path.parent() else {
@@ -277,6 +286,7 @@ pub fn save_projects_to_path(
         .map_err(|error| format!("projects config directory create failed: {error}"))?;
     let projects_state = ProjectsStateConfig {
         projects: projects.to_vec(),
+        task_order: task_order.to_vec(),
         attention_acks: attention_acks.to_vec(),
     };
     let encoded = toml::to_string_pretty(&projects_state)
@@ -289,7 +299,12 @@ pub fn save_projects_state_from_config_path(
     config: &GroveConfig,
 ) -> Result<(), String> {
     let projects_path = projects_path_for(path);
-    save_projects_to_path(&projects_path, &config.projects, &config.attention_acks)
+    save_projects_to_path(
+        &projects_path,
+        &config.projects,
+        &config.task_order,
+        &config.attention_acks,
+    )
 }
 
 pub fn save_to_path(path: &Path, config: &GroveConfig) -> Result<(), String> {
@@ -332,6 +347,7 @@ mod tests {
                 sidebar_width_pct: 33,
                 theme: ThemeName::CatppuccinMocha,
                 projects: Vec::new(),
+                task_order: Vec::new(),
                 attention_acks: Vec::new(),
                 launch_skip_permissions: false,
             }
@@ -376,6 +392,7 @@ mod tests {
                     ..ProjectDefaults::default()
                 },
             }],
+            task_order: vec!["grove".to_string(), "task-workflow".to_string()],
             attention_acks: Vec::new(),
             launch_skip_permissions: true,
         };
@@ -396,6 +413,7 @@ mod tests {
         assert_eq!(loaded.sidebar_width_pct, 33);
         assert_eq!(loaded.theme, ThemeName::CatppuccinMocha);
         assert_eq!(loaded.projects, Vec::<ProjectConfig>::new());
+        assert_eq!(loaded.task_order, Vec::<String>::new());
 
         cleanup_files(path.as_path());
     }
@@ -415,6 +433,7 @@ mod tests {
         assert_eq!(loaded.sidebar_width_pct, 33);
         assert_eq!(loaded.theme, ThemeName::CatppuccinMocha);
         assert_eq!(loaded.attention_acks, Vec::new());
+        assert_eq!(loaded.task_order, Vec::<String>::new());
         assert!(!loaded.launch_skip_permissions);
         assert_eq!(loaded.projects[0].defaults.base_branch, "");
         assert_eq!(loaded.projects[0].defaults.workspace_init_command, "");
@@ -458,15 +477,22 @@ mod tests {
                 path: PathBuf::from("/repos/grove"),
                 defaults: ProjectDefaults::default(),
             }],
+            task_order: vec!["grove".to_string()],
             attention_acks: Vec::new(),
             launch_skip_permissions: false,
         };
-        save_projects_to_path(&projects_path, &initial.projects, &initial.attention_acks)
-            .expect("projects should save");
+        save_projects_to_path(
+            &projects_path,
+            &initial.projects,
+            &initial.task_order,
+            &initial.attention_acks,
+        )
+        .expect("projects should save");
         let updated = GroveConfig {
             sidebar_width_pct: 48,
             theme: ThemeName::CatppuccinLatte,
             projects: Vec::new(),
+            task_order: Vec::new(),
             attention_acks: Vec::new(),
             launch_skip_permissions: true,
         };
@@ -478,6 +504,7 @@ mod tests {
         assert!(loaded.launch_skip_permissions);
         assert_eq!(loaded.projects.len(), 1);
         assert_eq!(loaded.projects[0].name, "grove");
+        assert_eq!(loaded.task_order, vec!["grove".to_string()]);
 
         cleanup_files(path.as_path());
     }
@@ -490,6 +517,7 @@ mod tests {
             sidebar_width_pct: 61,
             theme: ThemeName::CatppuccinFrappe,
             projects: Vec::new(),
+            task_order: Vec::new(),
             attention_acks: Vec::new(),
             launch_skip_permissions: true,
         };
@@ -499,7 +527,9 @@ mod tests {
             path: PathBuf::from("/repos/grove"),
             defaults: ProjectDefaults::default(),
         }];
-        save_projects_to_path(&projects_path, &projects, &[]).expect("projects state should save");
+        let task_order = vec!["task-workflow".to_string(), "grove".to_string()];
+        save_projects_to_path(&projects_path, &projects, &task_order, &[])
+            .expect("projects state should save");
 
         let loaded = load_from_path(&path).expect("combined config should load");
         assert_eq!(loaded.sidebar_width_pct, 61);
@@ -507,6 +537,27 @@ mod tests {
         assert!(loaded.launch_skip_permissions);
         assert_eq!(loaded.projects.len(), 1);
         assert_eq!(loaded.projects[0].name, "grove");
+        assert_eq!(loaded.task_order, task_order);
+
+        cleanup_files(path.as_path());
+    }
+
+    #[test]
+    fn task_order_round_trips_through_projects_state() {
+        let path = unique_temp_path("task-order-roundtrip");
+        let projects_path = projects_path_for(path.as_path());
+        let projects = vec![ProjectConfig {
+            name: "grove".to_string(),
+            path: PathBuf::from("/repos/grove"),
+            defaults: ProjectDefaults::default(),
+        }];
+        let task_order = vec!["task-workflow".to_string(), "grove".to_string()];
+
+        save_projects_to_path(&projects_path, &projects, &task_order, &[])
+            .expect("projects state should save");
+
+        let loaded = load_from_path(&path).expect("combined config should load");
+        assert_eq!(loaded.task_order, task_order);
 
         cleanup_files(path.as_path());
     }

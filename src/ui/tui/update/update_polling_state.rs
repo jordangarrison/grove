@@ -55,6 +55,7 @@ impl GroveApp {
         crate::infrastructure::config::save_projects_to_path(
             &projects_path,
             &self.projects,
+            &self.task_order,
             &self.workspace_attention_acks_for_config(),
         )
     }

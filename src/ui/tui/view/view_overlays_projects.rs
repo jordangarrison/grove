@@ -186,16 +186,9 @@ impl GroveApp {
 
         let dialog_height = area.height.min(20);
         let inner_height = usize::from(dialog_height.saturating_sub(2));
-        let reorder_active = dialog.reorder.is_some();
-        let hints = if reorder_active {
-            "Reorder mode, j/k or Up/Down or Tab/S-Tab/C-n/C-p move, Enter save, Esc cancel"
-        } else {
-            "Enter focus, Up/Down or Tab/S-Tab/C-n/C-p navigate, Ctrl+R reorder, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Esc close"
-        };
+        let hints = "Enter focus, Up/Down or Tab/S-Tab/C-n/C-p navigate, Ctrl+A add, Ctrl+E defaults, Ctrl+X/Del remove, Esc close";
         let hint_rows = modal_wrapped_hint_rows(content_width, theme, hints);
-        let header_line_count = 3usize
-            .saturating_add(usize::from(reorder_active))
-            .saturating_add(1);
+        let header_line_count = 4usize;
         let footer_line_count = 1usize.saturating_add(hint_rows.len());
         let list_line_budget =
             inner_height.saturating_sub(header_line_count.saturating_add(footer_line_count));
@@ -224,12 +217,6 @@ impl GroveApp {
             ),
             Style::new().fg(theme.overlay0),
         )]));
-        if reorder_active {
-            lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width("Reorder mode active", content_width),
-                Style::new().fg(theme.peach).bold(),
-            )]));
-        }
         lines.push(FtLine::raw(""));
 
         if dialog.filtered_project_indices.is_empty() {
@@ -250,13 +237,7 @@ impl GroveApp {
                     continue;
                 };
                 let selected = filtered_index == dialog.selected_filtered_index;
-                let marker = if selected && reorder_active {
-                    "↕"
-                } else if selected {
-                    ">"
-                } else {
-                    " "
-                };
+                let marker = if selected { ">" } else { " " };
                 let name_style = if selected {
                     Style::new().fg(theme.mauve).bold()
                 } else {

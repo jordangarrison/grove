@@ -41,6 +41,9 @@ impl GroveApp {
         if self.session.interactive.is_some() {
             return "Interactive".to_string();
         }
+        if self.task_reorder_active() {
+            return "Task Reorder".to_string();
+        }
 
         match self.state.mode {
             UiMode::List => "List".to_string(),
@@ -103,6 +106,9 @@ impl GroveApp {
                         );
                     }
                     return format!("Status: INSERT, unsafe={}", self.unsafe_label());
+                }
+                if self.task_reorder_active() {
+                    return "Status: task reorder".to_string();
                 }
 
                 match self.state.mode {
