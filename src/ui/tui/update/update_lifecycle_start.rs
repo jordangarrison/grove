@@ -238,52 +238,62 @@ impl GroveApp {
 
     pub(super) fn apply_start_agent_completion(&mut self, completion: StartAgentCompletion) {
         self.dialogs.start_in_flight = false;
-        match completion.result {
-            Ok(()) => {
-                if self
-                    .state
-                    .tasks
-                    .iter()
-                    .any(|task| task.root_path == completion.workspace_path)
-                {
-                    self.session
-                        .agent_sessions
-                        .mark_ready(completion.session_name.clone());
-                }
-                self.clear_status_tracking_for_workspace_path(&completion.workspace_path);
-                if let Some(workspace_index) = self
-                    .state
-                    .workspaces
-                    .iter()
-                    .position(|workspace| workspace.path == completion.workspace_path)
-                {
-                    let previous_status = self.state.workspaces[workspace_index].status;
-                    let previous_orphaned = self.state.workspaces[workspace_index].is_orphaned;
-                    let workspace = &mut self.state.workspaces[workspace_index];
-                    workspace.status = WorkspaceStatus::Active;
-                    workspace.is_orphaned = false;
-                    self.track_workspace_status_transition(
-                        &completion.workspace_path,
-                        previous_status,
-                        WorkspaceStatus::Active,
-                        previous_orphaned,
-                        false,
-                    );
-                }
-                self.telemetry.event_log.log(
-                    LogEvent::new("agent_lifecycle", "agent_started")
-                        .with_data("workspace", Value::from(completion.workspace_name))
-                        .with_data("session", Value::from(completion.session_name)),
+        let reused_existing_session = completion
+            .result
+            .as_ref()
+            .err()
+            .is_some_and(|error| tmux_launch_error_indicates_duplicate_session(error));
+
+        if completion.result.is_ok() || reused_existing_session {
+            if self
+                .state
+                .tasks
+                .iter()
+                .any(|task| task.root_path == completion.workspace_path)
+            {
+                self.session
+                    .agent_sessions
+                    .mark_ready(completion.session_name.clone());
+            }
+            self.clear_status_tracking_for_workspace_path(&completion.workspace_path);
+            if let Some(workspace_index) = self
+                .state
+                .workspaces
+                .iter()
+                .position(|workspace| workspace.path == completion.workspace_path)
+            {
+                let previous_status = self.state.workspaces[workspace_index].status;
+                let previous_orphaned = self.state.workspaces[workspace_index].is_orphaned;
+                let workspace = &mut self.state.workspaces[workspace_index];
+                workspace.status = WorkspaceStatus::Active;
+                workspace.is_orphaned = false;
+                self.track_workspace_status_transition(
+                    &completion.workspace_path,
+                    previous_status,
+                    WorkspaceStatus::Active,
+                    previous_orphaned,
+                    false,
                 );
-                self.session.last_tmux_error = None;
-                self.show_success_toast("agent started");
-                self.poll_preview();
             }
-            Err(error) => {
-                self.session.last_tmux_error = Some(error.clone());
-                self.log_tmux_error(error);
-                self.show_error_toast("agent start failed");
+            let mut event = LogEvent::new("agent_lifecycle", "agent_started")
+                .with_data("workspace", Value::from(completion.workspace_name))
+                .with_data("session", Value::from(completion.session_name));
+            if reused_existing_session && let Err(error) = &completion.result {
+                event = event
+                    .with_data("reused_existing_session", Value::from(true))
+                    .with_data("error", Value::from(error.clone()));
             }
+            self.telemetry.event_log.log(event);
+            self.session.last_tmux_error = None;
+            self.show_success_toast("agent started");
+            self.poll_preview();
+            return;
+        }
+
+        if let Err(error) = completion.result {
+            self.session.last_tmux_error = Some(error.clone());
+            self.log_tmux_error(error);
+            self.show_error_toast("agent start failed");
         }
     }
 

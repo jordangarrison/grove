@@ -8792,6 +8792,32 @@ mod tests {
             }
 
             #[test]
+            fn start_agent_completed_duplicate_task_session_marks_parent_ready() {
+                let mut app = fixture_app();
+                select_workspace(&mut app, 1);
+                app.preview_tab = PreviewTab::Home;
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::StartAgentCompleted(StartAgentCompletion {
+                        workspace_name: "feature-a".to_string(),
+                        workspace_path: feature_task_root_path(),
+                        session_name: "grove-task-feature-a".to_string(),
+                        result: Err(
+                            "command failed: tmux new-session -d -s grove-task-feature-a -c /tmp/.grove/tasks/feature-a; duplicate session: grove-task-feature-a".to_string(),
+                        ),
+                    }),
+                );
+
+                assert!(app.session.agent_sessions.is_ready("grove-task-feature-a"));
+                assert_eq!(
+                    app.selected_task_preview_session_if_ready().as_deref(),
+                    Some("grove-task-feature-a")
+                );
+                assert!(!app.status_bar_line().contains("agent start failed"));
+            }
+
+            #[test]
             fn unsafe_toggle_updates_launch_skip_permissions_for_session() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
