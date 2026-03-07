@@ -171,9 +171,8 @@ impl GroveApp {
             UiCommand::OpenProjects => {
                 self.open_project_dialog();
             }
-            UiCommand::ReorderProjects => {
-                self.open_project_dialog();
-                self.open_project_reorder_mode();
+            UiCommand::ReorderTasks => {
+                self.open_task_reorder_mode();
             }
             UiCommand::DeleteProject => {
                 self.delete_selected_workspace_project();

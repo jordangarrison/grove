@@ -143,6 +143,12 @@ struct SessionTracker {
     in_flight: HashSet<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TaskReorderState {
+    original_task_order: Vec<String>,
+    moving_task_slug: String,
+}
+
 impl SessionTracker {
     fn is_ready(&self, session_name: &str) -> bool {
         self.ready.contains(session_name)
@@ -263,6 +269,8 @@ struct TelemetryState {
 struct GroveApp {
     repo_name: String,
     projects: Vec<ProjectConfig>,
+    task_order: Vec<String>,
+    task_reorder: Option<TaskReorderState>,
     state: AppState,
     discovery_state: DiscoveryState,
     preview_tab: PreviewTab,

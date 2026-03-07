@@ -40,8 +40,6 @@ mod dialogs_projects_crud;
 mod dialogs_projects_defaults;
 #[path = "dialogs/dialogs_projects_key.rs"]
 mod dialogs_projects_key;
-#[path = "dialogs/dialogs_projects_reorder.rs"]
-mod dialogs_projects_reorder;
 #[path = "dialogs/dialogs_projects_state.rs"]
 mod dialogs_projects_state;
 #[path = "dialogs/dialogs_rename_tab.rs"]
@@ -68,6 +66,8 @@ mod selection;
 pub use runner::{run_with_debug_record, run_with_event_log};
 mod replay;
 pub use replay::{ReplayOptions, emit_replay_fixture, replay_debug_record};
+#[path = "tasks.rs"]
+mod tasks;
 mod text;
 #[path = "update/update.rs"]
 mod update;
@@ -598,6 +598,33 @@ mod tests {
         .expect("task should be valid")
     }
 
+    fn task_with_worktrees(slug: &str, worktrees: &[(&str, &PathBuf, &PathBuf, &str)]) -> Task {
+        let worktrees = worktrees
+            .iter()
+            .map(|(repository_name, repository_path, path, branch)| {
+                Worktree::try_new(
+                    (*repository_name).to_string(),
+                    (*repository_path).clone(),
+                    (*path).clone(),
+                    (*branch).to_string(),
+                    AgentType::Codex,
+                    WorkspaceStatus::Idle,
+                )
+                .expect("worktree should be valid")
+                .with_base_branch(Some("main".to_string()))
+            })
+            .collect::<Vec<Worktree>>();
+
+        Task::try_new(
+            slug.to_string(),
+            slug.to_string(),
+            PathBuf::from(format!("/tmp/.grove/tasks/{slug}")),
+            slug.to_string(),
+            worktrees,
+        )
+        .expect("task should be valid")
+    }
+
     fn fixture_task_app() -> GroveApp {
         let mut app = fixture_app();
         app.state = crate::ui::state::AppState::new(vec![fixture_task(
@@ -623,7 +650,6 @@ mod tests {
         app.refresh_preview_summary();
         (app, commands, captures, cursor_captures, calls)
     }
-
     fn event_kinds(events: &RecordedEvents) -> Vec<String> {
         let Ok(events) = events.lock() else {
             return Vec::new();
@@ -10364,7 +10390,7 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
             }
 
             #[test]
-            fn project_dialog_ctrl_r_enters_reorder_mode() {
+            fn project_dialog_ctrl_r_does_not_enter_reorder_mode() {
                 let mut app = fixture_app();
                 app.projects.push(ProjectConfig {
                     name: "site".to_string(),
@@ -10385,53 +10411,59 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     ),
                 );
 
-                assert!(
-                    app.project_dialog()
-                        .and_then(|dialog| dialog.reorder.as_ref())
-                        .is_some()
-                );
+                assert!(app.project_dialog().is_some());
+                assert!(!app.task_reorder_active());
             }
 
             #[test]
-            fn project_dialog_reorder_j_and_k_move_selection() {
+            fn sidebar_uses_task_order_over_project_order() {
                 let mut app = fixture_app();
                 app.projects.push(ProjectConfig {
                     name: "site".to_string(),
                     path: PathBuf::from("/repos/site"),
                     defaults: Default::default(),
                 });
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(
-                        KeyEvent::new(KeyCode::Char('r'))
-                            .with_modifiers(Modifiers::CTRL)
-                            .with_kind(KeyEventKind::Press),
+                let mut site_workspace = Workspace::try_new(
+                    "site".to_string(),
+                    PathBuf::from("/repos/site"),
+                    "site".to_string(),
+                    Some(1_700_000_300),
+                    AgentType::Codex,
+                    WorkspaceStatus::Idle,
+                    false,
+                )
+                .expect("workspace should be valid");
+                site_workspace.project_path = Some(PathBuf::from("/repos/site"));
+                app.state.workspaces.push(site_workspace);
+                let feature_path = PathBuf::from("/repos/grove-feature-a");
+                let main_path = PathBuf::from("/repos/grove");
+                let site_path = PathBuf::from("/repos/site");
+                app.set_tasks_for_test(vec![
+                    task_with_worktrees(
+                        "task-workflow",
+                        &[("grove", &main_path, &feature_path, "feature-a")],
                     ),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('j')).with_kind(KeyEventKind::Press)),
-                );
+                    task_with_worktrees("site-task", &[("site", &site_path, &site_path, "site")]),
+                    task_with_worktrees("grove", &[("grove", &main_path, &main_path, "main")]),
+                ]);
+                app.set_task_order_for_test(vec![
+                    "task-workflow".to_string(),
+                    "site-task".to_string(),
+                    "grove".to_string(),
+                ]);
 
-                assert_eq!(app.projects[0].name, "site");
-                assert_eq!(app.projects[1].name, "grove");
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('k')).with_kind(KeyEventKind::Press)),
+                assert_eq!(
+                    app.state
+                        .workspaces
+                        .iter()
+                        .map(|workspace| workspace.path.clone())
+                        .collect::<Vec<_>>(),
+                    vec![feature_path, site_path, main_path]
                 );
-
-                assert_eq!(app.projects[0].name, "grove");
-                assert_eq!(app.projects[1].name, "site");
             }
 
             #[test]
-            fn project_dialog_reorder_enter_saves_project_order() {
+            fn task_reorder_enter_saves_task_order() {
                 let mut app = fixture_app();
                 app.projects.push(ProjectConfig {
                     name: "site".to_string(),
@@ -10450,11 +10482,24 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                 .expect("workspace should be valid");
                 site_workspace.project_path = Some(PathBuf::from("/repos/site"));
                 app.state.workspaces.push(site_workspace);
+                let feature_path = PathBuf::from("/repos/grove-feature-a");
+                let main_path = PathBuf::from("/repos/grove");
+                let site_path = PathBuf::from("/repos/site");
+                app.set_tasks_for_test(vec![
+                    task_with_worktrees("grove", &[("grove", &main_path, &main_path, "main")]),
+                    task_with_worktrees(
+                        "task-workflow",
+                        &[("grove", &main_path, &feature_path, "feature-a")],
+                    ),
+                    task_with_worktrees("site-task", &[("site", &site_path, &site_path, "site")]),
+                ]);
+                app.set_task_order_for_test(vec![
+                    "grove".to_string(),
+                    "task-workflow".to_string(),
+                    "site-task".to_string(),
+                ]);
+                app.state.selected_index = 1;
 
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
-                );
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(
@@ -10472,57 +10517,72 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
                 );
 
-                assert_eq!(app.projects[0].name, "site");
-                assert_eq!(app.projects[1].name, "grove");
-                assert!(
-                    app.project_dialog()
-                        .and_then(|dialog| dialog.reorder.as_ref())
-                        .is_none()
-                );
-
-                let loaded = crate::infrastructure::config::load_from_path(&app.config_path)
-                    .expect("config loads");
-                assert_eq!(loaded.projects[0].name, "site");
-                assert_eq!(loaded.projects[1].name, "grove");
                 assert_eq!(
                     app.state
                         .workspaces
                         .iter()
-                        .map(|workspace| workspace.name.as_str())
+                        .map(|workspace| workspace.path.clone())
                         .collect::<Vec<_>>(),
-                    vec!["site", "grove", "feature-a"]
+                    vec![main_path.clone(), site_path.clone(), feature_path.clone()]
                 );
-                assert_eq!(app.state.selected_index, 1);
+                assert!(!app.task_reorder_active());
 
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Up).with_kind(KeyEventKind::Press)),
+                let loaded = crate::infrastructure::config::load_from_path(&app.config_path)
+                    .expect("config loads");
+                assert_eq!(
+                    loaded.task_order,
+                    vec![
+                        "grove".to_string(),
+                        "site-task".to_string(),
+                        "task-workflow".to_string()
+                    ]
                 );
                 assert_eq!(
                     app.state
                         .selected_workspace()
-                        .map(|workspace| workspace.name.as_str()),
-                    Some("site")
+                        .map(|workspace| workspace.path.clone()),
+                    Some(feature_path)
                 );
             }
 
             #[test]
-            fn project_dialog_reorder_escape_restores_original_order() {
+            fn task_reorder_escape_restores_original_order() {
                 let mut app = fixture_app();
                 app.projects.push(ProjectConfig {
                     name: "site".to_string(),
                     path: PathBuf::from("/repos/site"),
                     defaults: Default::default(),
                 });
+                let mut site_workspace = Workspace::try_new(
+                    "site".to_string(),
+                    PathBuf::from("/repos/site"),
+                    "site".to_string(),
+                    Some(1_700_000_300),
+                    AgentType::Codex,
+                    WorkspaceStatus::Idle,
+                    false,
+                )
+                .expect("workspace should be valid");
+                site_workspace.project_path = Some(PathBuf::from("/repos/site"));
+                app.state.workspaces.push(site_workspace);
+                let feature_path = PathBuf::from("/repos/grove-feature-a");
+                let main_path = PathBuf::from("/repos/grove");
+                let site_path = PathBuf::from("/repos/site");
+                app.set_tasks_for_test(vec![
+                    task_with_worktrees("grove", &[("grove", &main_path, &main_path, "main")]),
+                    task_with_worktrees(
+                        "task-workflow",
+                        &[("grove", &main_path, &feature_path, "feature-a")],
+                    ),
+                    task_with_worktrees("site-task", &[("site", &site_path, &site_path, "site")]),
+                ]);
+                app.set_task_order_for_test(vec![
+                    "grove".to_string(),
+                    "task-workflow".to_string(),
+                    "site-task".to_string(),
+                ]);
+                app.state.selected_index = 1;
 
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
-                );
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(
@@ -10540,12 +10600,20 @@ grove-ws-feature-a-agent-1\t/repos/grove-feature-a\tagent\tCodex 1\tcodex\t9\n";
                     Msg::Key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press)),
                 );
 
-                assert_eq!(app.projects[0].name, "grove");
-                assert_eq!(app.projects[1].name, "site");
-                assert!(
-                    app.project_dialog()
-                        .and_then(|dialog| dialog.reorder.as_ref())
-                        .is_none()
+                assert_eq!(
+                    app.state
+                        .workspaces
+                        .iter()
+                        .map(|workspace| workspace.path.clone())
+                        .collect::<Vec<_>>(),
+                    vec![main_path.clone(), feature_path.clone(), site_path.clone()]
+                );
+                assert!(!app.task_reorder_active());
+                assert_eq!(
+                    app.state
+                        .selected_workspace()
+                        .map(|workspace| workspace.path.clone()),
+                    Some(feature_path)
                 );
             }
 

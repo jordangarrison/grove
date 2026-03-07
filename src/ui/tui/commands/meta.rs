@@ -802,19 +802,21 @@ static COMMAND_META: [UiCommandMeta; 39] = [
     },
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
-            id: "palette:reorder_projects",
-            title: "Reorder Projects",
-            description: "Open projects dialog in reorder mode (Ctrl+R, j/k or Up/Down, Enter/Esc)",
-            tags: &[
-                "projects", "project", "reorder", "move", "ctrl+r", "up", "down",
-            ],
+            id: "palette:reorder_tasks",
+            title: "Reorder Tasks",
+            description: "Reorder task groups in the sidebar (Ctrl+R, j/k or Up/Down, Enter/Esc)",
+            tags: &["tasks", "task", "reorder", "move", "ctrl+r", "up", "down"],
             category: "Workspace",
         }),
         help_hints: &[HelpHintSpec {
-            context: HelpHintContext::Workspace,
-            label: "Ctrl+R reorder projects",
+            context: HelpHintContext::List,
+            label: "Ctrl+R reorder tasks",
         }],
-        keybindings: &[],
+        keybindings: &[KeybindingSpec {
+            scope: KeybindingScope::NonInteractive,
+            code: KeyCodeMatch::CtrlChar('r'),
+            modifiers: KeyModifiersMatch::Any,
+        }],
     },
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
@@ -985,7 +987,7 @@ impl UiCommand {
             UiCommand::UpdateFromBase => &COMMAND_META[27],
             UiCommand::RefreshWorkspaces => &COMMAND_META[28],
             UiCommand::OpenProjects => &COMMAND_META[29],
-            UiCommand::ReorderProjects => &COMMAND_META[30],
+            UiCommand::ReorderTasks => &COMMAND_META[30],
             UiCommand::DeleteProject => &COMMAND_META[31],
             UiCommand::OpenSettings => &COMMAND_META[32],
             UiCommand::ToggleMouseCapture => &COMMAND_META[33],

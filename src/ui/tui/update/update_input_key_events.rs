@@ -174,8 +174,8 @@ impl GroveApp {
             UiCommand::ResizeSidebarNarrower
             | UiCommand::ResizeSidebarWider
             | UiCommand::FocusPreview
-            | UiCommand::ReorderProjects
             | UiCommand::DeleteProject => false,
+            UiCommand::ReorderTasks => self.state.focus == PaneFocus::WorkspaceList,
             _ => true,
         }
     }
@@ -265,6 +265,30 @@ impl GroveApp {
                         (self.execute_command_palette_action(id.as_str()), Cmd::None)
                     }
                 };
+            }
+            return (false, Cmd::None);
+        }
+
+        if self.task_reorder_active() {
+            match key_event.code {
+                KeyCode::Escape => self.cancel_task_reorder(),
+                KeyCode::Enter => self.save_task_reorder(),
+                KeyCode::Char('k') if key_event.modifiers.is_empty() => {
+                    self.move_selected_task_in_reorder(-1);
+                }
+                KeyCode::Char('j') if key_event.modifiers.is_empty() => {
+                    self.move_selected_task_in_reorder(1);
+                }
+                KeyCode::Up | KeyCode::BackTab => self.move_selected_task_in_reorder(-1),
+                KeyCode::Down | KeyCode::Tab => self.move_selected_task_in_reorder(1),
+                KeyCode::Char(_) if Self::is_ctrl_modal_nav_key(&key_event) => {
+                    if matches!(key_event.code, KeyCode::Char('n') | KeyCode::Char('N')) {
+                        self.move_selected_task_in_reorder(1);
+                    } else {
+                        self.move_selected_task_in_reorder(-1);
+                    }
+                }
+                _ => {}
             }
             return (false, Cmd::None);
         }

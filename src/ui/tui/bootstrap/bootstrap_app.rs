@@ -7,7 +7,7 @@ use std::env;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use super::bootstrap_config::{AppDependencies, load_runtime_config};
 use super::bootstrap_discovery::{bootstrap_data_for_projects, bootstrap_task_data_for_root};
@@ -164,6 +164,7 @@ impl GroveApp {
         let sidebar_width_pct = clamp_sidebar_ratio(persisted_config.sidebar_width_pct);
         let theme_name = persisted_config.theme;
         let launch_skip_permissions = persisted_config.launch_skip_permissions;
+        let task_order = persisted_config.task_order;
         let workspace_attention_ack_markers = persisted_config
             .attention_acks
             .into_iter()
@@ -182,6 +183,8 @@ impl GroveApp {
         let mut app = Self {
             repo_name,
             projects,
+            task_order,
+            task_reorder: None,
             state,
             discovery_state,
             preview_tab: PreviewTab::Agent,
@@ -278,6 +281,8 @@ impl GroveApp {
             #[cfg(test)]
             task_root_override: None,
         };
+        app.reconcile_task_order();
+        app.reorder_tasks_for_task_order();
         app.sync_workspace_tab_maps();
         app.rebuild_workspace_tabs_from_tmux_metadata();
         app.reconcile_workspace_attention_tracking();

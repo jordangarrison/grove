@@ -65,6 +65,7 @@ fn ensure_current_repo_project(config: &mut GroveConfig, config_path: &Path) -> 
     crate::infrastructure::config::save_projects_to_path(
         &projects_path,
         &config.projects,
+        &config.task_order,
         &config.attention_acks,
     )
     .err()

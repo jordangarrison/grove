@@ -15,12 +15,14 @@ impl GroveApp {
     fn save_projects_config_to_path(
         config_path: &Path,
         projects: &[ProjectConfig],
+        task_order: &[String],
         attention_acks: &[WorkspaceAttentionAckConfig],
     ) -> Result<(), String> {
         let projects_path = crate::infrastructure::config::projects_path_for(config_path);
         crate::infrastructure::config::save_projects_to_path(
             &projects_path,
             projects,
+            task_order,
             attention_acks,
         )
     }
@@ -85,6 +87,7 @@ impl GroveApp {
             let result = Self::save_projects_config_to_path(
                 &self.config_path,
                 &updated_projects,
+                &self.task_order,
                 &self.workspace_attention_acks_for_config(),
             );
             self.apply_delete_project_completion(DeleteProjectCompletion {
@@ -97,12 +100,14 @@ impl GroveApp {
         }
 
         let config_path = self.config_path.clone();
+        let task_order = self.task_order.clone();
         let attention_acks = self.workspace_attention_acks_for_config();
         self.dialogs.project_delete_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
             let result = Self::save_projects_config_to_path(
                 &config_path,
                 &updated_projects,
+                &task_order,
                 &attention_acks,
             );
             Msg::DeleteProjectCompleted(DeleteProjectCompletion {

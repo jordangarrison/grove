@@ -142,6 +142,8 @@ impl GroveApp {
         {
             self.state.selected_index = index;
         }
+        self.reconcile_task_order();
+        self.reorder_tasks_for_task_order();
         self.state.mode = previous_mode;
         self.state.focus = previous_focus;
         self.rebuild_workspace_tabs_from_tmux_metadata();
@@ -171,6 +173,8 @@ impl GroveApp {
         {
             self.state.selected_index = index;
         }
+        self.reconcile_task_order();
+        self.reorder_tasks_for_task_order();
         self.state.mode = previous_mode;
         self.state.focus = previous_focus;
         self.rebuild_workspace_tabs_from_tmux_metadata();
