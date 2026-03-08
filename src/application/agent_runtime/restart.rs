@@ -12,10 +12,6 @@ use super::{
     RestartExitInput, SessionExecutionResult,
 };
 
-pub fn agent_supports_in_pane_restart(agent: AgentType) -> bool {
-    agents::supports_in_pane_restart(agent)
-}
-
 fn restart_exit_input(agent: AgentType) -> Option<RestartExitInput> {
     agents::restart_exit_input(agent)
 }
