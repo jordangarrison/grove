@@ -12,14 +12,6 @@ use super::{
     RestartExitInput, SessionExecutionResult,
 };
 
-pub fn restart_workspace(
-    workspace: &Workspace,
-    skip_permissions: bool,
-    agent_env: Vec<(String, String)>,
-) -> SessionExecutionResult {
-    execute_restart_workspace_in_pane_with_result(workspace, skip_permissions, agent_env)
-}
-
 pub fn agent_supports_in_pane_restart(agent: AgentType) -> bool {
     agents::supports_in_pane_restart(agent)
 }

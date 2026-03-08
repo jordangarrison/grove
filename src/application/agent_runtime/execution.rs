@@ -16,20 +16,6 @@ use super::{
     TaskLaunchRequest,
 };
 
-pub fn start_workspace_with_mode(
-    request: &LaunchRequest,
-    mode: CommandExecutionMode<'_>,
-) -> SessionExecutionResult {
-    execute_launch_request_with_result_for_mode(request, mode)
-}
-
-pub fn stop_workspace_with_mode(
-    workspace: &Workspace,
-    mode: CommandExecutionMode<'_>,
-) -> SessionExecutionResult {
-    execute_stop_workspace_with_result_for_mode(workspace, mode)
-}
-
 #[cfg(test)]
 pub fn execute_launch_plan(launch_plan: LaunchPlan) -> std::io::Result<()> {
     let mut executor = ProcessCommandExecutor;
@@ -306,35 +292,17 @@ pub fn kill_workspace_session_commands(
     ]
 }
 
-fn has_numbered_suffix(session_name: &str, prefix: &str) -> bool {
-    let Some(ordinal) = session_name.strip_prefix(prefix) else {
+fn session_name_matches_base_session(base_session_name: &str, session_name: &str) -> bool {
+    let Some(suffix) = session_name.strip_prefix(base_session_name) else {
         return false;
     };
-    !ordinal.is_empty() && ordinal.chars().all(|character| character.is_ascii_digit())
-}
-
-fn session_name_matches_base_session(base_session_name: &str, session_name: &str) -> bool {
-    if session_name == base_session_name {
-        return true;
-    }
-
-    let git_session_name = format!("{base_session_name}-git");
-    if session_name == git_session_name {
-        return true;
-    }
-
-    let shell_session_name = format!("{base_session_name}-shell");
-    if session_name == shell_session_name {
-        return true;
-    }
-
-    let agent_prefix = format!("{base_session_name}-agent-");
-    if has_numbered_suffix(session_name, agent_prefix.as_str()) {
-        return true;
-    }
-
-    let shell_prefix = format!("{base_session_name}-shell-");
-    has_numbered_suffix(session_name, shell_prefix.as_str())
+    matches!(suffix, "" | "-git" | "-shell")
+        || suffix
+            .strip_prefix("-agent-")
+            .or_else(|| suffix.strip_prefix("-shell-"))
+            .is_some_and(|ordinal| {
+                !ordinal.is_empty() && ordinal.bytes().all(|b| b.is_ascii_digit())
+            })
 }
 
 pub fn workspace_session_name_matches(
@@ -354,18 +322,11 @@ pub fn workspace_session_names_for_cleanup(
     workspace_name: &str,
     existing_sessions: &[String],
 ) -> Vec<String> {
-    let mut matched = Vec::new();
-    let mut seen = HashSet::new();
-    for session_name in existing_sessions {
-        if !workspace_session_name_matches(task_slug, project_name, workspace_name, session_name) {
-            continue;
-        }
-        if !seen.insert(session_name.clone()) {
-            continue;
-        }
-        matched.push(session_name.clone());
-    }
-    matched
+    existing_sessions
+        .iter()
+        .filter(|s| workspace_session_name_matches(task_slug, project_name, workspace_name, s))
+        .cloned()
+        .collect()
 }
 
 pub fn kill_workspace_session_commands_for_existing_sessions(
