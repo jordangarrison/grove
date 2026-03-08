@@ -6,4 +6,3 @@
 //! - Lower-level modules remain internal implementation details.
 
 pub mod runtime_service;
-pub mod workspace_service;
