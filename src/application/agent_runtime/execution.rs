@@ -399,3 +399,489 @@ fn kill_tmux_session_command(session_name: &str) -> Vec<String> {
         session_name.to_string(),
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+
+    use crate::domain::{AgentType, WorkspaceStatus};
+    use crate::test_support::unique_test_dir;
+
+    use super::super::{LaunchPlan, LaunchRequest, LauncherScript};
+    use super::{
+        CommandExecutionMode, CommandExecutor, execute_command_with, execute_commands,
+        execute_commands_for_mode, execute_commands_with, execute_commands_with_executor,
+        execute_launch_plan, execute_launch_plan_for_mode, execute_launch_plan_with,
+        execute_launch_plan_with_executor, execute_launch_request_with_result_for_mode,
+        execute_stop_workspace_with_result_for_mode, kill_workspace_session_command,
+        kill_workspace_session_commands, kill_workspace_session_commands_for_existing_sessions,
+        workspace_session_name_matches, workspace_session_names_for_cleanup,
+    };
+
+    fn fixture_workspace(name: &str, is_main: bool) -> crate::domain::Workspace {
+        crate::domain::Workspace::try_new(
+            name.to_string(),
+            PathBuf::from(format!("/repos/grove-{name}")),
+            if is_main {
+                "main".to_string()
+            } else {
+                name.to_string()
+            },
+            Some(1_700_000_100),
+            AgentType::Claude,
+            if is_main {
+                WorkspaceStatus::Main
+            } else {
+                WorkspaceStatus::Idle
+            },
+            is_main,
+        )
+        .expect("workspace should be valid")
+    }
+
+    #[derive(Default)]
+    struct RecordingCommandExecutor {
+        commands: Vec<Vec<String>>,
+        launcher_scripts: Vec<(PathBuf, String)>,
+    }
+
+    impl CommandExecutor for RecordingCommandExecutor {
+        fn execute(&mut self, command: &[String]) -> std::io::Result<()> {
+            self.commands.push(command.to_vec());
+            Ok(())
+        }
+
+        fn write_launcher_script(&mut self, script: &LauncherScript) -> std::io::Result<()> {
+            self.launcher_scripts
+                .push((script.path.clone(), script.contents.clone()));
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn execute_commands_runs_successful_command_sequence() {
+        let commands = vec![
+            vec!["sh".to_string(), "-lc".to_string(), "true".to_string()],
+            Vec::new(),
+        ];
+        assert!(execute_commands(&commands).is_ok());
+    }
+
+    #[test]
+    fn execute_commands_returns_error_for_missing_program() {
+        let commands = vec![vec![
+            "grove-this-command-does-not-exist".to_string(),
+            "arg".to_string(),
+        ]];
+        assert!(execute_commands(&commands).is_err());
+    }
+
+    #[test]
+    fn execute_commands_for_mode_process_returns_string_errors() {
+        let commands = vec![vec![
+            "grove-this-command-does-not-exist".to_string(),
+            "arg".to_string(),
+        ]];
+        let result = execute_commands_for_mode(&commands, CommandExecutionMode::Process);
+        let error_text = result.expect_err("missing program should error");
+
+        assert!(!error_text.is_empty());
+    }
+
+    #[test]
+    fn execute_launch_request_with_result_for_mode_includes_workspace_context() {
+        let request = LaunchRequest {
+            session_name: None,
+            task_slug: None,
+            project_name: Some("project.one".to_string()),
+            workspace_name: "auth-flow".to_string(),
+            workspace_path: PathBuf::from("/repos/project.one/worktrees/auth-flow"),
+            agent: AgentType::Claude,
+            prompt: None,
+            workspace_init_command: None,
+            skip_permissions: false,
+            agent_env: Vec::new(),
+            capture_cols: Some(120),
+            capture_rows: Some(40),
+        };
+        let result = execute_launch_request_with_result_for_mode(
+            &request,
+            CommandExecutionMode::Delegating(&mut |_command| {
+                Err(std::io::Error::other("synthetic execution failure"))
+            }),
+        );
+
+        assert_eq!(result.workspace_name, "auth-flow");
+        assert_eq!(
+            result.workspace_path,
+            PathBuf::from("/repos/project.one/worktrees/auth-flow")
+        );
+        assert_eq!(result.session_name, "grove-ws-project-one-auth-flow");
+        assert!(result.result.is_err());
+    }
+
+    #[test]
+    fn execute_stop_workspace_with_result_for_mode_includes_workspace_context() {
+        let workspace = fixture_workspace("feature/auth.v2", false).with_project_context(
+            "project.one".to_string(),
+            PathBuf::from("/repos/project.one"),
+        );
+        let mut commands = Vec::new();
+        let result = execute_stop_workspace_with_result_for_mode(
+            &workspace,
+            CommandExecutionMode::Delegating(&mut |command| {
+                commands.push(command.to_vec());
+                Ok(())
+            }),
+        );
+
+        assert_eq!(result.workspace_name, "feature/auth.v2");
+        assert_eq!(
+            result.workspace_path,
+            PathBuf::from("/repos/grove-feature/auth.v2")
+        );
+        assert_eq!(result.session_name, "grove-ws-project-one-feature-auth-v2");
+        assert!(result.result.is_ok());
+        assert_eq!(
+            commands,
+            vec![
+                vec![
+                    "tmux".to_string(),
+                    "send-keys".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-project-one-feature-auth-v2".to_string(),
+                    "C-c".to_string(),
+                ],
+                vec![
+                    "tmux".to_string(),
+                    "kill-session".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-project-one-feature-auth-v2".to_string(),
+                ],
+            ]
+        );
+    }
+
+    #[test]
+    fn execute_launch_plan_writes_launcher_script_and_executes_commands() {
+        let temp_dir = unique_test_dir("execute-launch-plan");
+        let script_path = temp_dir.join(".grove/start.sh");
+        let launch_plan = LaunchPlan {
+            session_name: "grove-ws-test".to_string(),
+            pane_lookup_cmd: Vec::new(),
+            pre_launch_cmds: vec![vec![
+                "sh".to_string(),
+                "-lc".to_string(),
+                "true".to_string(),
+            ]],
+            launch_cmd: vec!["sh".to_string(), "-lc".to_string(), "true".to_string()],
+            launcher_script: Some(LauncherScript {
+                path: script_path.clone(),
+                contents: "#!/usr/bin/env bash\necho hi\n".to_string(),
+            }),
+        };
+
+        let result = execute_launch_plan(launch_plan);
+        assert!(result.is_ok());
+        assert_eq!(
+            fs::read_to_string(script_path).expect("launcher script should be written"),
+            "#!/usr/bin/env bash\necho hi\n"
+        );
+    }
+
+    #[test]
+    fn execute_commands_with_uses_supplied_executor() {
+        let commands = vec![
+            vec!["echo".to_string(), "first".to_string()],
+            vec!["echo".to_string(), "second".to_string()],
+        ];
+        let mut observed = Vec::new();
+
+        let result = execute_commands_with(&commands, |command| {
+            observed.push(command.join(" "));
+            Ok(())
+        });
+
+        assert!(result.is_ok());
+        assert_eq!(observed, vec!["echo first", "echo second"]);
+    }
+
+    #[test]
+    fn execute_commands_with_executor_skips_empty_commands() {
+        let commands = vec![
+            Vec::new(),
+            vec!["echo".to_string(), "ran".to_string()],
+            Vec::new(),
+        ];
+        let mut executor = RecordingCommandExecutor::default();
+
+        let result = execute_commands_with_executor(&commands, &mut executor);
+
+        assert!(result.is_ok());
+        assert_eq!(
+            executor.commands,
+            vec![vec!["echo".to_string(), "ran".to_string()]]
+        );
+    }
+
+    #[test]
+    fn execute_launch_plan_with_executor_runs_prelaunch_then_launch() {
+        let launch_plan = LaunchPlan {
+            session_name: "grove-ws-test".to_string(),
+            pane_lookup_cmd: Vec::new(),
+            pre_launch_cmds: vec![
+                vec!["echo".to_string(), "one".to_string()],
+                vec!["echo".to_string(), "two".to_string()],
+            ],
+            launch_cmd: vec!["echo".to_string(), "launch".to_string()],
+            launcher_script: Some(LauncherScript {
+                path: PathBuf::from("/tmp/.grove/start.sh"),
+                contents: "#!/usr/bin/env bash\necho hi\n".to_string(),
+            }),
+        };
+        let mut executor = RecordingCommandExecutor::default();
+
+        let result = execute_launch_plan_with_executor(&launch_plan, &mut executor);
+
+        assert!(result.is_ok());
+        assert_eq!(
+            executor.commands,
+            vec![
+                vec!["echo".to_string(), "one".to_string()],
+                vec!["echo".to_string(), "two".to_string()],
+                vec!["echo".to_string(), "launch".to_string()],
+            ]
+        );
+        assert_eq!(executor.launcher_scripts.len(), 1);
+    }
+
+    #[test]
+    fn execute_command_with_skips_empty_commands() {
+        let mut executed = false;
+
+        let result = execute_command_with(&Vec::new(), |_command| {
+            executed = true;
+            Ok(())
+        });
+
+        assert!(result.is_ok());
+        assert!(!executed);
+    }
+
+    #[test]
+    fn execute_command_with_invokes_executor_for_non_empty_commands() {
+        let command = vec!["echo".to_string(), "ok".to_string()];
+        let mut observed = String::new();
+
+        let result = execute_command_with(&command, |command| {
+            observed = command.join(" ");
+            Ok(())
+        });
+
+        assert!(result.is_ok());
+        assert_eq!(observed, "echo ok");
+    }
+
+    #[test]
+    fn execute_launch_plan_with_prefixes_script_write_errors() {
+        let temp_dir = unique_test_dir("execute-launch-plan-sync");
+        let blocked_path = temp_dir.join("blocked");
+        fs::write(&blocked_path, "not a directory").expect("blocked path should be writable");
+        let launch_plan = LaunchPlan {
+            session_name: "grove-ws-test".to_string(),
+            pane_lookup_cmd: Vec::new(),
+            pre_launch_cmds: Vec::new(),
+            launch_cmd: vec!["sh".to_string(), "-lc".to_string(), "true".to_string()],
+            launcher_script: Some(LauncherScript {
+                path: blocked_path.join(".grove/start.sh"),
+                contents: "#!/usr/bin/env bash\necho hi\n".to_string(),
+            }),
+        };
+
+        let result = execute_launch_plan_with(&launch_plan, |_command| Ok(()));
+        let error_text = result.expect_err("script write should fail").to_string();
+
+        assert!(error_text.starts_with("launcher script write failed: "));
+    }
+
+    #[test]
+    fn execute_launch_plan_for_mode_delegating_prefixes_script_write_errors() {
+        let temp_dir = unique_test_dir("execute-launch-plan-sync-mode");
+        let blocked_path = temp_dir.join("blocked");
+        fs::write(&blocked_path, "not a directory").expect("blocked path should be writable");
+        let launch_plan = LaunchPlan {
+            session_name: "grove-ws-test".to_string(),
+            pane_lookup_cmd: Vec::new(),
+            pre_launch_cmds: Vec::new(),
+            launch_cmd: vec!["sh".to_string(), "-lc".to_string(), "true".to_string()],
+            launcher_script: Some(LauncherScript {
+                path: blocked_path.join(".grove/start.sh"),
+                contents: "#!/usr/bin/env bash\necho hi\n".to_string(),
+            }),
+        };
+
+        let result = execute_launch_plan_for_mode(
+            &launch_plan,
+            CommandExecutionMode::Delegating(&mut |_command| Ok(())),
+        );
+        let error_text = result.expect_err("script write should fail");
+
+        assert!(error_text.starts_with("launcher script write failed: "));
+    }
+
+    #[test]
+    fn execute_launch_plan_keeps_unprefixed_script_write_errors() {
+        let temp_dir = unique_test_dir("execute-launch-plan");
+        let blocked_path = temp_dir.join("blocked");
+        fs::write(&blocked_path, "not a directory").expect("blocked path should be writable");
+        let launch_plan = LaunchPlan {
+            session_name: "grove-ws-test".to_string(),
+            pane_lookup_cmd: Vec::new(),
+            pre_launch_cmds: Vec::new(),
+            launch_cmd: vec!["sh".to_string(), "-lc".to_string(), "true".to_string()],
+            launcher_script: Some(LauncherScript {
+                path: blocked_path.join(".grove/start.sh"),
+                contents: "#!/usr/bin/env bash\necho hi\n".to_string(),
+            }),
+        };
+
+        let result = execute_launch_plan(launch_plan);
+        let error_text = result.expect_err("script write should fail").to_string();
+
+        assert!(!error_text.starts_with("launcher script write failed: "));
+    }
+
+    #[test]
+    fn kill_workspace_session_command_uses_project_scoped_tmux_session_name() {
+        assert_eq!(
+            kill_workspace_session_command(None, Some("project.one"), "feature/auth.v2"),
+            vec![
+                "tmux".to_string(),
+                "kill-session".to_string(),
+                "-t".to_string(),
+                "grove-ws-project-one-feature-auth-v2".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn kill_workspace_session_commands_include_agent_git_and_shell_sessions() {
+        assert_eq!(
+            kill_workspace_session_commands(None, Some("project.one"), "feature/auth.v2"),
+            vec![
+                vec![
+                    "tmux".to_string(),
+                    "kill-session".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-project-one-feature-auth-v2".to_string(),
+                ],
+                vec![
+                    "tmux".to_string(),
+                    "kill-session".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-project-one-feature-auth-v2-git".to_string(),
+                ],
+                vec![
+                    "tmux".to_string(),
+                    "kill-session".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-project-one-feature-auth-v2-shell".to_string(),
+                ],
+            ]
+        );
+    }
+
+    #[test]
+    fn workspace_session_name_matches_accepts_numbered_agent_and_shell_tabs() {
+        assert!(workspace_session_name_matches(
+            None,
+            Some("project.one"),
+            "feature/auth.v2",
+            "grove-ws-project-one-feature-auth-v2-agent-1",
+        ));
+        assert!(workspace_session_name_matches(
+            None,
+            Some("project.one"),
+            "feature/auth.v2",
+            "grove-ws-project-one-feature-auth-v2-shell-2",
+        ));
+        assert!(workspace_session_name_matches(
+            None,
+            Some("project.one"),
+            "feature/auth.v2",
+            "grove-ws-project-one-feature-auth-v2-git",
+        ));
+        assert!(!workspace_session_name_matches(
+            None,
+            Some("project.one"),
+            "feature/auth.v2",
+            "grove-ws-project-one-feature-auth-v2-agent-x",
+        ));
+        assert!(!workspace_session_name_matches(
+            None,
+            Some("project.one"),
+            "feature/auth.v2",
+            "grove-ws-project-one-other-agent-1",
+        ));
+    }
+
+    #[test]
+    fn workspace_session_names_for_cleanup_filters_to_workspace_tabs() {
+        let sessions = vec![
+            "grove-ws-project-one-feature-auth-v2".to_string(),
+            "grove-ws-project-one-feature-auth-v2-git".to_string(),
+            "grove-ws-project-one-feature-auth-v2-shell-1".to_string(),
+            "grove-ws-project-one-feature-auth-v2-agent-1".to_string(),
+            "grove-ws-project-one-other-agent-1".to_string(),
+        ];
+        assert_eq!(
+            workspace_session_names_for_cleanup(
+                None,
+                Some("project.one"),
+                "feature/auth.v2",
+                sessions.as_slice(),
+            ),
+            vec![
+                "grove-ws-project-one-feature-auth-v2".to_string(),
+                "grove-ws-project-one-feature-auth-v2-git".to_string(),
+                "grove-ws-project-one-feature-auth-v2-shell-1".to_string(),
+                "grove-ws-project-one-feature-auth-v2-agent-1".to_string(),
+            ],
+        );
+        assert_eq!(
+            kill_workspace_session_commands_for_existing_sessions(
+                None,
+                Some("project.one"),
+                "feature/auth.v2",
+                sessions.as_slice(),
+            ),
+            vec![
+                vec![
+                    "tmux".to_string(),
+                    "kill-session".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-project-one-feature-auth-v2".to_string(),
+                ],
+                vec![
+                    "tmux".to_string(),
+                    "kill-session".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-project-one-feature-auth-v2-git".to_string(),
+                ],
+                vec![
+                    "tmux".to_string(),
+                    "kill-session".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-project-one-feature-auth-v2-shell-1".to_string(),
+                ],
+                vec![
+                    "tmux".to_string(),
+                    "kill-session".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-project-one-feature-auth-v2-agent-1".to_string(),
+                ],
+            ],
+        );
+    }
+}
