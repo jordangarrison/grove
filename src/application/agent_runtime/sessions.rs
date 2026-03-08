@@ -196,7 +196,44 @@ pub fn live_preview_capture_target_for_tab(
 
 #[cfg(test)]
 mod tests {
-    use super::{sanitize_workspace_name, session_name_for_task, session_name_for_task_worktree};
+    use std::collections::HashSet;
+    use std::path::PathBuf;
+
+    use crate::domain::{AgentType, WorkspaceStatus};
+
+    use super::super::LivePreviewTarget;
+    use super::super::launch_plan::{
+        build_shell_launch_plan, launch_request_for_workspace, shell_launch_request_for_workspace,
+    };
+    use super::{
+        git_preview_session_if_ready, git_session_name_for_workspace, live_preview_agent_session,
+        live_preview_capture_target_for_tab, live_preview_session_for_tab, sanitize_workspace_name,
+        session_name_for_task, session_name_for_task_worktree, session_name_for_workspace,
+        session_name_for_workspace_ref, shell_session_name_for_workspace,
+        workspace_can_enter_interactive, workspace_can_start_agent, workspace_can_stop_agent,
+        workspace_session_for_preview_tab,
+    };
+
+    fn fixture_workspace(name: &str, is_main: bool) -> crate::domain::Workspace {
+        crate::domain::Workspace::try_new(
+            name.to_string(),
+            PathBuf::from(format!("/repos/grove-{name}")),
+            if is_main {
+                "main".to_string()
+            } else {
+                name.to_string()
+            },
+            Some(1_700_000_100),
+            AgentType::Claude,
+            if is_main {
+                WorkspaceStatus::Main
+            } else {
+                WorkspaceStatus::Idle
+            },
+            is_main,
+        )
+        .expect("workspace should be valid")
+    }
 
     #[test]
     fn session_names_distinguish_task_root_and_worktree_scope() {
@@ -220,6 +257,399 @@ mod tests {
         assert_eq!(
             session_name_for_task_worktree(" infra/base ", "terraform.fastly"),
             "grove-wt-infra-base-terraform-fastly"
+        );
+    }
+
+    #[test]
+    fn session_name_sanitizes_workspace_label() {
+        assert_eq!(
+            sanitize_workspace_name("feature/auth.v2"),
+            "feature-auth-v2"
+        );
+        assert_eq!(
+            session_name_for_workspace("feature/auth.v2"),
+            "grove-ws-feature-auth-v2"
+        );
+        assert_eq!(sanitize_workspace_name("///"), "workspace");
+    }
+
+    #[test]
+    fn session_name_for_workspace_ref_uses_project_context_when_present() {
+        let workspace = fixture_workspace("feature/auth.v2", false).with_project_context(
+            "project.one".to_string(),
+            PathBuf::from("/repos/project.one"),
+        );
+        assert_eq!(
+            session_name_for_workspace_ref(&workspace),
+            "grove-ws-project-one-feature-auth-v2"
+        );
+    }
+
+    #[test]
+    fn git_session_name_uses_project_context_when_present() {
+        let workspace = fixture_workspace("feature/auth.v2", false).with_project_context(
+            "project.one".to_string(),
+            PathBuf::from("/repos/project.one"),
+        );
+        assert_eq!(
+            git_session_name_for_workspace(&workspace),
+            "grove-ws-project-one-feature-auth-v2-git"
+        );
+    }
+
+    #[test]
+    fn shell_session_name_uses_project_context_when_present() {
+        let workspace = fixture_workspace("feature/auth.v2", false).with_project_context(
+            "project.one".to_string(),
+            PathBuf::from("/repos/project.one"),
+        );
+        assert_eq!(
+            shell_session_name_for_workspace(&workspace),
+            "grove-ws-project-one-feature-auth-v2-shell"
+        );
+    }
+
+    #[test]
+    fn launch_request_for_workspace_copies_workspace_context_and_options() {
+        let workspace = fixture_workspace("feature/auth.v2", false).with_project_context(
+            "project.one".to_string(),
+            PathBuf::from("/repos/project.one"),
+        );
+        let request = launch_request_for_workspace(
+            &workspace,
+            Some("run checks".to_string()),
+            Some("direnv allow".to_string()),
+            true,
+            vec![(
+                "CLAUDE_CONFIG_DIR".to_string(),
+                "~/.claude-work".to_string(),
+            )],
+            Some(132),
+            Some(44),
+        );
+
+        assert_eq!(request.project_name.as_deref(), Some("project.one"));
+        assert_eq!(request.workspace_name, "feature/auth.v2");
+        assert_eq!(
+            request.workspace_path,
+            PathBuf::from("/repos/grove-feature/auth.v2")
+        );
+        assert_eq!(request.agent, AgentType::Claude);
+        assert_eq!(request.prompt.as_deref(), Some("run checks"));
+        assert_eq!(
+            request.workspace_init_command.as_deref(),
+            Some("direnv allow")
+        );
+        assert!(request.skip_permissions);
+        assert_eq!(
+            request.agent_env,
+            vec![(
+                "CLAUDE_CONFIG_DIR".to_string(),
+                "~/.claude-work".to_string()
+            )]
+        );
+        assert_eq!(request.capture_cols, Some(132));
+        assert_eq!(request.capture_rows, Some(44));
+    }
+
+    #[test]
+    fn shell_launch_request_for_workspace_uses_workspace_path_and_options() {
+        let workspace = fixture_workspace("feature", false);
+        let request = shell_launch_request_for_workspace(
+            &workspace,
+            "grove-ws-feature-git".to_string(),
+            "lazygit".to_string(),
+            Some("direnv allow".to_string()),
+            Some(120),
+            Some(40),
+        );
+
+        assert_eq!(request.session_name, "grove-ws-feature-git");
+        assert_eq!(
+            request.workspace_path,
+            PathBuf::from("/repos/grove-feature")
+        );
+        assert_eq!(request.command, "lazygit");
+        assert_eq!(
+            request.workspace_init_command.as_deref(),
+            Some("direnv allow")
+        );
+        assert_eq!(request.capture_cols, Some(120));
+        assert_eq!(request.capture_rows, Some(40));
+    }
+
+    #[test]
+    fn build_shell_launch_plan_skips_send_keys_when_command_is_empty() {
+        let request = shell_launch_request_for_workspace(
+            &fixture_workspace("feature", false),
+            "grove-ws-feature-shell".to_string(),
+            String::new(),
+            None,
+            Some(120),
+            Some(40),
+        );
+        let plan = build_shell_launch_plan(&request);
+
+        assert!(plan.launch_cmd.is_empty());
+    }
+
+    #[test]
+    fn build_shell_launch_plan_with_workspace_init_runs_before_empty_command() {
+        let request = shell_launch_request_for_workspace(
+            &fixture_workspace("feature", false),
+            "grove-ws-feature-shell".to_string(),
+            String::new(),
+            Some("direnv allow".to_string()),
+            Some(120),
+            Some(40),
+        );
+        let plan = build_shell_launch_plan(&request);
+
+        assert_eq!(plan.launch_cmd.len(), 6);
+        assert!(
+            plan.launch_cmd[4].contains("bash -lc"),
+            "expected init wrapper command, got {}",
+            plan.launch_cmd[4]
+        );
+        assert!(
+            plan.launch_cmd[4].contains("direnv allow"),
+            "expected init command in wrapper, got {}",
+            plan.launch_cmd[4]
+        );
+    }
+
+    #[test]
+    fn workspace_init_runs_directly_without_lock_wrapper() {
+        let request = shell_launch_request_for_workspace(
+            &fixture_workspace("feature", false),
+            "grove-ws-feature-shell".to_string(),
+            String::new(),
+            Some("echo init".to_string()),
+            Some(120),
+            Some(40),
+        );
+        let plan = build_shell_launch_plan(&request);
+        let command = &plan.launch_cmd[4];
+
+        assert!(
+            command.contains("bash -lc"),
+            "expected shell wrapper, got {command}"
+        );
+        assert!(
+            command.contains("echo init"),
+            "expected init command, got {command}"
+        );
+        assert!(
+            !command.contains("workspace-init-"),
+            "lock wrapper should be removed, got {command}"
+        );
+    }
+
+    #[test]
+    fn build_shell_launch_plan_with_direnv_init_wraps_run_command_in_direnv_exec() {
+        let request = shell_launch_request_for_workspace(
+            &fixture_workspace("feature", false),
+            "grove-ws-feature-shell".to_string(),
+            "yarn test".to_string(),
+            Some("direnv allow".to_string()),
+            Some(120),
+            Some(40),
+        );
+        let plan = build_shell_launch_plan(&request);
+
+        assert!(
+            plan.launch_cmd[4].contains("direnv exec . bash -lc"),
+            "expected direnv exec wrapper, got {}",
+            plan.launch_cmd[4]
+        );
+        assert!(
+            plan.launch_cmd[4].contains("yarn test"),
+            "expected shell command in wrapped launch, got {}",
+            plan.launch_cmd[4]
+        );
+    }
+
+    #[test]
+    fn build_shell_launch_plan_with_capture_dimensions_resizes_before_send_keys() {
+        let request = shell_launch_request_for_workspace(
+            &fixture_workspace("feature", false),
+            "grove-ws-feature-shell".to_string(),
+            "bash".to_string(),
+            None,
+            Some(120),
+            Some(40),
+        );
+        let plan = build_shell_launch_plan(&request);
+
+        assert_eq!(
+            plan.pre_launch_cmds.last(),
+            Some(&vec![
+                "tmux".to_string(),
+                "resize-window".to_string(),
+                "-t".to_string(),
+                "grove-ws-feature-shell".to_string(),
+                "-x".to_string(),
+                "120".to_string(),
+                "-y".to_string(),
+                "40".to_string(),
+            ])
+        );
+    }
+
+    #[test]
+    fn live_preview_agent_session_requires_live_workspace_session() {
+        let idle_workspace = fixture_workspace("feature", false);
+        assert_eq!(live_preview_agent_session(Some(&idle_workspace)), None);
+
+        let mut active_workspace = fixture_workspace("feature", false);
+        active_workspace.status = WorkspaceStatus::Active;
+        assert_eq!(
+            live_preview_agent_session(Some(&active_workspace)),
+            Some("grove-ws-feature".to_string())
+        );
+    }
+
+    #[test]
+    fn workspace_can_enter_interactive_depends_on_preview_tab_mode() {
+        let idle_workspace = fixture_workspace("feature", false);
+        assert!(!workspace_can_enter_interactive(
+            Some(&idle_workspace),
+            false
+        ));
+        assert!(workspace_can_enter_interactive(Some(&idle_workspace), true));
+        assert!(!workspace_can_enter_interactive(None, false));
+
+        let mut active_workspace = fixture_workspace("feature", false);
+        active_workspace.status = WorkspaceStatus::Active;
+        assert!(workspace_can_enter_interactive(
+            Some(&active_workspace),
+            false
+        ));
+    }
+
+    #[test]
+    fn workspace_can_start_agent_depends_on_status_and_support() {
+        let idle_workspace = fixture_workspace("feature", false);
+        assert!(workspace_can_start_agent(Some(&idle_workspace)));
+        assert!(!workspace_can_start_agent(None));
+
+        let unsupported_workspace = fixture_workspace("feature", false).with_supported_agent(false);
+        assert!(!workspace_can_start_agent(Some(&unsupported_workspace)));
+
+        let mut waiting_workspace = fixture_workspace("feature", false);
+        waiting_workspace.status = WorkspaceStatus::Waiting;
+        assert!(!workspace_can_start_agent(Some(&waiting_workspace)));
+
+        let mut done_workspace = fixture_workspace("feature", false);
+        done_workspace.status = WorkspaceStatus::Done;
+        assert!(workspace_can_start_agent(Some(&done_workspace)));
+    }
+
+    #[test]
+    fn workspace_can_stop_agent_depends_on_session_status() {
+        let idle_workspace = fixture_workspace("feature", false);
+        assert!(!workspace_can_stop_agent(Some(&idle_workspace)));
+        assert!(!workspace_can_stop_agent(None));
+
+        let mut active_workspace = fixture_workspace("feature", false);
+        active_workspace.status = WorkspaceStatus::Active;
+        assert!(workspace_can_stop_agent(Some(&active_workspace)));
+    }
+
+    #[test]
+    fn workspace_session_for_preview_tab_respects_preview_tab_mode() {
+        let idle_workspace = fixture_workspace("feature", false);
+        assert_eq!(
+            workspace_session_for_preview_tab(
+                Some(&idle_workspace),
+                true,
+                Some("grove-ws-feature-git"),
+            ),
+            Some("grove-ws-feature-git".to_string())
+        );
+        assert_eq!(
+            workspace_session_for_preview_tab(Some(&idle_workspace), true, None),
+            None
+        );
+        assert_eq!(
+            workspace_session_for_preview_tab(None, true, Some("grove-ws-feature-git")),
+            None
+        );
+        assert_eq!(
+            workspace_session_for_preview_tab(
+                Some(&idle_workspace),
+                false,
+                Some("grove-ws-feature-git"),
+            ),
+            None
+        );
+
+        let mut active_workspace = fixture_workspace("feature", false);
+        active_workspace.status = WorkspaceStatus::Active;
+        assert_eq!(
+            workspace_session_for_preview_tab(Some(&active_workspace), false, None),
+            Some("grove-ws-feature".to_string())
+        );
+    }
+
+    #[test]
+    fn git_preview_session_if_ready_requires_matching_ready_session() {
+        let workspace = fixture_workspace("feature", false);
+        let mut ready_sessions = HashSet::new();
+        assert_eq!(
+            git_preview_session_if_ready(Some(&workspace), &ready_sessions),
+            None
+        );
+        ready_sessions.insert("grove-ws-feature-git".to_string());
+        assert_eq!(
+            git_preview_session_if_ready(Some(&workspace), &ready_sessions),
+            Some("grove-ws-feature-git".to_string())
+        );
+        assert_eq!(git_preview_session_if_ready(None, &ready_sessions), None);
+    }
+
+    #[test]
+    fn live_preview_session_for_tab_uses_git_or_agent_policy() {
+        let idle_workspace = fixture_workspace("feature", false);
+        let mut active_workspace = fixture_workspace("feature", false);
+        active_workspace.status = WorkspaceStatus::Active;
+        let mut ready_sessions = HashSet::new();
+        ready_sessions.insert("grove-ws-feature-git".to_string());
+
+        assert_eq!(
+            live_preview_session_for_tab(Some(&idle_workspace), true, &ready_sessions),
+            Some("grove-ws-feature-git".to_string())
+        );
+        assert_eq!(
+            live_preview_session_for_tab(Some(&idle_workspace), false, &ready_sessions),
+            None
+        );
+        assert_eq!(
+            live_preview_session_for_tab(Some(&active_workspace), false, &ready_sessions),
+            Some("grove-ws-feature".to_string())
+        );
+    }
+
+    #[test]
+    fn live_preview_capture_target_for_tab_sets_capture_mode() {
+        let mut active_workspace = fixture_workspace("feature", false);
+        active_workspace.status = WorkspaceStatus::Active;
+        let mut ready_sessions = HashSet::new();
+        ready_sessions.insert("grove-ws-feature-git".to_string());
+
+        assert_eq!(
+            live_preview_capture_target_for_tab(Some(&active_workspace), false, &ready_sessions),
+            Some(LivePreviewTarget {
+                session_name: "grove-ws-feature".to_string(),
+                include_escape_sequences: true,
+            })
+        );
+        assert_eq!(
+            live_preview_capture_target_for_tab(Some(&active_workspace), true, &ready_sessions),
+            Some(LivePreviewTarget {
+                session_name: "grove-ws-feature-git".to_string(),
+                include_escape_sequences: true,
+            })
         );
     }
 }

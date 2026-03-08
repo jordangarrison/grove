@@ -381,10 +381,16 @@ fn build_launcher_script(agent_cmd: &str, prompt: &str, launcher_path: &Path) ->
 
 #[cfg(test)]
 mod tests {
-    use super::build_task_launch_plan;
-    use crate::application::agent_runtime::TaskLaunchRequest;
-    use crate::domain::AgentType;
     use std::path::PathBuf;
+
+    use crate::application::agent_runtime::{LaunchRequest, TaskLaunchRequest};
+    use crate::domain::AgentType;
+
+    use super::super::capture::tmux_capture_error_indicates_missing_session;
+    use super::{
+        build_launch_plan, build_task_launch_plan, default_agent_command, stop_plan,
+        tmux_launch_error_indicates_duplicate_session, trimmed_nonempty,
+    };
 
     #[test]
     fn build_task_launch_plan_targets_task_root_session() {
@@ -426,5 +432,334 @@ mod tests {
                 "Enter".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn tmux_missing_session_error_detection_matches_known_patterns() {
+        assert!(tmux_capture_error_indicates_missing_session(
+            "can't find session: grove-ws-main"
+        ));
+        assert!(tmux_capture_error_indicates_missing_session(
+            "No active session found"
+        ));
+        assert!(!tmux_capture_error_indicates_missing_session(
+            "permission denied"
+        ));
+    }
+
+    #[test]
+    fn tmux_duplicate_session_error_detection_matches_known_patterns() {
+        assert!(tmux_launch_error_indicates_duplicate_session(
+            "duplicate session: grove-ws-main-git"
+        ));
+        assert!(tmux_launch_error_indicates_duplicate_session(
+            "command failed: tmux new-session -d -s foo; Duplicate Session: foo"
+        ));
+        assert!(!tmux_launch_error_indicates_duplicate_session(
+            "permission denied"
+        ));
+    }
+
+    #[test]
+    fn codex_launch_command_matches_prd_flags() {
+        assert_eq!(default_agent_command(AgentType::Codex, false), "codex");
+        assert_eq!(
+            default_agent_command(AgentType::Codex, true),
+            "codex --dangerously-bypass-approvals-and-sandbox"
+        );
+        assert_eq!(
+            default_agent_command(AgentType::OpenCode, false),
+            "opencode"
+        );
+        assert_eq!(
+            default_agent_command(AgentType::OpenCode, true),
+            "OPENCODE_PERMISSION='{\"*\":\"allow\"}' opencode"
+        );
+    }
+
+    #[test]
+    fn agent_command_override_normalization_trims_whitespace() {
+        assert_eq!(
+            trimmed_nonempty("  /tmp/fake-codex --flag  "),
+            Some("/tmp/fake-codex --flag".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_command_override_normalization_ignores_empty_values() {
+        assert_eq!(trimmed_nonempty(""), None);
+        assert_eq!(trimmed_nonempty("   "), None);
+    }
+
+    #[test]
+    fn launch_plan_without_prompt_sends_agent_directly() {
+        let request = LaunchRequest {
+            session_name: None,
+            task_slug: None,
+            project_name: None,
+            workspace_name: "auth-flow".to_string(),
+            workspace_path: PathBuf::from("/repos/grove-auth-flow"),
+            agent: AgentType::Claude,
+            prompt: None,
+            workspace_init_command: None,
+            skip_permissions: true,
+            agent_env: Vec::new(),
+            capture_cols: None,
+            capture_rows: None,
+        };
+
+        let plan = build_launch_plan(&request);
+
+        assert_eq!(plan.session_name, "grove-ws-auth-flow");
+        assert!(plan.launcher_script.is_none());
+        assert_eq!(
+            plan.launch_cmd,
+            vec![
+                "tmux",
+                "send-keys",
+                "-t",
+                "grove-ws-auth-flow",
+                "claude --dangerously-skip-permissions",
+                "Enter"
+            ]
+        );
+    }
+
+    #[test]
+    fn launch_plan_with_workspace_init_wraps_agent_start_command() {
+        let request = LaunchRequest {
+            session_name: None,
+            task_slug: None,
+            project_name: None,
+            workspace_name: "auth-flow".to_string(),
+            workspace_path: PathBuf::from("/repos/grove-auth-flow"),
+            agent: AgentType::Claude,
+            prompt: None,
+            workspace_init_command: Some("direnv allow".to_string()),
+            skip_permissions: false,
+            agent_env: Vec::new(),
+            capture_cols: None,
+            capture_rows: None,
+        };
+
+        let plan = build_launch_plan(&request);
+        assert_eq!(plan.launch_cmd.len(), 6);
+        assert!(
+            plan.launch_cmd[4].contains("bash -lc"),
+            "expected init wrapper command, got {}",
+            plan.launch_cmd[4]
+        );
+        assert!(
+            plan.launch_cmd[4].contains("direnv allow"),
+            "expected init command in wrapper, got {}",
+            plan.launch_cmd[4]
+        );
+        assert!(
+            plan.launch_cmd[4].contains("claude"),
+            "expected agent command in wrapper, got {}",
+            plan.launch_cmd[4]
+        );
+        assert!(
+            plan.launch_cmd[4].contains("direnv exec . bash -lc"),
+            "expected direnv exec wrapper, got {}",
+            plan.launch_cmd[4]
+        );
+    }
+
+    #[test]
+    fn launch_plan_with_non_direnv_init_does_not_wrap_agent_command_in_direnv_exec() {
+        let request = LaunchRequest {
+            session_name: None,
+            task_slug: None,
+            project_name: None,
+            workspace_name: "auth-flow".to_string(),
+            workspace_path: PathBuf::from("/repos/grove-auth-flow"),
+            agent: AgentType::Claude,
+            prompt: None,
+            workspace_init_command: Some("echo init".to_string()),
+            skip_permissions: false,
+            agent_env: Vec::new(),
+            capture_cols: None,
+            capture_rows: None,
+        };
+
+        let plan = build_launch_plan(&request);
+        assert!(
+            !plan.launch_cmd[4].contains("direnv exec . bash -lc"),
+            "did not expect direnv exec wrapper, got {}",
+            plan.launch_cmd[4]
+        );
+    }
+
+    #[test]
+    fn launch_plan_with_capture_dimensions_resizes_before_send_keys() {
+        let request = LaunchRequest {
+            session_name: None,
+            task_slug: None,
+            project_name: None,
+            workspace_name: "auth-flow".to_string(),
+            workspace_path: PathBuf::from("/repos/grove-auth-flow"),
+            agent: AgentType::Claude,
+            prompt: None,
+            workspace_init_command: None,
+            skip_permissions: true,
+            agent_env: Vec::new(),
+            capture_cols: Some(132),
+            capture_rows: Some(44),
+        };
+
+        let plan = build_launch_plan(&request);
+
+        assert_eq!(
+            plan.pre_launch_cmds.last(),
+            Some(&vec![
+                "tmux".to_string(),
+                "resize-window".to_string(),
+                "-t".to_string(),
+                "grove-ws-auth-flow".to_string(),
+                "-x".to_string(),
+                "132".to_string(),
+                "-y".to_string(),
+                "44".to_string(),
+            ])
+        );
+    }
+
+    #[test]
+    fn launch_plan_with_agent_env_exports_before_agent_start() {
+        let request = LaunchRequest {
+            session_name: None,
+            task_slug: None,
+            project_name: None,
+            workspace_name: "auth-flow".to_string(),
+            workspace_path: PathBuf::from("/repos/grove-auth-flow"),
+            agent: AgentType::Claude,
+            prompt: None,
+            workspace_init_command: None,
+            skip_permissions: false,
+            agent_env: vec![
+                (
+                    "CLAUDE_CONFIG_DIR".to_string(),
+                    "~/.claude-work".to_string(),
+                ),
+                (
+                    "OPENAI_API_BASE".to_string(),
+                    "https://api.example.com/v1".to_string(),
+                ),
+            ],
+            capture_cols: None,
+            capture_rows: None,
+        };
+
+        let plan = build_launch_plan(&request);
+
+        assert_eq!(
+            plan.pre_launch_cmds[2],
+            vec![
+                "tmux".to_string(),
+                "send-keys".to_string(),
+                "-t".to_string(),
+                "grove-ws-auth-flow".to_string(),
+                "export CLAUDE_CONFIG_DIR='~/.claude-work' OPENAI_API_BASE='https://api.example.com/v1'"
+                    .to_string(),
+                "Enter".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn launch_plan_with_prompt_writes_launcher_script() {
+        let request = LaunchRequest {
+            session_name: None,
+            task_slug: None,
+            project_name: None,
+            workspace_name: "db_migration".to_string(),
+            workspace_path: PathBuf::from("/repos/grove-db_migration"),
+            agent: AgentType::Codex,
+            prompt: Some("fix migration".to_string()),
+            workspace_init_command: None,
+            skip_permissions: false,
+            agent_env: Vec::new(),
+            capture_cols: None,
+            capture_rows: None,
+        };
+
+        let plan = build_launch_plan(&request);
+
+        let script = plan.launcher_script.expect("script should be present");
+        assert!(script.contents.contains("codex"));
+        assert!(script.contents.contains("fix migration"));
+        assert!(script.contents.contains("GROVE_PROMPT_EOF"));
+        assert_eq!(
+            plan.launch_cmd,
+            vec![
+                "tmux",
+                "send-keys",
+                "-t",
+                "grove-ws-db_migration",
+                "bash /repos/grove-db_migration/.grove/start.sh",
+                "Enter"
+            ]
+        );
+    }
+
+    #[test]
+    fn stop_plan_uses_ctrl_c_then_kill_session() {
+        let plan = stop_plan("grove-ws-auth-flow");
+        assert_eq!(plan.len(), 2);
+        assert_eq!(
+            plan[0],
+            vec!["tmux", "send-keys", "-t", "grove-ws-auth-flow", "C-c"]
+        );
+        assert_eq!(
+            plan[1],
+            vec!["tmux", "kill-session", "-t", "grove-ws-auth-flow"]
+        );
+    }
+
+    #[test]
+    fn launch_plan_with_workspace_init_runs_before_agent() {
+        let request = LaunchRequest {
+            session_name: None,
+            task_slug: None,
+            project_name: None,
+            workspace_name: "auth-flow".to_string(),
+            workspace_path: PathBuf::from("/repos/grove-auth-flow"),
+            agent: AgentType::Claude,
+            prompt: None,
+            workspace_init_command: Some("direnv allow".to_string()),
+            skip_permissions: true,
+            agent_env: Vec::new(),
+            capture_cols: None,
+            capture_rows: None,
+        };
+
+        let plan = build_launch_plan(&request);
+        assert_eq!(plan.launch_cmd.len(), 6);
+        assert_eq!(plan.launch_cmd[0], "tmux");
+        assert_eq!(plan.launch_cmd[1], "send-keys");
+        assert_eq!(plan.launch_cmd[2], "-t");
+        assert_eq!(plan.launch_cmd[3], "grove-ws-auth-flow");
+        assert!(
+            plan.launch_cmd[4].contains("bash -lc"),
+            "expected shell wrapper command, got {}",
+            plan.launch_cmd[4]
+        );
+        assert!(
+            plan.launch_cmd[4].contains("direnv allow"),
+            "expected init command in wrapper, got {}",
+            plan.launch_cmd[4]
+        );
+        assert!(
+            plan.launch_cmd[4].contains("claude --dangerously-skip-permissions"),
+            "expected agent command in wrapper, got {}",
+            plan.launch_cmd[4]
+        );
+        assert!(
+            plan.launch_cmd[4].contains("direnv exec . bash -lc"),
+            "expected direnv exec wrapper, got {}",
+            plan.launch_cmd[4]
+        );
+        assert_eq!(plan.launch_cmd[5], "Enter");
     }
 }

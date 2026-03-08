@@ -69,3 +69,60 @@ pub fn reconcile_with_sessions_owned(
         orphaned_sessions,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+    use std::path::PathBuf;
+
+    use crate::domain::{AgentType, WorkspaceStatus};
+
+    use super::reconcile_with_sessions;
+
+    fn fixture_workspace(name: &str, is_main: bool) -> crate::domain::Workspace {
+        crate::domain::Workspace::try_new(
+            name.to_string(),
+            PathBuf::from(format!("/repos/grove-{name}")),
+            if is_main {
+                "main".to_string()
+            } else {
+                name.to_string()
+            },
+            Some(1_700_000_100),
+            AgentType::Claude,
+            if is_main {
+                WorkspaceStatus::Main
+            } else {
+                WorkspaceStatus::Idle
+            },
+            is_main,
+        )
+        .expect("workspace should be valid")
+    }
+
+    #[test]
+    fn reconciliation_marks_active_orphaned_and_orphan_sessions() {
+        let workspaces = vec![
+            fixture_workspace("grove", true),
+            fixture_workspace("feature-a", false),
+            fixture_workspace("feature-b", false),
+        ];
+
+        let running_sessions = HashSet::from([
+            "grove-ws-grove".to_string(),
+            "grove-ws-feature-a".to_string(),
+            "grove-ws-zombie".to_string(),
+        ]);
+        let previously_running = HashSet::from(["feature-b".to_string()]);
+
+        let result = reconcile_with_sessions(&workspaces, &running_sessions, &previously_running);
+        assert_eq!(result.workspaces[0].status, WorkspaceStatus::Active);
+        assert_eq!(result.workspaces[1].status, WorkspaceStatus::Active);
+        assert_eq!(result.workspaces[2].status, WorkspaceStatus::Idle);
+        assert!(result.workspaces[2].is_orphaned);
+        assert_eq!(
+            result.orphaned_sessions,
+            vec!["grove-ws-zombie".to_string()]
+        );
+    }
+}
