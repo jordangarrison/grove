@@ -38,7 +38,7 @@ pub enum TaskLifecycleError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskBranchSource {
     BaseBranch,
-    PullRequest { number: u64 },
+    PullRequest { number: u64, branch_name: String },
 }
 
 pub fn task_lifecycle_error_message(error: &TaskLifecycleError) -> String {
@@ -282,6 +282,7 @@ fn git_optional_stdout(
 
 fn create_task_domain(
     task_name: &str,
+    task_branch: &str,
     task_root: &Path,
     worktrees: Vec<Worktree>,
 ) -> Result<Task, TaskLifecycleError> {
@@ -289,7 +290,7 @@ fn create_task_domain(
         task_name.to_string(),
         task_name.to_string(),
         task_root.to_path_buf(),
-        task_name.to_string(),
+        task_branch.to_string(),
         worktrees,
     )
     .map_err(|error| TaskLifecycleError::TaskInvalid(format!("{error:?}")))
@@ -598,26 +599,47 @@ mod tests {
             task_name: "pr-123".to_string(),
             repositories: vec![repository(PathBuf::from("/repos/flohome"))],
             agent: AgentType::Codex,
-            branch_source: TaskBranchSource::PullRequest { number: 123 },
+            branch_source: TaskBranchSource::PullRequest {
+                number: 123,
+                branch_name: "feature/from-pr".to_string(),
+            },
         };
 
         assert!(request.validate().is_ok());
     }
 
     #[test]
-    fn create_task_in_root_fetches_pull_request_head_before_worktree_add() {
+    fn create_task_in_root_creates_pull_request_worktree_from_remote_branch_name() {
         let temp = TestDir::new("create-pr-head");
         let tasks_root = temp.path.join("tasks");
+        let source = temp.path.join("source");
+        let bare = temp.path.join("remote.git");
         let flohome = temp.path.join("repos").join("flohome");
-        fs::create_dir_all(&flohome).expect("flohome repo should exist");
+
+        init_git_repo(&source, "main");
+        run_git(&source, &["checkout", "-b", "feature/from-pr"]);
+        fs::write(source.join("feature.txt"), "feature\n").expect("feature file should write");
+        run_git(&source, &["add", "feature.txt"]);
+        run_git(&source, &["commit", "-m", "feature"]);
+        let feature_rev = git_stdout(&source, &["rev-parse", "HEAD"]);
+        run_git(&source, &["checkout", "main"]);
+        clone_git_repo(&source, &bare, true);
+        run_git(
+            &bare,
+            &["update-ref", "refs/pull/123/head", feature_rev.as_str()],
+        );
+        clone_git_repo(&bare, &flohome, false);
 
         let request = CreateTaskRequest {
             task_name: "pr-123".to_string(),
             repositories: vec![repository(flohome.clone())],
             agent: AgentType::Codex,
-            branch_source: TaskBranchSource::PullRequest { number: 123 },
+            branch_source: TaskBranchSource::PullRequest {
+                number: 123,
+                branch_name: "feature/from-pr".to_string(),
+            },
         };
-        let git = StubGitRunner::default();
+        let git = crate::application::workspace_lifecycle::CommandGitRunner;
         let setup = StubSetupRunner;
         let setup_command = StubSetupCommandRunner;
 
@@ -626,6 +648,7 @@ mod tests {
                 .expect("task should create");
 
         assert_eq!(result.task.worktrees.len(), 1);
+        assert_eq!(result.task.worktrees[0].branch, "feature/from-pr");
         assert_eq!(
             fs::read_to_string(result.task.worktrees[0].path.join(".grove/base"))
                 .expect("base marker should exist")
@@ -633,32 +656,121 @@ mod tests {
             "main"
         );
         assert_eq!(
-            git.calls(),
-            vec![
-                (
-                    flohome.clone(),
-                    vec![
-                        "fetch".to_string(),
-                        "origin".to_string(),
-                        "pull/123/head".to_string(),
-                    ],
-                ),
-                (
-                    flohome,
-                    vec![
-                        "worktree".to_string(),
-                        "add".to_string(),
-                        "-b".to_string(),
-                        "pr-123".to_string(),
-                        tasks_root
-                            .join("pr-123")
-                            .join("flohome")
-                            .to_string_lossy()
-                            .to_string(),
-                        "FETCH_HEAD".to_string(),
-                    ],
-                ),
-            ]
+            git_stdout(
+                result.task.worktrees[0].path.as_path(),
+                &["rev-parse", "HEAD"]
+            ),
+            feature_rev
+        );
+        assert_eq!(
+            git_stdout(&flohome, &["rev-parse", "feature/from-pr"]),
+            feature_rev
+        );
+    }
+
+    #[test]
+    fn create_task_in_root_moves_existing_unused_pull_request_branch_to_fetch_head() {
+        let temp = TestDir::new("move-pr-branch");
+        let tasks_root = temp.path.join("tasks");
+        let source = temp.path.join("source");
+        let bare = temp.path.join("remote.git");
+        let flohome = temp.path.join("repos").join("flohome");
+
+        init_git_repo(&source, "main");
+        let base_rev = git_stdout(&source, &["rev-parse", "HEAD"]);
+        run_git(&source, &["checkout", "-b", "feature/from-pr"]);
+        fs::write(source.join("feature.txt"), "feature\n").expect("feature file should write");
+        run_git(&source, &["add", "feature.txt"]);
+        run_git(&source, &["commit", "-m", "feature"]);
+        let feature_rev = git_stdout(&source, &["rev-parse", "HEAD"]);
+        run_git(&source, &["checkout", "main"]);
+        clone_git_repo(&source, &bare, true);
+        run_git(
+            &bare,
+            &["update-ref", "refs/pull/123/head", feature_rev.as_str()],
+        );
+        clone_git_repo(&bare, &flohome, false);
+        run_git(&flohome, &["branch", "feature/from-pr", base_rev.as_str()]);
+
+        let request = CreateTaskRequest {
+            task_name: "pr-123".to_string(),
+            repositories: vec![repository(flohome.clone())],
+            agent: AgentType::Codex,
+            branch_source: TaskBranchSource::PullRequest {
+                number: 123,
+                branch_name: "feature/from-pr".to_string(),
+            },
+        };
+        let git = crate::application::workspace_lifecycle::CommandGitRunner;
+        let setup = StubSetupRunner;
+        let setup_command = StubSetupCommandRunner;
+
+        let result =
+            create_task_in_root(tasks_root.as_path(), &request, &git, &setup, &setup_command)
+                .expect("task should create");
+
+        assert_eq!(result.task.worktrees[0].branch, "feature/from-pr");
+        assert_eq!(
+            git_stdout(&flohome, &["rev-parse", "feature/from-pr"]),
+            feature_rev
+        );
+        assert_eq!(
+            git_stdout(
+                result.task.worktrees[0].path.as_path(),
+                &["rev-parse", "HEAD"]
+            ),
+            feature_rev
+        );
+    }
+
+    #[test]
+    fn create_task_in_root_fails_when_pull_request_branch_is_checked_out_locally() {
+        let temp = TestDir::new("checked-out-pr-branch");
+        let tasks_root = temp.path.join("tasks");
+        let source = temp.path.join("source");
+        let bare = temp.path.join("remote.git");
+        let flohome = temp.path.join("repos").join("flohome");
+
+        init_git_repo(&source, "main");
+        run_git(&source, &["checkout", "-b", "feature/from-pr"]);
+        fs::write(source.join("feature.txt"), "feature\n").expect("feature file should write");
+        run_git(&source, &["add", "feature.txt"]);
+        run_git(&source, &["commit", "-m", "feature"]);
+        let feature_rev = git_stdout(&source, &["rev-parse", "HEAD"]);
+        run_git(&source, &["checkout", "main"]);
+        clone_git_repo(&source, &bare, true);
+        run_git(
+            &bare,
+            &["update-ref", "refs/pull/123/head", feature_rev.as_str()],
+        );
+        clone_git_repo(&bare, &flohome, false);
+        run_git(&flohome, &["checkout", "-b", "feature/from-pr"]);
+
+        let request = CreateTaskRequest {
+            task_name: "pr-123".to_string(),
+            repositories: vec![repository(flohome.clone())],
+            agent: AgentType::Codex,
+            branch_source: TaskBranchSource::PullRequest {
+                number: 123,
+                branch_name: "feature/from-pr".to_string(),
+            },
+        };
+        let git = crate::application::workspace_lifecycle::CommandGitRunner;
+        let setup = StubSetupRunner;
+        let setup_command = StubSetupCommandRunner;
+
+        let result =
+            create_task_in_root(tasks_root.as_path(), &request, &git, &setup, &setup_command);
+
+        let error = result.expect_err("task creation should fail");
+        assert!(matches!(
+            error,
+            super::TaskLifecycleError::GitCommandFailed(_)
+        ));
+        let message = super::task_lifecycle_error_message(&error);
+        assert!(
+            message.contains("used by worktree") || message.contains("checked out"),
+            "unexpected error message: {message}"
         );
     }
 
@@ -699,6 +811,55 @@ mod tests {
             args,
             stderr_trimmed(&output)
         );
+    }
+
+    fn init_git_repo(repo_root: &Path, branch: &str) {
+        fs::create_dir_all(repo_root).expect("repo should exist");
+        run_git(repo_root, &["init", &format!("--initial-branch={branch}")]);
+        run_git(repo_root, &["config", "user.name", "Grove Tests"]);
+        run_git(repo_root, &["config", "user.email", "grove@example.com"]);
+        fs::write(repo_root.join("README.md"), "hello\n").expect("readme should write");
+        run_git(repo_root, &["add", "README.md"]);
+        run_git(repo_root, &["commit", "-m", "init"]);
+    }
+
+    fn clone_git_repo(source: &Path, destination: &Path, bare: bool) {
+        let Some(parent) = destination.parent() else {
+            panic!("clone destination should have parent");
+        };
+        fs::create_dir_all(parent).expect("clone parent should exist");
+        let mut command = Command::new("git");
+        command.current_dir(parent);
+        command.arg("clone");
+        if bare {
+            command.arg("--bare");
+        }
+        command.arg(source);
+        command.arg(destination);
+        let output = command.output().expect("git clone should run");
+        assert!(
+            output.status.success(),
+            "git clone failed: {}",
+            stderr_trimmed(&output)
+        );
+    }
+
+    fn git_stdout(repo_root: &Path, args: &[&str]) -> String {
+        let output = Command::new("git")
+            .current_dir(repo_root)
+            .args(args)
+            .output()
+            .expect("git should run");
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            stderr_trimmed(&output)
+        );
+        String::from_utf8(output.stdout)
+            .expect("stdout should decode")
+            .trim()
+            .to_string()
     }
 
     #[test]

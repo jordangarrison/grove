@@ -300,6 +300,8 @@ struct GroveApp {
     last_sidebar_mouse_scroll_delta: i8,
     #[cfg(test)]
     task_root_override: Option<PathBuf>,
+    #[cfg(test)]
+    pull_request_branch_name_override: Option<String>,
 }
 
 impl Model for GroveApp {

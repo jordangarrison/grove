@@ -1,5 +1,6 @@
 use super::update_prelude::*;
 use crate::application::task_lifecycle::TaskBranchSource;
+use crate::infrastructure::process::stderr_trimmed;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ParsedGitHubPullRequest {
@@ -19,6 +20,20 @@ impl GroveApp {
         {
             None
         }
+    }
+
+    fn resolve_pull_request_branch_name(
+        &self,
+        pull_request: &ParsedGitHubPullRequest,
+    ) -> Result<String, String> {
+        #[cfg(test)]
+        {
+            if let Some(branch_name) = self.pull_request_branch_name_override.clone() {
+                return Ok(branch_name);
+            }
+        }
+
+        resolve_pull_request_branch_name_with_gh(pull_request)
     }
 
     pub(super) fn confirm_create_dialog(&mut self) {
@@ -62,6 +77,13 @@ impl GroveApp {
                     self.show_info_toast(message);
                     return;
                 }
+                let branch_name = match self.resolve_pull_request_branch_name(&parsed) {
+                    Ok(branch_name) => branch_name,
+                    Err(message) => {
+                        self.show_info_toast(message);
+                        return;
+                    }
+                };
 
                 (
                     format!("pr-{}", parsed.number),
@@ -69,6 +91,7 @@ impl GroveApp {
                     dialog.pr_url.clone(),
                     TaskBranchSource::PullRequest {
                         number: parsed.number,
+                        branch_name,
                     },
                 )
             }
@@ -168,6 +191,42 @@ fn execute_create_task_request(
     }
 
     create_task(request, &git, &setup, &setup_command)
+}
+
+fn resolve_pull_request_branch_name_with_gh(
+    pull_request: &ParsedGitHubPullRequest,
+) -> Result<String, String> {
+    let output = Command::new("gh")
+        .args([
+            "api",
+            &format!(
+                "repos/{}/{}/pulls/{}",
+                pull_request.owner, pull_request.repo, pull_request.number
+            ),
+        ])
+        .output()
+        .map_err(|error| format!("gh api failed: {error}"))?;
+    if !output.status.success() {
+        return Err(stderr_trimmed(&output));
+    }
+
+    parse_pull_request_head_branch_name(&output.stdout)
+}
+
+fn parse_pull_request_head_branch_name(stdout: &[u8]) -> Result<String, String> {
+    let payload: Value =
+        serde_json::from_slice(stdout).map_err(|error| format!("invalid gh response: {error}"))?;
+    let Some(branch_name) = payload
+        .get("head")
+        .and_then(|head| head.get("ref"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Err("pull request head branch is missing".to_string());
+    };
+
+    Ok(branch_name.to_string())
 }
 
 fn parse_github_pull_request_url(url: &str) -> Result<ParsedGitHubPullRequest, String> {
@@ -305,5 +364,14 @@ mod tests {
             parse_github_repo_slug_from_remote("https://github.com/flocasts/web-monorepo.git"),
             Some(("flocasts".to_string(), "web-monorepo".to_string()))
         );
+    }
+
+    #[test]
+    fn parse_pull_request_head_branch_name_reads_head_ref() {
+        let branch_name =
+            parse_pull_request_head_branch_name(br#"{"head":{"ref":"feature/from-pr"}}"#)
+                .expect("branch name should parse");
+
+        assert_eq!(branch_name, "feature/from-pr");
     }
 }

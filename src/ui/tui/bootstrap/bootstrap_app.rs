@@ -209,6 +209,8 @@ impl GroveApp {
             last_sidebar_mouse_scroll_delta: 0,
             #[cfg(test)]
             task_root_override: None,
+            #[cfg(test)]
+            pull_request_branch_name_override: None,
         };
         app.reconcile_task_order();
         app.reorder_tasks_for_task_order();

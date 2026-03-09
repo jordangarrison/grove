@@ -10650,6 +10650,7 @@ mod tests {
                     },
                 ];
                 app.task_root_override = Some(tasks_root.clone());
+                app.pull_request_branch_name_override = Some("feature/from-pr".to_string());
 
                 app.open_create_dialog();
                 let dialog = app
@@ -10764,6 +10765,7 @@ mod tests {
                     },
                 ];
                 app.task_root_override = Some(tasks_root.clone());
+                app.pull_request_branch_name_override = Some("feature/from-pr".to_string());
 
                 app.open_create_dialog();
                 let dialog = app
@@ -10790,6 +10792,13 @@ mod tests {
                 assert_eq!(
                     app.state.selected_task().map(|task| task.worktrees.len()),
                     Some(1)
+                );
+                assert_eq!(
+                    app.state
+                        .selected_task()
+                        .and_then(|task| task.worktrees.first())
+                        .map(|worktree| worktree.branch.as_str()),
+                    Some("feature/from-pr")
                 );
                 assert_eq!(
                     app.state

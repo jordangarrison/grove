@@ -116,7 +116,7 @@ struct ReplayCreateWorkspaceRequest {
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum ReplayTaskBranchSource {
     BaseBranch,
-    PullRequest { number: u64 },
+    PullRequest { number: u64, branch_name: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -519,14 +519,26 @@ impl ReplayTaskBranchSource {
     fn from_branch_source(branch_source: &TaskBranchSource) -> Self {
         match branch_source {
             TaskBranchSource::BaseBranch => Self::BaseBranch,
-            TaskBranchSource::PullRequest { number } => Self::PullRequest { number: *number },
+            TaskBranchSource::PullRequest {
+                number,
+                branch_name,
+            } => Self::PullRequest {
+                number: *number,
+                branch_name: branch_name.clone(),
+            },
         }
     }
 
     fn to_branch_source(&self) -> TaskBranchSource {
         match self {
             Self::BaseBranch => TaskBranchSource::BaseBranch,
-            Self::PullRequest { number } => TaskBranchSource::PullRequest { number: *number },
+            Self::PullRequest {
+                number,
+                branch_name,
+            } => TaskBranchSource::PullRequest {
+                number: *number,
+                branch_name: branch_name.clone(),
+            },
         }
     }
 }

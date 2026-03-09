@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 use crate::domain::{Task, WorkspaceStatus, Worktree};
 
@@ -28,11 +29,19 @@ pub(super) fn create_task_in_root(
 
     let mut warnings = Vec::new();
     let mut worktrees = Vec::new();
+    let task_branch = match &request.branch_source {
+        TaskBranchSource::BaseBranch => request.task_name.clone(),
+        TaskBranchSource::PullRequest { branch_name, .. } => branch_name.clone(),
+    };
 
     for repository in &request.repositories {
         let base_branch = resolve_repository_base_branch(repository)?;
         let repository_dir = repo_directory_name(repository)?;
         let worktree_path = task_root.join(repository_dir);
+        let worktree_branch = match &request.branch_source {
+            TaskBranchSource::BaseBranch => request.task_name.clone(),
+            TaskBranchSource::PullRequest { branch_name, .. } => branch_name.clone(),
+        };
         match &request.branch_source {
             TaskBranchSource::BaseBranch => {
                 let args = vec![
@@ -47,7 +56,10 @@ pub(super) fn create_task_in_root(
                     .run(repository.path.as_path(), &args)
                     .map_err(TaskLifecycleError::GitCommandFailed)?;
             }
-            TaskBranchSource::PullRequest { number } => {
+            TaskBranchSource::PullRequest {
+                number,
+                branch_name,
+            } => {
                 let fetch_args = vec![
                     "fetch".to_string(),
                     "origin".to_string(),
@@ -56,17 +68,38 @@ pub(super) fn create_task_in_root(
                 git_runner
                     .run(repository.path.as_path(), &fetch_args)
                     .map_err(TaskLifecycleError::GitCommandFailed)?;
-                let args = vec![
-                    "worktree".to_string(),
-                    "add".to_string(),
-                    "-b".to_string(),
-                    request.task_name.clone(),
-                    worktree_path.to_string_lossy().to_string(),
-                    "FETCH_HEAD".to_string(),
-                ];
-                git_runner
-                    .run(repository.path.as_path(), &args)
-                    .map_err(TaskLifecycleError::GitCommandFailed)?;
+                if local_branch_exists(repository.path.as_path(), branch_name)? {
+                    let move_branch_args = vec![
+                        "branch".to_string(),
+                        "-f".to_string(),
+                        branch_name.clone(),
+                        "FETCH_HEAD".to_string(),
+                    ];
+                    git_runner
+                        .run(repository.path.as_path(), &move_branch_args)
+                        .map_err(TaskLifecycleError::GitCommandFailed)?;
+                    let add_existing_args = vec![
+                        "worktree".to_string(),
+                        "add".to_string(),
+                        worktree_path.to_string_lossy().to_string(),
+                        branch_name.clone(),
+                    ];
+                    git_runner
+                        .run(repository.path.as_path(), &add_existing_args)
+                        .map_err(TaskLifecycleError::GitCommandFailed)?;
+                } else {
+                    let add_new_args = vec![
+                        "worktree".to_string(),
+                        "add".to_string(),
+                        "-b".to_string(),
+                        branch_name.clone(),
+                        worktree_path.to_string_lossy().to_string(),
+                        "FETCH_HEAD".to_string(),
+                    ];
+                    git_runner
+                        .run(repository.path.as_path(), &add_new_args)
+                        .map_err(TaskLifecycleError::GitCommandFailed)?;
+                }
             }
         }
 
@@ -85,7 +118,7 @@ pub(super) fn create_task_in_root(
                 script_path: setup_script_path,
                 main_worktree_path: repository.path.clone(),
                 workspace_path: worktree_path.clone(),
-                worktree_branch: request.task_name.clone(),
+                worktree_branch: worktree_branch.clone(),
             };
             if let Err(error) = setup_script_runner.run(&context) {
                 warnings.push(format!(
@@ -100,7 +133,7 @@ pub(super) fn create_task_in_root(
             let context = SetupCommandContext {
                 main_worktree_path: repository.path.clone(),
                 workspace_path: worktree_path.clone(),
-                worktree_branch: request.task_name.clone(),
+                worktree_branch: worktree_branch.clone(),
             };
             if let Err(error) = setup_command_runner.run(&context, setup_command) {
                 warnings.push(format!(
@@ -114,7 +147,7 @@ pub(super) fn create_task_in_root(
             repository.name.clone(),
             repository.path.clone(),
             worktree_path,
-            request.task_name.clone(),
+            worktree_branch,
             request.agent,
             WorkspaceStatus::Idle,
         )
@@ -123,8 +156,12 @@ pub(super) fn create_task_in_root(
         worktrees.push(worktree);
     }
 
-    let task: Task =
-        create_task_domain(request.task_name.as_str(), task_root.as_path(), worktrees)?;
+    let task: Task = create_task_domain(
+        request.task_name.as_str(),
+        task_branch.as_str(),
+        task_root.as_path(),
+        worktrees,
+    )?;
     write_task_manifest(&task_root, &task)?;
 
     Ok(CreateTaskResult {
@@ -132,4 +169,22 @@ pub(super) fn create_task_in_root(
         task,
         warnings,
     })
+}
+
+fn local_branch_exists(repo_root: &Path, branch_name: &str) -> Result<bool, TaskLifecycleError> {
+    let output = Command::new("git")
+        .current_dir(repo_root)
+        .args([
+            "show-ref",
+            "--verify",
+            "--quiet",
+            &format!("refs/heads/{branch_name}"),
+        ])
+        .output()
+        .map_err(|error| TaskLifecycleError::GitCommandFailed(error.to_string()))?;
+    if output.status.success() {
+        return Ok(true);
+    }
+
+    Ok(false)
 }
