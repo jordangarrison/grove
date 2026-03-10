@@ -895,9 +895,10 @@ impl GroveApp {
     }
 
     pub(super) fn active_tab_is_scrollable(&self) -> bool {
-        matches!(
-            self.selected_active_tab_kind(),
-            PreviewTab::Agent | PreviewTab::Shell
-        )
+        match self.selected_active_tab_kind() {
+            PreviewTab::Home => self.selected_task_preview_session_if_ready().is_some(),
+            PreviewTab::Agent | PreviewTab::Shell => true,
+            PreviewTab::Git => false,
+        }
     }
 }

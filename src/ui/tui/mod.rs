@@ -7795,6 +7795,35 @@ mod tests {
             }
 
             #[test]
+            fn task_home_preview_mode_keys_scroll_and_jump_to_bottom() {
+                let mut app = fixture_task_app();
+                app.preview.lines = (1..=120).map(|value| value.to_string()).collect();
+                app.preview.render_lines = app.preview.lines.clone();
+                focus_home_preview_tab(&mut app);
+                app.session
+                    .agent_sessions
+                    .mark_ready("grove-task-flohome-launch".to_string());
+                assert_eq!(app.preview_tab, PreviewTab::Home);
+                assert_eq!(app.state.mode, crate::ui::state::UiMode::Preview);
+
+                let was_auto_scroll = app.preview.auto_scroll;
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('k')).with_kind(KeyEventKind::Press)),
+                );
+                assert!(was_auto_scroll);
+                assert!(!app.preview.auto_scroll);
+                assert!(app.preview.offset > 0);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('G')).with_kind(KeyEventKind::Press)),
+                );
+                assert_eq!(app.preview.offset, 0);
+                assert!(app.preview.auto_scroll);
+            }
+
+            #[test]
             fn preview_mode_arrow_page_keys_and_end_control_scrollback() {
                 let mut app = fixture_app();
                 app.preview.lines = (1..=240).map(|value| value.to_string()).collect();
