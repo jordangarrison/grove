@@ -9,7 +9,8 @@ use serde_json::Value;
 
 use crate::infrastructure::event_log::Event as LogEvent;
 
-use super::GroveApp;
+use super::panes::PaneRole;
+use super::{DIVIDER_WIDTH, GroveApp};
 
 impl GroveApp {
     pub(super) fn render_model(&self, frame: &mut Frame) {
@@ -22,18 +23,58 @@ impl GroveApp {
         Paragraph::new("")
             .style(Style::new().bg(theme.base))
             .render(area, frame);
-        let layout = Self::view_layout_for_size(
-            frame.buffer.width(),
-            frame.buffer.height(),
-            self.sidebar_width_pct,
-            self.sidebar_hidden,
-        );
 
-        self.render_header(frame, layout.header);
-        self.render_sidebar(frame, layout.sidebar);
-        self.render_divider(frame, layout.divider);
-        self.render_preview_pane(frame, layout.preview);
-        self.render_status_line(frame, layout.status);
+        let pane_layout = self.panes.solve(area);
+        let header_rect = self
+            .panes
+            .rect_for_role(&pane_layout, PaneRole::Header)
+            .unwrap_or_default();
+        let workspace_list_rect = self
+            .panes
+            .rect_for_role(&pane_layout, PaneRole::WorkspaceList)
+            .unwrap_or_default();
+        let preview_rect = self
+            .panes
+            .rect_for_role(&pane_layout, PaneRole::Preview)
+            .unwrap_or_default();
+        let status_rect = self
+            .panes
+            .rect_for_role(&pane_layout, PaneRole::Status)
+            .unwrap_or_default();
+
+        // Carve divider from the preview pane's left edge at the workspace_list/preview boundary.
+        // When sidebar is hidden, collapse workspace_list to zero and give space to preview.
+        let (sidebar_rect, divider_rect, preview_rect) = if self.sidebar_hidden {
+            let full_preview = Rect::new(
+                workspace_list_rect.x,
+                workspace_list_rect.y,
+                workspace_list_rect.width + preview_rect.width,
+                preview_rect.height,
+            );
+            (Rect::default(), Rect::default(), full_preview)
+        } else if preview_rect.width > DIVIDER_WIDTH {
+            let divider = Rect::new(
+                preview_rect.x,
+                preview_rect.y,
+                DIVIDER_WIDTH,
+                preview_rect.height,
+            );
+            let adjusted_preview = Rect::new(
+                preview_rect.x + DIVIDER_WIDTH,
+                preview_rect.y,
+                preview_rect.width - DIVIDER_WIDTH,
+                preview_rect.height,
+            );
+            (workspace_list_rect, divider, adjusted_preview)
+        } else {
+            (workspace_list_rect, Rect::default(), preview_rect)
+        };
+
+        self.render_header(frame, header_rect);
+        self.render_sidebar(frame, sidebar_rect);
+        self.render_divider(frame, divider_rect);
+        self.render_preview_pane(frame, preview_rect);
+        self.render_status_line(frame, status_rect);
         self.render_create_dialog_overlay(frame, area);
         self.render_edit_dialog_overlay(frame, area);
         self.render_rename_tab_dialog_overlay(frame, area);

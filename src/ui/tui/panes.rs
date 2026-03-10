@@ -10,7 +10,6 @@ use super::{HEADER_HEIGHT, STATUS_HEIGHT};
 
 /// Semantic identity for each Grove pane region.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[cfg_attr(not(test), allow(dead_code))]
 pub(super) enum PaneRole {
     Header,
     Workspace,
@@ -19,9 +18,9 @@ pub(super) enum PaneRole {
     Status,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 impl PaneRole {
     /// All roles that must be present in a valid Grove pane tree.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) const ALL: &[PaneRole] = &[
         PaneRole::Header,
         PaneRole::Workspace,
@@ -42,13 +41,11 @@ impl PaneRole {
 }
 
 /// Grove-owned pane adapter wrapping ftui `PaneTree` with semantic role access.
-#[cfg_attr(not(test), allow(dead_code))]
 pub(super) struct GrovePaneModel {
     tree: PaneTree,
     role_ids: BTreeMap<PaneRole, PaneId>,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 impl GrovePaneModel {
     /// Build the canonical full-screen pane tree.
     ///
@@ -194,6 +191,7 @@ impl GrovePaneModel {
     }
 
     /// Get the PaneId for a semantic role.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn id_for_role(&self, role: PaneRole) -> Option<PaneId> {
         self.role_ids.get(&role).copied()
     }

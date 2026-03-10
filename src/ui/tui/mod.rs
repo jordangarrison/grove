@@ -1272,6 +1272,96 @@ mod tests {
         }
     }
 
+    mod pane_tree_render_layout {
+        use super::*;
+        use crate::ui::tui::panes::PaneRole;
+        use ftui::core::geometry::Rect;
+
+        #[test]
+        fn header_renders_in_header_pane_rect() {
+            let app = fixture_app();
+            let (width, height) = (80, 24);
+            let mut pool = GraphemePool::new();
+            let mut frame = Frame::new(width, height, &mut pool);
+            ftui::Model::view(&app, &mut frame);
+            let pane_layout = app.panes.solve(Rect::from_size(width, height));
+            let header_rect = app
+                .panes
+                .rect_for_role(&pane_layout, PaneRole::Header)
+                .expect("header rect");
+
+            let header_text = row_text(&frame, header_rect.y, 0, width);
+            assert!(
+                !header_text.trim().is_empty(),
+                "header row should have content"
+            );
+        }
+
+        #[test]
+        fn status_renders_in_status_pane_rect() {
+            let app = fixture_app();
+            let (width, height) = (80, 24);
+            let mut pool = GraphemePool::new();
+            let mut frame = Frame::new(width, height, &mut pool);
+            ftui::Model::view(&app, &mut frame);
+            let pane_layout = app.panes.solve(Rect::from_size(width, height));
+            let status_rect = app
+                .panes
+                .rect_for_role(&pane_layout, PaneRole::Status)
+                .expect("status rect");
+
+            let status_text = row_text(&frame, status_rect.y, 0, width);
+            assert!(
+                !status_text.trim().is_empty(),
+                "status row should have content"
+            );
+        }
+
+        #[test]
+        fn workspace_list_renders_in_workspace_list_pane_rect() {
+            let app = fixture_app();
+            let (width, height) = (120, 40);
+            let mut pool = GraphemePool::new();
+            let mut frame = Frame::new(width, height, &mut pool);
+            ftui::Model::view(&app, &mut frame);
+            let pane_layout = app.panes.solve(Rect::from_size(width, height));
+            let list_rect = app
+                .panes
+                .rect_for_role(&pane_layout, PaneRole::WorkspaceList)
+                .expect("workspace list rect");
+
+            // The workspace list area should have some content (workspace names)
+            let mid_row = list_rect.y + list_rect.height / 2;
+            let list_text = row_text(&frame, mid_row, list_rect.x, list_rect.right());
+            assert!(
+                !list_text.trim().is_empty(),
+                "workspace list area should have content at row {mid_row}"
+            );
+        }
+
+        #[test]
+        fn preview_renders_in_preview_pane_rect() {
+            let app = fixture_app();
+            let (width, height) = (120, 40);
+            let mut pool = GraphemePool::new();
+            let mut frame = Frame::new(width, height, &mut pool);
+            ftui::Model::view(&app, &mut frame);
+            let pane_layout = app.panes.solve(Rect::from_size(width, height));
+            let preview_rect = app
+                .panes
+                .rect_for_role(&pane_layout, PaneRole::Preview)
+                .expect("preview rect");
+
+            // The preview area should have tab content
+            let tab_row_text =
+                row_text(&frame, preview_rect.y, preview_rect.x, preview_rect.right());
+            assert!(
+                !tab_row_text.trim().is_empty(),
+                "preview area should have tab content at top"
+            );
+        }
+    }
+
     #[test]
     fn startup_restores_workspace_tabs_from_tmux_metadata() {
         let rows = format!(
