@@ -1572,6 +1572,194 @@ mod tests {
         }
     }
 
+    mod pane_tree_overlays {
+        use super::*;
+        use crate::ui::tui::panes::PaneRole;
+        use ftui::core::geometry::Rect;
+
+        #[test]
+        fn dialog_renders_over_full_frame_not_inside_pane() {
+            let mut app = fixture_app();
+            app.open_create_dialog();
+
+            with_rendered_frame(&app, 120, 40, |frame| {
+                let pane_layout = app.panes.solve(Rect::from_size(120, 40)).expect("solve");
+                let sidebar_rect = app
+                    .panes
+                    .rect_for_role(&pane_layout, PaneRole::WorkspaceList)
+                    .expect("sidebar rect");
+                let preview_rect = app
+                    .panes
+                    .rect_for_role(&pane_layout, PaneRole::Preview)
+                    .expect("preview rect");
+
+                // The dialog should be centered across the frame, spanning both
+                // the sidebar and preview pane boundaries.
+                let dialog_row = find_row_containing(frame, "New Task", 0, 120);
+                assert!(
+                    dialog_row.is_some(),
+                    "create dialog title should be visible in the frame"
+                );
+                let row_y = dialog_row.unwrap();
+                // Dialog title row should span across the boundary between
+                // sidebar and preview panes, proving it uses full frame area.
+                assert!(
+                    row_y >= sidebar_rect.y && row_y < sidebar_rect.bottom(),
+                    "dialog should overlap the workspace region vertically (row={row_y}, sidebar={}-{})",
+                    sidebar_rect.y,
+                    sidebar_rect.bottom()
+                );
+                // The dialog text should extend beyond the sidebar pane's right edge
+                // into the preview pane area.
+                let dialog_text = row_text(frame, row_y, 0, 120);
+                let first_char_x = dialog_text
+                    .char_indices()
+                    .find(|(_, ch)| !ch.is_whitespace())
+                    .map(|(i, _)| u16::try_from(i).unwrap_or(0));
+                let last_char_x = dialog_text
+                    .char_indices()
+                    .rev()
+                    .find(|(_, ch)| !ch.is_whitespace())
+                    .map(|(i, _)| u16::try_from(i).unwrap_or(0));
+                if let (Some(first), Some(last)) = (first_char_x, last_char_x) {
+                    assert!(
+                        first < sidebar_rect.right() && last >= preview_rect.x,
+                        "dialog should span across sidebar/preview boundary (first={first}, last={last}, \
+                         sidebar_right={}, preview_x={})",
+                        sidebar_rect.right(),
+                        preview_rect.x
+                    );
+                }
+            });
+        }
+
+        #[test]
+        fn command_palette_renders_over_full_frame() {
+            let mut app = fixture_app();
+            let _ = app.handle_key(
+                KeyEvent::new(KeyCode::Char('k'))
+                    .with_modifiers(Modifiers::CTRL)
+                    .with_kind(KeyEventKind::Press),
+            );
+            assert!(app.dialogs.command_palette.is_visible());
+
+            let width: u16 = 120;
+            with_rendered_frame(&app, width, 40, |frame| {
+                let title_row = find_row_containing(frame, "Command Palette", 0, width);
+                assert!(
+                    title_row.is_some(),
+                    "command palette title should be visible"
+                );
+                // The palette should be centered horizontally across the full frame.
+                // Find the leftmost and rightmost non-space cells in the title row.
+                let row_y = title_row.unwrap();
+                let first_x = (0..width).find(|&x| {
+                    frame
+                        .buffer
+                        .get(x, row_y)
+                        .and_then(|cell| cell.content.as_char())
+                        .is_some_and(|ch| !ch.is_whitespace())
+                });
+                let last_x = (0..width).rev().find(|&x| {
+                    frame
+                        .buffer
+                        .get(x, row_y)
+                        .and_then(|cell| cell.content.as_char())
+                        .is_some_and(|ch| !ch.is_whitespace())
+                });
+                if let (Some(first), Some(last)) = (first_x, last_x) {
+                    let center = (first + last) / 2;
+                    let frame_center = width / 2;
+                    assert!(
+                        center.abs_diff(frame_center) < 10,
+                        "command palette should be roughly centered on full frame \
+                         (center={center}, frame_center={frame_center})"
+                    );
+                }
+            });
+        }
+
+        #[test]
+        fn keybind_help_renders_over_full_frame() {
+            let mut app = fixture_app();
+            app.dialogs.keybind_help_open = true;
+
+            with_rendered_frame(&app, 120, 40, |frame| {
+                let pane_layout = app.panes.solve(Rect::from_size(120, 40)).expect("solve");
+                let sidebar_rect = app
+                    .panes
+                    .rect_for_role(&pane_layout, PaneRole::WorkspaceList)
+                    .expect("sidebar rect");
+                let preview_rect = app
+                    .panes
+                    .rect_for_role(&pane_layout, PaneRole::Preview)
+                    .expect("preview rect");
+
+                let title_row = find_row_containing(frame, "Keybind Help", 0, 120);
+                assert!(title_row.is_some(), "keybind help title should be visible");
+                let row_y = title_row.unwrap();
+                // Help overlay should span across pane boundaries.
+                let text = row_text(frame, row_y, 0, 120);
+                let first = text
+                    .char_indices()
+                    .find(|(_, ch)| !ch.is_whitespace())
+                    .map(|(i, _)| u16::try_from(i).unwrap_or(0))
+                    .unwrap_or(0);
+                let last = text
+                    .char_indices()
+                    .rev()
+                    .find(|(_, ch)| !ch.is_whitespace())
+                    .map(|(i, _)| u16::try_from(i).unwrap_or(0))
+                    .unwrap_or(0);
+                assert!(
+                    first < sidebar_rect.right() && last >= preview_rect.x,
+                    "help overlay should span across sidebar/preview boundary \
+                     (first={first}, last={last}, sidebar_right={}, preview_x={})",
+                    sidebar_rect.right(),
+                    preview_rect.x
+                );
+            });
+        }
+
+        #[test]
+        fn overlays_render_after_pane_content() {
+            // When the keybind help overlay is open, it should overwrite cells
+            // that would otherwise contain pane content, proving overlays render
+            // on top of (after) pane content in the draw order.
+            let app_no_overlay = fixture_app();
+            let mut app_with_overlay = fixture_app();
+            app_with_overlay.dialogs.keybind_help_open = true;
+
+            let (width, height) = (120, 40);
+            let mut pool1 = GraphemePool::new();
+            let mut frame_without = Frame::new(width, height, &mut pool1);
+            ftui::Model::view(&app_no_overlay, &mut frame_without);
+
+            let mut pool2 = GraphemePool::new();
+            let mut frame_with = Frame::new(width, height, &mut pool2);
+            ftui::Model::view(&app_with_overlay, &mut frame_with);
+
+            // Find the "Keybind Help" title row in the overlay frame.
+            let title_row = find_row_containing(&frame_with, "Keybind Help", 0, width);
+            assert!(title_row.is_some(), "overlay title should exist");
+            let row_y = title_row.unwrap();
+
+            // At this row, the frame without overlay should have pane content
+            // (sidebar or preview), but the frame with overlay should have the
+            // help dialog content, proving the overlay overwrote pane cells.
+            let without_text = row_text(&frame_without, row_y, 0, width);
+            let with_text = row_text(&frame_with, row_y, 0, width);
+            assert_ne!(
+                without_text, with_text,
+                "overlay should overwrite pane content at row {row_y}"
+            );
+            assert!(
+                with_text.contains("Keybind Help"),
+                "overlay row should contain help title, got: {with_text}"
+            );
+        }
+    }
+
     #[test]
     fn startup_restores_workspace_tabs_from_tmux_metadata() {
         let rows = format!(
