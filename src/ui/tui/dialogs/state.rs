@@ -377,6 +377,7 @@ pub(super) enum CreateDialogField {
 pub(super) enum CreateDialogTab {
     Manual,
     PullRequest,
+    Base,
 }
 
 impl CreateDialogTab {
@@ -384,18 +385,24 @@ impl CreateDialogTab {
         match self {
             Self::Manual => "Manual",
             Self::PullRequest => "From GitHub PR",
+            Self::Base => "Base",
         }
     }
 
     pub(super) fn next(self) -> Self {
         match self {
             Self::Manual => Self::PullRequest,
-            Self::PullRequest => Self::Manual,
+            Self::PullRequest => Self::Base,
+            Self::Base => Self::Manual,
         }
     }
 
     pub(super) fn previous(self) -> Self {
-        self.next()
+        match self {
+            Self::Manual => Self::Base,
+            Self::PullRequest => Self::Manual,
+            Self::Base => Self::PullRequest,
+        }
     }
 }
 
@@ -426,6 +433,7 @@ impl CreateDialogField {
         match tab {
             CreateDialogTab::Manual => Self::WorkspaceName,
             CreateDialogTab::PullRequest => Self::Project,
+            CreateDialogTab::Base => Self::Project,
         }
     }
 
@@ -445,6 +453,12 @@ impl CreateDialogField {
                 Self::CancelButton => Self::Project,
                 Self::WorkspaceName => Self::Project,
             },
+            CreateDialogTab::Base => match self {
+                Self::Project => Self::CreateButton,
+                Self::CreateButton => Self::CancelButton,
+                Self::CancelButton => Self::Project,
+                Self::WorkspaceName | Self::PullRequestUrl => Self::Project,
+            },
         }
     }
 
@@ -463,6 +477,12 @@ impl CreateDialogField {
                 Self::CreateButton => Self::PullRequestUrl,
                 Self::CancelButton => Self::CreateButton,
                 Self::WorkspaceName => Self::Project,
+            },
+            CreateDialogTab::Base => match self {
+                Self::Project => Self::CancelButton,
+                Self::CreateButton => Self::Project,
+                Self::CancelButton => Self::CreateButton,
+                Self::WorkspaceName | Self::PullRequestUrl => Self::Project,
             },
         }
     }

@@ -289,6 +289,24 @@ impl GroveApp {
                     theme.subtext0,
                 ));
             }
+            CreateDialogTab::Base => {
+                lines.push(modal_labeled_input_row(
+                    content_width,
+                    theme,
+                    "Project",
+                    format!("{selected_project_label}  Enter browse").as_str(),
+                    "Enter browse projects",
+                    focused(CreateDialogField::Project),
+                ));
+                lines.push(modal_static_badged_row(
+                    content_width,
+                    theme,
+                    "Mode",
+                    "register repo root as base task",
+                    theme.overlay0,
+                    theme.subtext0,
+                ));
+            }
         }
         if focused(CreateDialogField::Project)
             && let Some(project) = self.projects.get(dialog.project_index)

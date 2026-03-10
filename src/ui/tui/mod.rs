@@ -3416,6 +3416,7 @@ mod tests {
                                 pull_request_click = Some((x, y));
                             }
                         }
+                        Some(CreateDialogTab::Base) => {}
                         None => {}
                     }
                 }

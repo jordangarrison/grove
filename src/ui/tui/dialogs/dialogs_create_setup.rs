@@ -46,7 +46,7 @@ impl GroveApp {
                 .iter()
                 .filter_map(|index| self.projects.get(*index).cloned())
                 .collect(),
-            CreateDialogTab::PullRequest => self
+            CreateDialogTab::PullRequest | CreateDialogTab::Base => self
                 .projects
                 .get(dialog.project_index)
                 .cloned()
@@ -56,10 +56,12 @@ impl GroveApp {
     }
 
     pub(super) fn toggle_create_dialog_project_selection(&mut self) {
-        if self
-            .create_dialog()
-            .is_some_and(|dialog| dialog.tab == CreateDialogTab::PullRequest)
-        {
+        if self.create_dialog().is_some_and(|dialog| {
+            matches!(
+                dialog.tab,
+                CreateDialogTab::PullRequest | CreateDialogTab::Base
+            )
+        }) {
             return;
         }
 

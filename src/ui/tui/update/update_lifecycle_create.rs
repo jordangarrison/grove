@@ -50,7 +50,7 @@ impl GroveApp {
         };
         let repositories = match dialog.tab {
             CreateDialogTab::Manual => self.selected_create_dialog_projects(),
-            CreateDialogTab::PullRequest => vec![project.clone()],
+            CreateDialogTab::PullRequest | CreateDialogTab::Base => vec![project.clone()],
         };
 
         let (task_name, branch_mode_label, branch_value, branch_source): (
@@ -95,6 +95,12 @@ impl GroveApp {
                     },
                 )
             }
+            CreateDialogTab::Base => (
+                "base".to_string(),
+                "base".to_string(),
+                "repo_root".to_string(),
+                TaskBranchSource::BaseBranch,
+            ),
         };
         self.log_dialog_event_with_fields(
             "create",
