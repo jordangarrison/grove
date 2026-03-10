@@ -229,12 +229,12 @@ mod tests {
         HelpHintContext, LaunchDialogField, LaunchDialogState, LaunchDialogTarget,
         LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, MergeWorkspaceCompletion,
         Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
-        ProjectAddDialogField, ProjectDefaultsDialogField, RefreshWorkspacesCompletion,
-        SettingsDialogField, StartAgentCompletion, StartAgentConfigField, StartAgentConfigState,
-        StopAgentCompletion, StopDialogField, TextSelectionPoint, TmuxInput, UiCommand,
-        UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceAttention,
-        WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind,
-        WorkspaceTabRuntimeState, ansi_16_color, ansi_lines_to_styled_lines,
+        ProjectAddDialogField, ProjectDefaultsDialogField, PullUpstreamDialogField,
+        RefreshWorkspacesCompletion, SettingsDialogField, StartAgentCompletion,
+        StartAgentConfigField, StartAgentConfigState, StopAgentCompletion, StopDialogField,
+        TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT,
+        WorkspaceAttention, WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceTab,
+        WorkspaceTabKind, WorkspaceTabRuntimeState, ansi_16_color, ansi_lines_to_styled_lines,
         ansi_lines_to_styled_lines_for_theme, decode_create_dialog_tab_hit_data,
         decode_workspace_pr_hit_data, parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
     };
@@ -14055,6 +14055,104 @@ mod tests {
 
                 assert!(app.create_dialog().is_none());
             }
+        }
+    }
+
+    mod pull_upstream_dialog {
+        use super::*;
+
+        #[test]
+        fn pull_upstream_only_available_on_base_worktree() {
+            let mut app = fixture_app();
+            // Index 1 is the feature-a workspace (is_main == false).
+            select_workspace(&mut app, 1);
+
+            app.open_pull_upstream_dialog();
+
+            assert!(!app.modal_open());
+            assert!(app.pull_upstream_dialog().is_none());
+            let toast = app
+                .notifications
+                .visible()
+                .last()
+                .expect("info toast should be shown");
+            assert!(matches!(toast.config.style_variant, ToastStyle::Info));
+            assert!(toast.content.message.contains("base workspaces"));
+        }
+
+        #[test]
+        fn pull_upstream_opens_dialog_on_base_worktree() {
+            let mut app = fixture_app();
+            // Index 0 is the grove base workspace (is_main == true).
+            select_workspace(&mut app, 0);
+
+            app.open_pull_upstream_dialog();
+
+            assert!(app.modal_open());
+            let dialog = app
+                .pull_upstream_dialog()
+                .expect("pull upstream dialog should be open");
+            assert_eq!(dialog.base_branch, "main");
+            assert_eq!(dialog.workspace_name, "grove");
+            assert_eq!(dialog.workspace_path, PathBuf::from("/repos/grove"));
+            assert_eq!(dialog.focused_field, PullUpstreamDialogField::PullButton);
+        }
+
+        #[test]
+        fn pull_upstream_counts_propagate_targets() {
+            let mut app = fixture_app();
+
+            // The default fixture already has:
+            //   [0] grove (is_main=true, project_path=/repos/grove, branch=main)
+            //   [1] feature-a (is_main=false, project_path=/repos/grove, base_branch=Some("main"))
+            //
+            // Add a second feature workspace for the same repo.
+            app.state.workspaces.push(Workspace {
+                name: "feature-b".to_string(),
+                task_slug: Some("feature-b".to_string()),
+                path: PathBuf::from("/tmp/.grove/tasks/feature-b/grove"),
+                project_name: Some("grove".to_string()),
+                project_path: Some(PathBuf::from("/repos/grove")),
+                branch: "feature-b".to_string(),
+                base_branch: Some("main".to_string()),
+                last_activity_unix_secs: None,
+                agent: AgentType::Codex,
+                status: WorkspaceStatus::Idle,
+                is_main: false,
+                is_orphaned: false,
+                supported_agent: true,
+                pull_requests: Vec::new(),
+            });
+
+            // Add a workspace from a different repo (should NOT be counted).
+            app.state.workspaces.push(Workspace {
+                name: "other-repo".to_string(),
+                task_slug: Some("other-repo".to_string()),
+                path: PathBuf::from("/tmp/.grove/tasks/other-repo/other"),
+                project_name: Some("other".to_string()),
+                project_path: Some(PathBuf::from("/repos/other")),
+                branch: "feature-x".to_string(),
+                base_branch: Some("main".to_string()),
+                last_activity_unix_secs: None,
+                agent: AgentType::Codex,
+                status: WorkspaceStatus::Idle,
+                is_main: false,
+                is_orphaned: false,
+                supported_agent: true,
+                pull_requests: Vec::new(),
+            });
+
+            // Select the base workspace.
+            select_workspace(&mut app, 0);
+
+            app.open_pull_upstream_dialog();
+
+            let dialog = app
+                .pull_upstream_dialog()
+                .expect("pull upstream dialog should be open");
+            // feature-a and feature-b share project_path and base_branch with the base.
+            // other-repo has a different project_path, so it is excluded.
+            assert_eq!(dialog.propagate_target_count, 2);
         }
     }
 }
