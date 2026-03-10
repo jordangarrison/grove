@@ -35,20 +35,20 @@ impl GroveApp {
             KeyCode::Up => {
                 if let Some(dialog) = self.create_dialog_mut()
                     && let Some(picker) = dialog.project_picker.as_mut()
-                    && picker.selected_filtered_index > 0
+                    && picker.selected_filtered_index() > 0
                 {
-                    picker.selected_filtered_index =
-                        picker.selected_filtered_index.saturating_sub(1);
+                    picker.project_list.select_previous();
                 }
             }
             KeyCode::Down => {
                 if let Some(dialog) = self.create_dialog_mut()
                     && let Some(picker) = dialog.project_picker.as_mut()
-                    && picker.selected_filtered_index.saturating_add(1)
+                    && picker.selected_filtered_index().saturating_add(1)
                         < picker.filtered_project_indices.len()
                 {
-                    picker.selected_filtered_index =
-                        picker.selected_filtered_index.saturating_add(1);
+                    picker
+                        .project_list
+                        .select_next(picker.filtered_project_indices.len());
                 }
             }
             KeyCode::Tab => {
@@ -57,8 +57,9 @@ impl GroveApp {
                 {
                     let len = picker.filtered_project_indices.len();
                     if len > 0 {
-                        picker.selected_filtered_index =
-                            picker.selected_filtered_index.saturating_add(1) % len;
+                        picker.set_selected_filtered_index(
+                            picker.selected_filtered_index().saturating_add(1) % len,
+                        );
                     }
                 }
             }
@@ -68,11 +69,13 @@ impl GroveApp {
                 {
                     let len = picker.filtered_project_indices.len();
                     if len > 0 {
-                        picker.selected_filtered_index = if picker.selected_filtered_index == 0 {
-                            len.saturating_sub(1)
-                        } else {
-                            picker.selected_filtered_index.saturating_sub(1)
-                        };
+                        picker.set_selected_filtered_index(
+                            if picker.selected_filtered_index() == 0 {
+                                len.saturating_sub(1)
+                            } else {
+                                picker.selected_filtered_index().saturating_sub(1)
+                            },
+                        );
                     }
                 }
             }
@@ -82,8 +85,9 @@ impl GroveApp {
                 {
                     let len = picker.filtered_project_indices.len();
                     if len > 0 {
-                        picker.selected_filtered_index =
-                            picker.selected_filtered_index.saturating_add(1) % len;
+                        picker.set_selected_filtered_index(
+                            picker.selected_filtered_index().saturating_add(1) % len,
+                        );
                     }
                 }
             }
@@ -93,11 +97,13 @@ impl GroveApp {
                 {
                     let len = picker.filtered_project_indices.len();
                     if len > 0 {
-                        picker.selected_filtered_index = if picker.selected_filtered_index == 0 {
-                            len.saturating_sub(1)
-                        } else {
-                            picker.selected_filtered_index.saturating_sub(1)
-                        };
+                        picker.set_selected_filtered_index(
+                            if picker.selected_filtered_index() == 0 {
+                                len.saturating_sub(1)
+                            } else {
+                                picker.selected_filtered_index().saturating_sub(1)
+                            },
+                        );
                     }
                 }
             }

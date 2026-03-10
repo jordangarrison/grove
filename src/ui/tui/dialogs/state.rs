@@ -316,12 +316,33 @@ pub(super) struct CreateDialogState {
     pub(super) focused_field: CreateDialogField,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub(super) struct CreateProjectPickerState {
     pub(super) filter: String,
     pub(super) filtered_project_indices: Vec<usize>,
-    pub(super) selected_filtered_index: usize,
+    pub(super) project_list: ListState,
 }
+
+impl CreateProjectPickerState {
+    pub(super) fn selected_filtered_index(&self) -> usize {
+        self.project_list.selected().unwrap_or(0)
+    }
+
+    pub(super) fn set_selected_filtered_index(&mut self, index: usize) {
+        self.project_list.select(Some(index));
+    }
+}
+
+impl PartialEq for CreateProjectPickerState {
+    fn eq(&self, other: &Self) -> bool {
+        self.filter == other.filter
+            && self.filtered_project_indices == other.filtered_project_indices
+            && self.selected_filtered_index() == other.selected_filtered_index()
+            && self.project_list.offset == other.project_list.offset
+    }
+}
+
+impl Eq for CreateProjectPickerState {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct EditDialogState {

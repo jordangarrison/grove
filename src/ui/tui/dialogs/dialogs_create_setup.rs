@@ -95,10 +95,14 @@ impl GroveApp {
             .iter()
             .position(|index| *index == selected_project_index)
             .unwrap_or(0);
+        let mut project_list = ListState::default();
+        if !filtered_project_indices.is_empty() {
+            project_list.select(Some(selected_filtered_index));
+        }
         CreateProjectPickerState {
             filter: String::new(),
             filtered_project_indices,
-            selected_filtered_index,
+            project_list,
         }
     }
 
@@ -147,13 +151,16 @@ impl GroveApp {
 
         picker.filtered_project_indices = filtered_project_indices;
         if picker.filtered_project_indices.is_empty() {
-            picker.selected_filtered_index = 0;
+            picker.project_list.select(None);
             return;
         }
-        if picker.selected_filtered_index >= picker.filtered_project_indices.len() {
-            picker.selected_filtered_index =
-                picker.filtered_project_indices.len().saturating_sub(1);
+        if picker.selected_filtered_index() >= picker.filtered_project_indices.len() {
+            picker.set_selected_filtered_index(
+                picker.filtered_project_indices.len().saturating_sub(1),
+            );
+            return;
         }
+        picker.set_selected_filtered_index(picker.selected_filtered_index());
     }
 
     pub(super) fn selected_create_project_picker_project_index(&self) -> Option<usize> {
@@ -164,7 +171,7 @@ impl GroveApp {
         }
         picker
             .filtered_project_indices
-            .get(picker.selected_filtered_index)
+            .get(picker.selected_filtered_index())
             .copied()
     }
 

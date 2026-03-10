@@ -1,19 +1,6 @@
 use super::view_prelude::*;
 
 impl GroveApp {
-    fn create_dialog_project_picker_scroll_offset(
-        selected_index: usize,
-        total_count: usize,
-        visible_count: usize,
-    ) -> usize {
-        if total_count <= visible_count {
-            return 0;
-        }
-        let half = visible_count / 2;
-        let max_offset = total_count.saturating_sub(visible_count);
-        selected_index.saturating_sub(half).min(max_offset)
-    }
-
     pub(super) fn centered_modal_rect(area: Rect, width: u16, height: u16) -> Rect {
         let clamped_width = width.min(area.width);
         let clamped_height = height.min(area.height);
@@ -114,38 +101,79 @@ impl GroveApp {
             )]),
         ];
         if let Some(picker) = dialog.project_picker.as_ref() {
-            let dialog_height = 25u16;
-            let inner_height = usize::from(dialog_height.saturating_sub(2));
             let picker_hint = if dialog.tab == CreateDialogTab::Manual {
                 "Type filter, Up/Down or Tab/S-Tab/C-n/C-p move, Space toggle included repos, Enter select, Esc back, need a project first? close and press p, then Ctrl+A"
             } else {
                 "Type filter, Up/Down or Tab/S-Tab/C-n/C-p move, Enter select, Esc back, need a project first? close and press p, then Ctrl+A"
             };
             let hint_rows = modal_wrapped_hint_rows(content_width, theme, picker_hint);
-            let list_header_count = 5usize;
-            let footer_count = 1usize.saturating_add(hint_rows.len());
-            let list_line_budget = inner_height
-                .saturating_sub(lines.len().saturating_add(list_header_count + footer_count));
-            let visible_projects = (list_line_budget / 2).max(1);
             let total_projects = self.projects.len();
             let filtered_projects = picker.filtered_project_indices.len();
+            let dialog_area = Self::centered_modal_rect(area, dialog_width, dialog_height);
+            let content_style = Style::new().fg(theme.text).bg(theme.base);
+            Paragraph::new("")
+                .style(content_style)
+                .render(dialog_area, frame);
 
-            lines.push(modal_labeled_input_row(
+            let block = Block::new()
+                .title("Choose Project")
+                .title_alignment(BlockAlignment::Center)
+                .borders(Borders::ALL)
+                .style(content_style)
+                .border_style(Style::new().fg(theme.mauve).bold());
+            let inner = block.inner(dialog_area);
+            block.render(dialog_area, frame);
+            if inner.is_empty() {
+                return;
+            }
+
+            let footer_height = u16::try_from(hint_rows.len().saturating_add(1))
+                .unwrap_or(u16::MAX)
+                .max(1);
+            let rows = Flex::vertical()
+                .constraints([
+                    Constraint::Fixed(1),
+                    Constraint::Fixed(1),
+                    Constraint::Fixed(1),
+                    Constraint::Fixed(1),
+                    Constraint::Fixed(1),
+                    Constraint::Fixed(1),
+                    Constraint::Fixed(1),
+                    Constraint::Min(1),
+                    Constraint::Fixed(footer_height),
+                ])
+                .split(inner);
+
+            for (row_area, line) in rows[..4].iter().zip(lines.iter()) {
+                Paragraph::new(FtText::from_line(line.clone()))
+                    .style(content_style)
+                    .render(*row_area, frame);
+            }
+
+            Paragraph::new(FtText::from_line(modal_labeled_input_row(
                 content_width,
                 theme,
                 "Filter",
                 picker.filter.as_str(),
                 "Type project name or path",
                 true,
-            ));
-            lines.push(FtLine::from_spans(vec![FtSpan::styled(
+            )))
+            .style(content_style)
+            .render(rows[4], frame);
+
+            Paragraph::new(FtText::from_line(FtLine::from_spans(vec![FtSpan::styled(
                 pad_or_truncate_to_display_width(
                     format!("{filtered_projects} of {total_projects} projects").as_str(),
                     content_width,
                 ),
                 Style::new().fg(theme.overlay0),
-            )]));
-            lines.push(FtLine::raw(""));
+            )])))
+            .style(content_style)
+            .render(rows[5], frame);
+
+            Paragraph::new("")
+                .style(content_style)
+                .render(rows[6], frame);
 
             if picker.filtered_project_indices.is_empty() {
                 let empty_label = if self.projects.is_empty() {
@@ -153,86 +181,57 @@ impl GroveApp {
                 } else {
                     "No matching projects"
                 };
-                lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                    pad_or_truncate_to_display_width(empty_label, content_width),
-                    Style::new().fg(theme.subtext0),
-                )]));
-                lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                    pad_or_truncate_to_display_width(
-                        "Need a project first? Close this dialog, press p, then Ctrl+A",
-                        content_width,
-                    ),
-                    Style::new().fg(theme.overlay0),
-                )]));
+                Paragraph::new(FtText::from_lines(vec![
+                    FtLine::from_spans(vec![FtSpan::styled(
+                        pad_or_truncate_to_display_width(empty_label, content_width),
+                        Style::new().fg(theme.subtext0),
+                    )]),
+                    FtLine::from_spans(vec![FtSpan::styled(
+                        pad_or_truncate_to_display_width(
+                            "Need a project first? Close this dialog, press p, then Ctrl+A",
+                            content_width,
+                        ),
+                        Style::new().fg(theme.overlay0),
+                    )]),
+                ]))
+                .style(content_style)
+                .render(rows[7], frame);
             } else {
-                let scroll_offset = Self::create_dialog_project_picker_scroll_offset(
-                    picker.selected_filtered_index,
-                    picker.filtered_project_indices.len(),
-                    visible_projects,
-                );
-                let visible_end = scroll_offset
-                    .saturating_add(visible_projects)
-                    .min(picker.filtered_project_indices.len());
-
-                for filtered_index in scroll_offset..visible_end {
-                    let Some(project_index) = picker.filtered_project_indices.get(filtered_index)
-                    else {
-                        continue;
-                    };
-                    let Some(project) = self.projects.get(*project_index) else {
-                        continue;
-                    };
-                    let selected = filtered_index == picker.selected_filtered_index;
-                    let marker = if selected { ">" } else { " " };
-                    let row_bg = if selected { theme.surface1 } else { theme.base };
-                    let name = if dialog.tab == CreateDialogTab::Manual {
-                        let included = dialog.selected_repository_indices.contains(project_index);
-                        let toggle = if included { "[x]" } else { "[ ]" };
-                        pad_or_truncate_to_display_width(
-                            format!("{marker} {toggle} {}", project.name).as_str(),
-                            content_width,
-                        )
-                    } else {
-                        pad_or_truncate_to_display_width(
-                            format!("{marker} {}", project.name).as_str(),
-                            content_width,
-                        )
-                    };
-                    let path = pad_or_truncate_to_display_width(
-                        format!("    {}", project.path.display()).as_str(),
-                        content_width,
-                    );
-                    lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                        name,
-                        Style::new()
-                            .fg(if selected { theme.text } else { theme.subtext1 })
-                            .bg(row_bg)
-                            .bold(),
-                    )]));
-                    lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                        path,
-                        Style::new().fg(theme.overlay0).bg(row_bg),
-                    )]));
-                }
+                let items = picker
+                    .filtered_project_indices
+                    .iter()
+                    .filter_map(|project_index| {
+                        self.projects
+                            .get(*project_index)
+                            .map(|project| (project_index, project))
+                    })
+                    .map(|(project_index, project)| {
+                        let label = if dialog.tab == CreateDialogTab::Manual {
+                            let included =
+                                dialog.selected_repository_indices.contains(project_index);
+                            let toggle = if included { "[x]" } else { "[ ]" };
+                            format!("{toggle} {}  {}", project.name, project.path.display())
+                        } else {
+                            format!("{}  {}", project.name, project.path.display())
+                        };
+                        ListItem::new(label).style(Style::new().fg(theme.subtext1))
+                    })
+                    .collect::<Vec<_>>();
+                let list = List::new(items)
+                    .highlight_symbol("> ")
+                    .highlight_style(Style::new().fg(theme.text).bg(theme.surface1).bold())
+                    .style(content_style);
+                let mut list_state = picker.project_list.clone();
+                StatefulWidget::render(&list, rows[7], frame, &mut list_state);
             }
 
-            lines.push(FtLine::raw(""));
-            lines.extend(hint_rows);
-
-            let body = FtText::from_lines(lines);
-            render_modal_dialog(
-                frame,
-                area,
-                body,
-                ModalDialogSpec {
-                    dialog_width,
-                    dialog_height,
-                    title: "Choose Project",
-                    theme,
-                    border_color: theme.mauve,
-                    hit_id: HIT_ID_CREATE_DIALOG,
-                },
-            );
+            Paragraph::new(FtText::from_lines({
+                let mut footer_lines = vec![FtLine::raw("")];
+                footer_lines.extend(hint_rows);
+                footer_lines
+            }))
+            .style(content_style)
+            .render(rows[8], frame);
             return;
         }
         match dialog.tab {
