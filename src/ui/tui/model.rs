@@ -32,9 +32,9 @@ use ftui::widgets::notification_queue::{
 use ftui::widgets::input::TextInput;
 use ftui::widgets::list::{List, ListItem, ListState};
 use ftui::widgets::paragraph::Paragraph;
+use ftui::widgets::{StatefulWidget, StatusItem, StatusLine, Widget};
 use ftui::widgets::toast::{Toast, ToastIcon, ToastPosition, ToastStyle};
 use ftui::widgets::virtualized::{Virtualized, VirtualizedListState};
-use ftui::widgets::{StatefulWidget, Widget};
 use ftui::{Cmd, Model, PackedRgba, Style};
 use ftui_extras::text_effects::{ColorGradient, StyledText, TextEffect};
 use serde_json::Value;
@@ -104,9 +104,8 @@ use terminal::{
     ClipboardAccess, CommandTmuxInput, SystemClipboardAccess, TmuxInput, parse_cursor_metadata,
 };
 use text::{
-    ansi_line_to_plain_text, chrome_bar_line, keybind_hint_spans, line_visual_width,
-    pad_or_truncate_to_display_width, truncate_for_log, truncate_to_display_width,
-    visual_grapheme_at, visual_substring,
+    ansi_line_to_plain_text, line_visual_width, pad_or_truncate_to_display_width,
+    truncate_for_log, truncate_to_display_width, visual_grapheme_at, visual_substring,
 };
 use selection::{TextSelectionPoint, TextSelectionState};
 use msg::*;

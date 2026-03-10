@@ -45,9 +45,9 @@ impl GroveApp {
             return "Task Reorder".to_string();
         }
 
-        match self.state.mode {
-            UiMode::List => "List".to_string(),
-            UiMode::Preview => format!("Preview: {}", self.preview_tab.label()),
+        match self.state.focus {
+            PaneFocus::WorkspaceList => "List".to_string(),
+            PaneFocus::Preview => format!("Preview: {}", self.preview_tab.label()),
         }
     }
 
@@ -155,10 +155,6 @@ impl GroveApp {
         format!("task: {task_label} · worktree: {worktree_label}")
     }
 
-    fn footer_key_hints_line(&self) -> &'static str {
-        "? help, Ctrl+K palette"
-    }
-
     pub(super) fn render_status_line(&self, frame: &mut Frame, area: Rect) {
         if area.is_empty() {
             return;
@@ -166,31 +162,18 @@ impl GroveApp {
 
         let theme = self.active_ui_theme();
         let state_label = self.footer_state_chip_label();
+        let state_chip = format!("[{state_label}]");
         let context = self.footer_context_line();
-        let hints = self.footer_key_hints_line();
         let base_style = Style::new().bg(theme.mantle).fg(theme.text);
-        let context_chip_style = Style::new().bg(theme.surface0).fg(theme.blue).bold();
-        let key_chip_style = Style::new().bg(theme.surface0).fg(theme.mauve).bold();
-        let key_style = Style::new().bg(theme.mantle).fg(theme.lavender).bold();
-        let text_style = Style::new().bg(theme.mantle).fg(theme.subtext0);
-        let sep_style = Style::new().bg(theme.mantle).fg(theme.overlay0);
-
-        let left: Vec<FtSpan> = vec![
-            FtSpan::styled(" ".to_string(), base_style),
-            FtSpan::styled(format!(" {state_label} "), context_chip_style),
-            FtSpan::styled(" ".to_string(), base_style),
-            FtSpan::styled(context, text_style),
-        ];
-
-        let mut right: Vec<FtSpan> = vec![
-            FtSpan::styled(" ".to_string(), base_style),
-            FtSpan::styled(" Keys ".to_string(), key_chip_style),
-            FtSpan::styled(" ".to_string(), base_style),
-        ];
-        right.extend(keybind_hint_spans(hints, text_style, key_style, sep_style));
-
-        let line = chrome_bar_line(usize::from(area.width), base_style, left, Vec::new(), right);
-        Paragraph::new(FtText::from_line(line)).render(area, frame);
+        StatusLine::new()
+            .style(base_style)
+            .separator("  ")
+            .left(StatusItem::text(state_chip.as_str()))
+            .left(StatusItem::text(context.as_str()))
+            .right(StatusItem::text("[Keys]"))
+            .right(StatusItem::key_hint("?", "help"))
+            .right(StatusItem::key_hint("Ctrl+K", "palette"))
+            .render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_STATUS));
     }
 }

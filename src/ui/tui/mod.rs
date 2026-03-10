@@ -1316,6 +1316,27 @@ mod tests {
         }
 
         #[test]
+        fn header_uses_bracketed_identity_labels() {
+            let mut app = fixture_app();
+            app.open_command_palette();
+
+            let (width, height) = (80, 24);
+            let mut pool = GraphemePool::new();
+            let mut frame = Frame::new(width, height, &mut pool);
+            ftui::Model::view(&app, &mut frame);
+
+            let header_text = row_text(&frame, 0, 0, width);
+            assert!(
+                header_text.contains("[Grove]"),
+                "header should show bracketed app label, got: {header_text}"
+            );
+            assert!(
+                header_text.contains("[Palette]"),
+                "header should show bracketed palette indicator, got: {header_text}"
+            );
+        }
+
+        #[test]
         fn status_renders_in_status_pane_rect() {
             let app = fixture_app();
             let (width, height) = (80, 24);
@@ -3489,6 +3510,8 @@ mod tests {
             let status_row = frame.height().saturating_sub(1);
             let status_text = row_text(frame, status_row, 0, frame.width());
             assert!(!status_text.contains("Agent started"));
+            assert!(status_text.contains("[List]"));
+            assert!(status_text.contains("[Keys]"));
             assert!(status_text.contains("task: grove"));
             assert!(status_text.contains("worktree: grove"));
             assert!(status_text.contains("? help"));
@@ -4907,8 +4930,23 @@ mod tests {
         with_rendered_frame(&app, 120, 24, |frame| {
             let status_row = frame.height().saturating_sub(1);
             let status_text = row_text(frame, status_row, 0, frame.width());
-            assert!(status_text.contains(" List "));
-            assert!(!status_text.contains(" Context "));
+            assert!(status_text.contains("[List]"));
+            assert!(!status_text.contains("[Context]"));
+        });
+    }
+
+    #[test]
+    fn status_row_uses_list_state_chip_when_workspace_list_is_focused_in_preview_mode() {
+        let mut app = fixture_app();
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::WorkspaceList;
+        app.preview_tab = PreviewTab::Home;
+
+        with_rendered_frame(&app, 120, 24, |frame| {
+            let status_row = frame.height().saturating_sub(1);
+            let status_text = row_text(frame, status_row, 0, frame.width());
+            assert!(status_text.contains("[List]"));
+            assert!(!status_text.contains("[Preview: Home]"));
         });
     }
 

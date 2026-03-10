@@ -8,30 +8,16 @@ impl GroveApp {
 
         let theme = self.active_ui_theme();
         let base_style = Style::new().bg(theme.crust).fg(theme.text);
-        let left_style = Style::new().bg(theme.surface0).fg(theme.blue).bold();
-        let repo_style = Style::new().bg(theme.mantle).fg(theme.subtext0);
-
-        let mut left: Vec<FtSpan> = vec![
-            FtSpan::styled(" ".to_string(), base_style),
-            FtSpan::styled(" Grove ".to_string(), left_style),
-            FtSpan::styled(" ".to_string(), base_style),
-            FtSpan::styled(format!(" {} ", self.repo_name), repo_style),
-        ];
+        let mut line = StatusLine::new()
+            .style(base_style)
+            .separator("  ")
+            .left(StatusItem::text("[Grove]"))
+            .left(StatusItem::text(self.repo_name.as_str()));
         if self.dialogs.command_palette.is_visible() {
-            left.push(FtSpan::styled(
-                " [Palette] ".to_string(),
-                Style::new().bg(theme.surface1).fg(theme.mauve).bold(),
-            ));
+            line = line.left(StatusItem::text("[Palette]"));
         }
 
-        let line = chrome_bar_line(
-            usize::from(area.width),
-            base_style,
-            left,
-            Vec::new(),
-            Vec::new(),
-        );
-        Paragraph::new(FtText::from_line(line)).render(area, frame);
+        line.render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_HEADER));
     }
 }
