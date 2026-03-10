@@ -17,6 +17,7 @@ impl GroveApp {
         }
 
         self.sidebar_width_pct = clamped;
+        let _ = self.panes.set_sidebar_ratio_pct(clamped);
         self.persist_sidebar_ratio();
         self.sync_interactive_session_geometry();
     }
@@ -44,8 +45,8 @@ impl GroveApp {
 
     fn toggle_mouse_capture(&mut self) {
         self.mouse_capture_enabled = !self.mouse_capture_enabled;
-        self.divider_drag_active = false;
-        self.divider_drag_pointer_offset = 0;
+        let _ = self.divider_resize.force_cancel();
+        self.divider_resize_anchor_x = 0;
         self.queue_cmd(Cmd::set_mouse_capture(self.mouse_capture_enabled));
         if self.mouse_capture_enabled {
             self.show_info_toast("mouse capture enabled");
@@ -62,8 +63,8 @@ impl GroveApp {
             UiCommand::ToggleSidebar => {
                 self.sidebar_hidden = !self.sidebar_hidden;
                 if self.sidebar_hidden {
-                    self.divider_drag_active = false;
-                    self.divider_drag_pointer_offset = 0;
+                    let _ = self.divider_resize.force_cancel();
+                    self.divider_resize_anchor_x = 0;
                 }
             }
             UiCommand::OpenPreview => {

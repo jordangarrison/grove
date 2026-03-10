@@ -82,7 +82,7 @@ impl SidebarListLine {
 }
 
 impl RenderItem for SidebarListLine {
-    fn render(&self, area: Rect, frame: &mut Frame, _selected: bool) {
+    fn render(&self, area: Rect, frame: &mut Frame, _selected: bool, _skip_rows: u16) {
         if area.is_empty() {
             return;
         }

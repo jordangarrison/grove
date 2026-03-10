@@ -7,7 +7,7 @@ impl GroveApp {
         &self,
         inner: Rect,
         selected_workspace: Option<&Workspace>,
-    ) -> (Vec<FtLine>, AnimatedPreviewLabels) {
+    ) -> (Vec<FtLine<'static>>, AnimatedPreviewLabels) {
         let theme = self.active_ui_theme();
         let mut animated_labels: AnimatedPreviewLabels = Vec::new();
         let selected_workspace_header =
@@ -175,7 +175,7 @@ impl GroveApp {
         visible_render_lines
     }
 
-    fn preview_git_fallback_line(&self, selected_workspace: Option<&Workspace>) -> FtLine {
+    fn preview_git_fallback_line(&self, selected_workspace: Option<&Workspace>) -> FtLine<'static> {
         let fallback = if let Some(workspace) = selected_workspace {
             let session_name = git_session_name_for_workspace(workspace);
             if self.session.lazygit_sessions.is_failed(&session_name) {
@@ -191,7 +191,10 @@ impl GroveApp {
         FtLine::raw(fallback.to_string())
     }
 
-    fn preview_shell_fallback_line(&self, selected_workspace: Option<&Workspace>) -> FtLine {
+    fn preview_shell_fallback_line(
+        &self,
+        selected_workspace: Option<&Workspace>,
+    ) -> FtLine<'static> {
         let fallback = if selected_workspace.is_some() {
             if let Some(session_name) = self.selected_shell_tab_session_name() {
                 if self.session.shell_sessions.is_failed(&session_name) {
@@ -218,7 +221,7 @@ impl GroveApp {
         visible_start: usize,
         visible_end: usize,
         preview_height: usize,
-    ) -> Vec<FtLine> {
+    ) -> Vec<FtLine<'static>> {
         let visible_render_lines = self.preview_visible_render_lines(
             visible_plain_lines,
             visible_start,

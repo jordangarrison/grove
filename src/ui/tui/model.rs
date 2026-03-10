@@ -14,6 +14,7 @@ use ftui::core::keybinding::{
     Action as KeybindingAction, ActionConfig as KeybindingConfig, ActionMapper,
     AppState as KeybindingAppState, SequenceConfig as KeySequenceConfig,
 };
+use ftui::layout::pane::PaneDragResizeMachine;
 use ftui::layout::{Constraint, Flex};
 use ftui::render::frame::{Frame, HitGrid, HitId, HitRegion as FrameHitRegion};
 use ftui::text::{
@@ -292,8 +293,9 @@ struct GroveApp {
     sidebar_hidden: bool,
     mouse_capture_enabled: bool,
     launch_skip_permissions: bool,
-    divider_drag_active: bool,
-    divider_drag_pointer_offset: i32,
+    divider_resize: PaneDragResizeMachine,
+    divider_resize_anchor_x: i32,
+    divider_resize_event_seq: u64,
     preview_selection: TextSelectionState,
     copied_text: Option<String>,
     telemetry: TelemetryState,

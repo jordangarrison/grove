@@ -69,7 +69,7 @@ pub(in crate::ui::tui) fn chrome_bar_line(
     left: Vec<FtSpan<'static>>,
     center: Vec<FtSpan<'static>>,
     right: Vec<FtSpan<'static>>,
-) -> FtLine {
+) -> FtLine<'static> {
     if width == 0 {
         return FtLine::raw("");
     }

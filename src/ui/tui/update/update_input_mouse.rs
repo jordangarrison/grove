@@ -5,6 +5,7 @@ impl GroveApp {
     const SIDEBAR_MOUSE_SCROLL_WORKSPACES: usize = 1;
     const SIDEBAR_MOUSE_SCROLL_DEBOUNCE_MS: u64 = 50;
     const CREATE_DIALOG_TAB_ROW_OFFSET: u16 = 2;
+    const DIVIDER_POINTER_ID: u32 = 1;
 
     pub(super) fn preview_tab_id_at_pointer(&self, x: u16, y: u16) -> Option<u64> {
         let (_, _, preview_rect) = self.effective_workspace_rects();
@@ -118,6 +119,66 @@ impl GroveApp {
         };
 
         ratio_from_drag(total_width, relative_x_u16)
+    }
+
+    fn next_divider_resize_event_sequence(&mut self) -> u64 {
+        let sequence = self.divider_resize_event_seq;
+        self.divider_resize_event_seq = self.divider_resize_event_seq.saturating_add(1);
+        sequence
+    }
+
+    fn divider_resize_target(&self) -> Option<ftui::layout::pane::PaneResizeTarget> {
+        if self.sidebar_hidden {
+            return None;
+        }
+        self.panes.workspace_resize_target()
+    }
+
+    fn divider_resize_current_position(&self) -> Option<ftui::layout::pane::PanePointerPosition> {
+        match self.divider_resize.state() {
+            ftui::layout::pane::PaneDragResizeState::Idle => None,
+            ftui::layout::pane::PaneDragResizeState::Armed { current, .. }
+            | ftui::layout::pane::PaneDragResizeState::Dragging { current, .. } => Some(current),
+        }
+    }
+
+    fn pane_pointer_position(x: u16, y: u16) -> ftui::layout::pane::PanePointerPosition {
+        ftui::layout::pane::PanePointerPosition::new(i32::from(x), i32::from(y))
+    }
+
+    fn apply_divider_resize_transition(
+        &mut self,
+        transition: &ftui::layout::pane::PaneDragResizeTransition,
+    ) {
+        match transition.effect {
+            ftui::layout::pane::PaneDragResizeEffect::DragStarted { total_delta_x, .. }
+            | ftui::layout::pane::PaneDragResizeEffect::DragUpdated { total_delta_x, .. }
+            | ftui::layout::pane::PaneDragResizeEffect::Committed { total_delta_x, .. } => {
+                let drag_pointer = self.divider_resize_anchor_x.saturating_add(total_delta_x);
+                let ratio = self.sidebar_ratio_for_drag_pointer(drag_pointer);
+                self.set_sidebar_ratio(ratio);
+            }
+            ftui::layout::pane::PaneDragResizeEffect::Armed { .. }
+            | ftui::layout::pane::PaneDragResizeEffect::Canceled { .. }
+            | ftui::layout::pane::PaneDragResizeEffect::KeyboardApplied { .. }
+            | ftui::layout::pane::PaneDragResizeEffect::WheelApplied { .. }
+            | ftui::layout::pane::PaneDragResizeEffect::Noop { .. } => {}
+        }
+
+        if matches!(transition.to, ftui::layout::pane::PaneDragResizeState::Idle) {
+            self.divider_resize_anchor_x = 0;
+        }
+    }
+
+    fn apply_divider_resize_event(&mut self, kind: ftui::layout::pane::PaneSemanticInputEventKind) {
+        let event = ftui::layout::pane::PaneSemanticInputEvent::new(
+            self.next_divider_resize_event_sequence(),
+            kind,
+        );
+        let Ok(transition) = self.divider_resize.apply_event(&event) else {
+            return;
+        };
+        self.apply_divider_resize_transition(&transition);
     }
 
     pub(super) fn sidebar_workspace_index_at_point(&self, x: u16, y: u16) -> Option<usize> {
@@ -284,7 +345,10 @@ impl GroveApp {
                 "interactive",
                 Value::from(self.session.interactive.is_some()),
             )
-            .with_data("divider_drag_active", Value::from(self.divider_drag_active))
+            .with_data(
+                "divider_drag_active",
+                Value::from(self.divider_resize.is_active()),
+            )
             .with_data("focus", Value::from(self.state.focus.name()))
             .with_data("mode", Value::from(self.state.mode.name()));
         if let Some(row_data) = row_data {
@@ -496,10 +560,18 @@ impl GroveApp {
         match mouse_event.kind {
             MouseEventKind::Down(MouseButton::Left) => match region {
                 HitRegion::Divider => {
-                    self.divider_drag_active = true;
                     let (_, divider_rect, _) = self.effective_workspace_rects();
-                    self.divider_drag_pointer_offset =
-                        i32::from(mouse_event.x).saturating_sub(i32::from(divider_rect.x));
+                    self.divider_resize_anchor_x = i32::from(divider_rect.x);
+                    if let Some(target) = self.divider_resize_target() {
+                        self.apply_divider_resize_event(
+                            ftui::layout::pane::PaneSemanticInputEventKind::PointerDown {
+                                target,
+                                pointer_id: Self::DIVIDER_POINTER_ID,
+                                button: ftui::layout::pane::PanePointerButton::Primary,
+                                position: Self::pane_pointer_position(mouse_event.x, mouse_event.y),
+                            },
+                        );
+                    }
                 }
                 HitRegion::WorkspaceList => {
                     if self.session.interactive.is_some() {
@@ -550,23 +622,40 @@ impl GroveApp {
                 HitRegion::StatusLine | HitRegion::Header | HitRegion::Outside => {}
             },
             MouseEventKind::Drag(MouseButton::Left) => {
-                if self.divider_drag_active {
-                    let drag_pointer =
-                        i32::from(mouse_event.x).saturating_sub(self.divider_drag_pointer_offset);
-                    let ratio = self.sidebar_ratio_for_drag_pointer(drag_pointer);
-                    self.set_sidebar_ratio(ratio);
+                if let (Some(target), Some(previous)) = (
+                    self.divider_resize_target(),
+                    self.divider_resize_current_position(),
+                ) {
+                    let position = Self::pane_pointer_position(mouse_event.x, mouse_event.y);
+                    self.apply_divider_resize_event(
+                        ftui::layout::pane::PaneSemanticInputEventKind::PointerMove {
+                            target,
+                            pointer_id: Self::DIVIDER_POINTER_ID,
+                            position,
+                            delta_x: position.x.saturating_sub(previous.x),
+                            delta_y: position.y.saturating_sub(previous.y),
+                        },
+                    );
                 } else if self.session.interactive.is_some() {
                     self.update_preview_selection_drag(mouse_event.x, mouse_event.y);
                 }
             }
             MouseEventKind::Moved => {
-                if self.session.interactive.is_some() && !self.divider_drag_active {
+                if self.session.interactive.is_some() && !self.divider_resize.is_active() {
                     self.update_preview_selection_drag(mouse_event.x, mouse_event.y);
                 }
             }
             MouseEventKind::Up(MouseButton::Left) => {
-                self.divider_drag_active = false;
-                self.divider_drag_pointer_offset = 0;
+                if let Some(target) = self.divider_resize_target() {
+                    self.apply_divider_resize_event(
+                        ftui::layout::pane::PaneSemanticInputEventKind::PointerUp {
+                            target,
+                            pointer_id: Self::DIVIDER_POINTER_ID,
+                            button: ftui::layout::pane::PanePointerButton::Primary,
+                            position: Self::pane_pointer_position(mouse_event.x, mouse_event.y),
+                        },
+                    );
+                }
                 self.finish_preview_selection_drag(mouse_event.x, mouse_event.y);
             }
             MouseEventKind::ScrollUp => {

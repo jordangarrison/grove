@@ -7,7 +7,7 @@ pub(super) fn modal_labeled_input_row(
     value: &str,
     placeholder: &str,
     focused: bool,
-) -> FtLine {
+) -> FtLine<'static> {
     let row_bg = if focused { theme.surface1 } else { theme.base };
     let marker = if focused { ">" } else { " " };
     let badge = format!("[{label}] ");
@@ -54,7 +54,7 @@ pub(super) fn modal_static_badged_row(
     value: &str,
     badge_fg: PackedRgba,
     value_fg: PackedRgba,
-) -> FtLine {
+) -> FtLine<'static> {
     let badge = format!("[{label}] ");
     let prefix = format!("  {badge}");
     let available = content_width.saturating_sub(text_display_width(prefix.as_str()));
@@ -79,7 +79,7 @@ pub(super) fn modal_focus_badged_row(
     focused: bool,
     badge_fg: PackedRgba,
     value_fg: PackedRgba,
-) -> FtLine {
+) -> FtLine<'static> {
     let row_bg = if focused { theme.surface1 } else { theme.base };
     let marker = if focused { ">" } else { " " };
     let badge = format!("[{label}] ");
@@ -115,7 +115,7 @@ pub(super) fn modal_actions_row(
     secondary_label: &str,
     primary_focused: bool,
     secondary_focused: bool,
-) -> FtLine {
+) -> FtLine<'static> {
     let actions_bg = if primary_focused || secondary_focused {
         theme.surface1
     } else {
@@ -160,7 +160,7 @@ pub(super) fn modal_start_agent_config_rows<F>(
     theme: UiTheme,
     start_config: &StartAgentConfigState,
     is_focused: F,
-) -> [FtLine; 4]
+) -> [FtLine<'static>; 4]
 where
     F: Fn(StartAgentConfigField) -> bool,
 {
@@ -205,7 +205,11 @@ where
     ]
 }
 
-pub(super) fn modal_wrapped_rows(content_width: usize, text: &str, style: Style) -> Vec<FtLine> {
+pub(super) fn modal_wrapped_rows(
+    content_width: usize,
+    text: &str,
+    style: Style,
+) -> Vec<FtLine<'static>> {
     ftui::text::wrap_text(text, content_width, ftui::text::WrapMode::Word)
         .into_iter()
         .map(|line| FtLine::from_spans(vec![FtSpan::styled(line, style)]))
@@ -216,7 +220,7 @@ pub(super) fn modal_wrapped_hint_rows(
     content_width: usize,
     theme: UiTheme,
     text: &str,
-) -> Vec<FtLine> {
+) -> Vec<FtLine<'static>> {
     modal_wrapped_rows(
         content_width,
         text,
@@ -237,7 +241,7 @@ pub(super) struct ModalDialogSpec<'a> {
 pub(super) fn render_modal_dialog(
     frame: &mut Frame,
     area: Rect,
-    body: FtText,
+    body: FtText<'static>,
     spec: ModalDialogSpec<'_>,
 ) {
     let content = OverlayModalContent {
@@ -263,7 +267,7 @@ pub(super) fn render_modal_dialog(
 #[derive(Debug, Clone)]
 pub(super) struct OverlayModalContent<'a> {
     pub(super) title: &'a str,
-    pub(super) body: FtText,
+    pub(super) body: FtText<'static>,
     pub(super) theme: UiTheme,
     pub(super) border_color: PackedRgba,
 }

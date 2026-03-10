@@ -30,7 +30,7 @@ impl GroveApp {
         content_width: usize,
         theme: UiTheme,
         selected_tab: CreateDialogTab,
-    ) -> (FtLine, Vec<(CreateDialogTab, usize, usize)>) {
+    ) -> (FtLine<'static>, Vec<(CreateDialogTab, usize, usize)>) {
         let tab_active_style = Style::new().fg(theme.base).bg(theme.blue).bold();
         let tab_inactive_style = Style::new().fg(theme.subtext0).bg(theme.surface0);
         let mut spans = Vec::new();

@@ -167,7 +167,7 @@ fn ansi_line_to_styled_line_with_state(
     line: &str,
     state: &mut AnsiStyleState,
     theme_name: ThemeName,
-) -> FtLine {
+) -> FtLine<'static> {
     let mut spans: Vec<FtSpan<'static>> = Vec::new();
     let mut buffer = String::new();
     let mut chars = line.chars().peekable();
@@ -244,14 +244,14 @@ fn ansi_line_to_styled_line_with_state(
 }
 
 #[cfg(test)]
-pub(in crate::ui::tui) fn ansi_lines_to_styled_lines(lines: &[String]) -> Vec<FtLine> {
+pub(in crate::ui::tui) fn ansi_lines_to_styled_lines(lines: &[String]) -> Vec<FtLine<'static>> {
     ansi_lines_to_styled_lines_for_theme(lines, ThemeName::default())
 }
 
 pub(in crate::ui::tui) fn ansi_lines_to_styled_lines_for_theme(
     lines: &[String],
     theme_name: ThemeName,
-) -> Vec<FtLine> {
+) -> Vec<FtLine<'static>> {
     let mut state = AnsiStyleState::default();
     lines
         .iter()

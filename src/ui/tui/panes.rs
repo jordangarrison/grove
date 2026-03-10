@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use ftui::core::geometry::Rect;
 use ftui::layout::pane::{
-    PaneConstraints, PaneId, PaneLayout, PaneLeaf, PaneNodeKind, PaneNodeRecord, PaneSplit,
-    PaneSplitRatio, PaneTree, PaneTreeSnapshot, SplitAxis,
+    PaneConstraints, PaneId, PaneLayout, PaneLeaf, PaneNodeKind, PaneNodeRecord, PaneOperation,
+    PaneResizeTarget, PaneSplit, PaneSplitRatio, PaneTree, PaneTreeSnapshot, SplitAxis,
 };
 
 use super::{HEADER_HEIGHT, STATUS_HEIGHT};
@@ -47,6 +47,8 @@ pub(super) struct GrovePaneModel {
 }
 
 impl GrovePaneModel {
+    const WORKSPACE_RATIO_OPERATION_ID: u64 = 1;
+
     /// Build the canonical full-screen pane tree.
     ///
     /// Structure:
@@ -195,6 +197,35 @@ impl GrovePaneModel {
     pub(super) fn id_for_role(&self, role: PaneRole) -> Option<PaneId> {
         self.role_ids.get(&role).copied()
     }
+
+    pub(super) fn workspace_resize_target(&self) -> Option<PaneResizeTarget> {
+        self.id_for_role(PaneRole::Workspace)
+            .map(|split_id| PaneResizeTarget {
+                split_id,
+                axis: SplitAxis::Horizontal,
+            })
+    }
+
+    pub(super) fn set_sidebar_ratio_pct(&mut self, sidebar_width_pct: u16) -> bool {
+        let Some(target) = self.workspace_resize_target() else {
+            return false;
+        };
+        let sidebar_ratio = u32::from(sidebar_width_pct.max(1));
+        let preview_ratio = (100u32.saturating_sub(sidebar_ratio)).max(1);
+        let Some(ratio) = PaneSplitRatio::new(sidebar_ratio, preview_ratio).ok() else {
+            return false;
+        };
+
+        self.tree
+            .apply_operation(
+                Self::WORKSPACE_RATIO_OPERATION_ID,
+                PaneOperation::SetSplitRatio {
+                    split: target.split_id,
+                    ratio,
+                },
+            )
+            .is_ok()
+    }
 }
 
 #[cfg(test)]
@@ -252,6 +283,8 @@ fn no_margin_constraints() -> PaneConstraints {
         max_width: None,
         max_height: None,
         collapsible: false,
+        margin: None,
+        padding: None,
     }
 }
 
@@ -262,5 +295,7 @@ fn fixed_height_constraints(height: u16) -> PaneConstraints {
         min_width: 1,
         max_width: None,
         collapsible: false,
+        margin: None,
+        padding: None,
     }
 }

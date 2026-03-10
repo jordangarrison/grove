@@ -6,17 +6,14 @@ impl GroveApp {
             return;
         }
 
-        let glyph = if self.divider_drag_active {
-            "█"
-        } else {
-            "│"
-        };
+        let divider_resize_active = self.divider_resize.is_active();
+        let glyph = if divider_resize_active { "█" } else { "│" };
         let divider = std::iter::repeat_n(glyph, usize::from(area.height))
             .collect::<Vec<&str>>()
             .join("\n");
         let theme = self.active_ui_theme();
         Paragraph::new(divider)
-            .style(Style::new().fg(if self.divider_drag_active {
+            .style(Style::new().fg(if divider_resize_active {
                 theme.blue
             } else {
                 theme.overlay0

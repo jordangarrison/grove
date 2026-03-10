@@ -14,7 +14,11 @@ impl GroveApp {
             .join(", ")
     }
 
-    fn keybind_help_section_title(content_width: usize, theme: UiTheme, title: &str) -> FtLine {
+    fn keybind_help_section_title(
+        content_width: usize,
+        theme: UiTheme,
+        title: &str,
+    ) -> FtLine<'static> {
         let title_text = format!("[{title}]");
         let title_width = text_display_width(title_text.as_str());
         let remaining = content_width.saturating_sub(title_width);
@@ -30,7 +34,7 @@ impl GroveApp {
     }
 
     fn keybind_help_push_labeled_row(
-        lines: &mut Vec<FtLine>,
+        lines: &mut Vec<FtLine<'static>>,
         content_width: usize,
         label_width: usize,
         label: &str,
@@ -58,7 +62,7 @@ impl GroveApp {
             };
             lines.push(FtLine::from_spans(vec![
                 FtSpan::styled(
-                    row_label,
+                    row_label.to_string(),
                     Style::new()
                         .fg(if line_index == 0 {
                             theme.lavender
@@ -76,18 +80,18 @@ impl GroveApp {
         }
     }
 
-    fn keybind_help_push_section_gap(lines: &mut Vec<FtLine>, section_gap: usize) {
+    fn keybind_help_push_section_gap(lines: &mut Vec<FtLine<'static>>, section_gap: usize) {
         if section_gap > 0 {
             lines.extend(
                 std::iter::repeat_with(|| FtLine::raw(""))
                     .take(section_gap)
-                    .collect::<Vec<FtLine>>(),
+                    .collect::<Vec<FtLine<'static>>>(),
             );
         }
     }
 
     fn keybind_help_push_modal_row(
-        lines: &mut Vec<FtLine>,
+        lines: &mut Vec<FtLine<'static>>,
         content_width: usize,
         label_width: usize,
         label: &str,
@@ -106,7 +110,7 @@ impl GroveApp {
     }
 
     fn keybind_help_push_row(
-        lines: &mut Vec<FtLine>,
+        lines: &mut Vec<FtLine<'static>>,
         content_width: usize,
         label_width: usize,
         label: &str,
@@ -125,7 +129,7 @@ impl GroveApp {
     }
 
     fn keybind_help_push_palette_row(
-        lines: &mut Vec<FtLine>,
+        lines: &mut Vec<FtLine<'static>>,
         content_width: usize,
         label_width: usize,
         label: &str,

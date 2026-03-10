@@ -7790,6 +7790,7 @@ mod tests {
                 );
 
                 assert_eq!(app.sidebar_width_pct, 52);
+                assert_eq!(app.panes.test_rects(100, 40).sidebar.width, 52);
                 assert!(!config_path.exists());
 
                 let (app_reloaded, _commands, _captures, _cursor_captures) =
@@ -8082,6 +8083,7 @@ mod tests {
                 );
 
                 assert_eq!(app.sidebar_width_pct, 55);
+                assert!(app.divider_resize.is_active());
 
                 ftui::Model::update(
                     &mut app,
@@ -8101,6 +8103,7 @@ mod tests {
                 );
 
                 assert_eq!(app.sidebar_width_pct, 55);
+                assert!(!app.divider_resize.is_active());
             }
 
             #[test]
@@ -8190,6 +8193,7 @@ mod tests {
                 );
 
                 assert_eq!(app.sidebar_width_pct, 33);
+                assert!(app.divider_resize.is_active());
             }
 
             #[test]

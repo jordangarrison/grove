@@ -191,8 +191,10 @@ impl GroveApp {
             sidebar_hidden: false,
             mouse_capture_enabled: true,
             launch_skip_permissions,
-            divider_drag_active: false,
-            divider_drag_pointer_offset: 0,
+            divider_resize: ftui::layout::pane::PaneDragResizeMachine::new_with_hysteresis(1, 1)
+                .expect("valid divider resize machine"),
+            divider_resize_anchor_x: 0,
+            divider_resize_event_seq: 1,
             preview_selection: TextSelectionState::default(),
             copied_text: None,
             telemetry: TelemetryState {
