@@ -1,0 +1,12 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc d8f37c24a65a2774f6662ff5a202fa1acad38858d35460a03a805e748074938d # shrinks to msgs = [Key(KeyEvent { code: Char('s'), modifiers: Modifiers(0x0), kind: Press }), Key(KeyEvent { code: Enter, modifiers: Modifiers(0x0), kind: Press }), Resize { width: 1, height: 1 }]
+cc 24fe600080d8910e0b3f173ab24804655820e553fd5df778797844dc7b527997 # shrinks to msgs = [Key(KeyEvent { code: Char('s'), modifiers: Modifiers(0x0), kind: Press }), Key(KeyEvent { code: Enter, modifiers: Modifiers(0x0), kind: Press }), Resize { width: 1, height: 1 }], width = 20, height = 5
+cc ab7e1338f912552e3271eb243c6d56bb0a1a34e33f90eee58489e8ec8b494c98 # shrinks to msgs = [Key(KeyEvent { code: Char('s'), modifiers: Modifiers(0x0), kind: Press }), Key(KeyEvent { code: Enter, modifiers: Modifiers(0x0), kind: Press }), Resize { width: 1, height: 1 }]
+cc 86adcc5bfeb1fbec33cc74bc3b2e8be227daeac7eb5af1a34cf86bceebf39c37 # shrinks to msgs = [Resize { width: 1, height: 1 }, Key(KeyEvent { code: Char('s'), modifiers: Modifiers(0x0), kind: Press })]
+cc 106e71a8be6cbbdf36390f7310bec3fb7432bc9c29f0980b1fc913c080af561a # shrinks to msgs = [Key(KeyEvent { code: Escape, modifiers: Modifiers(0x0), kind: Press }), Key(KeyEvent { code: Char('s'), modifiers: Modifiers(0x0), kind: Press }), Resize { width: 1, height: 1 }, Key(KeyEvent { code: Tab, modifiers: Modifiers(0x0), kind: Press }), Key(KeyEvent { code: Up, modifiers: Modifiers(0x0), kind: Press })]
+cc 292d43036c8ee42c417700768b0e0f5d4993ab2e922fea3bf28af05d800c116a # shrinks to msgs = [Key(KeyEvent { code: Char('j'), modifiers: Modifiers(0x0), kind: Press }), Key(KeyEvent { code: Char('s'), modifiers: Modifiers(0x0), kind: Press }), Key(KeyEvent { code: Enter, modifiers: Modifiers(0x0), kind: Press }), Resize { width: 1, height: 1 }]
