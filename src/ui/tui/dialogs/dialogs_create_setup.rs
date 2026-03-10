@@ -2,24 +2,45 @@ use super::*;
 
 impl GroveApp {
     fn filtered_create_dialog_project_indices(&self, query: &str) -> Vec<usize> {
-        if query.trim().is_empty() {
-            return (0..self.projects.len()).collect();
+        let is_base_tab = self
+            .create_dialog()
+            .is_some_and(|dialog| dialog.tab == CreateDialogTab::Base);
+
+        let mut indices: Vec<usize> = if query.trim().is_empty() {
+            (0..self.projects.len()).collect()
+        } else {
+            let query_lower = query.to_ascii_lowercase();
+            self.projects
+                .iter()
+                .enumerate()
+                .filter(|(_, project)| {
+                    project.name.to_ascii_lowercase().contains(&query_lower)
+                        || project
+                            .path
+                            .to_string_lossy()
+                            .to_ascii_lowercase()
+                            .contains(&query_lower)
+                })
+                .map(|(index, _)| index)
+                .collect()
+        };
+
+        if is_base_tab {
+            indices.retain(|index| {
+                let Some(project) = self.projects.get(*index) else {
+                    return false;
+                };
+                !self.state.workspaces.iter().any(|workspace| {
+                    workspace.is_main
+                        && workspace
+                            .project_path
+                            .as_ref()
+                            .is_some_and(|path| refer_to_same_location(path, &project.path))
+                })
+            });
         }
 
-        let query_lower = query.to_ascii_lowercase();
-        self.projects
-            .iter()
-            .enumerate()
-            .filter(|(_, project)| {
-                project.name.to_ascii_lowercase().contains(&query_lower)
-                    || project
-                        .path
-                        .to_string_lossy()
-                        .to_ascii_lowercase()
-                        .contains(&query_lower)
-            })
-            .map(|(index, _)| index)
-            .collect()
+        indices
     }
 
     pub(super) fn selected_project_index(&self) -> usize {

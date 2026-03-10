@@ -1,5 +1,7 @@
 use super::update_prelude::*;
-use crate::application::task_lifecycle::TaskBranchSource;
+use crate::application::task_lifecycle::{
+    CreateBaseTaskRequest, TaskBranchSource, create_base_task, create_base_task_in_root,
+};
 use crate::infrastructure::process::stderr_trimmed;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +55,68 @@ impl GroveApp {
             CreateDialogTab::PullRequest | CreateDialogTab::Base => vec![project.clone()],
         };
 
+        if dialog.tab == CreateDialogTab::Base {
+            let base_branch = {
+                let configured = project.defaults.base_branch.trim();
+                if configured.is_empty() {
+                    "main".to_string()
+                } else {
+                    configured.to_string()
+                }
+            };
+            let repo_name = project
+                .path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("base")
+                .to_string();
+            self.log_dialog_event_with_fields(
+                "create",
+                "dialog_confirmed",
+                [
+                    ("task_name".to_string(), Value::from(repo_name.clone())),
+                    ("branch_mode".to_string(), Value::from("base")),
+                    ("branch_value".to_string(), Value::from("repo_root")),
+                    (
+                        "project_index".to_string(),
+                        Value::from(usize_to_u64(dialog.project_index)),
+                    ),
+                    (
+                        "repository_count".to_string(),
+                        Value::from(usize_to_u64(repositories.len())),
+                    ),
+                ],
+            );
+            let base_request = CreateBaseTaskRequest {
+                repository: project.clone(),
+                agent: self
+                    .state
+                    .selected_workspace()
+                    .map(|workspace| workspace.agent)
+                    .unwrap_or(AgentType::Codex),
+                base_branch,
+            };
+            let task_root_override = self.create_task_root_override();
+            if !self.tmux_input.supports_background_launch() {
+                let result =
+                    execute_create_base_task_request(&base_request, task_root_override.as_deref());
+                let request = shim_create_task_request(repo_name, project, base_request);
+                self.apply_create_workspace_completion(CreateWorkspaceCompletion {
+                    request,
+                    result,
+                });
+                return;
+            }
+            self.dialogs.create_in_flight = true;
+            self.queue_cmd(Cmd::task(move || {
+                let result =
+                    execute_create_base_task_request(&base_request, task_root_override.as_deref());
+                let request = shim_create_task_request(repo_name, project, base_request);
+                Msg::CreateWorkspaceCompleted(CreateWorkspaceCompletion { request, result })
+            }));
+            return;
+        }
+
         let (task_name, branch_mode_label, branch_value, branch_source): (
             String,
             String,
@@ -95,12 +159,7 @@ impl GroveApp {
                     },
                 )
             }
-            CreateDialogTab::Base => (
-                "base".to_string(),
-                "base".to_string(),
-                "repo_root".to_string(),
-                TaskBranchSource::BaseBranch,
-            ),
+            CreateDialogTab::Base => unreachable!("Base tab handled above"),
         };
         self.log_dialog_event_with_fields(
             "create",
@@ -182,6 +241,29 @@ impl GroveApp {
                 ));
             }
         }
+    }
+}
+
+fn execute_create_base_task_request(
+    request: &CreateBaseTaskRequest,
+    tasks_root_override: Option<&Path>,
+) -> Result<CreateTaskResult, TaskLifecycleError> {
+    if let Some(tasks_root) = tasks_root_override {
+        return create_base_task_in_root(tasks_root, request);
+    }
+    create_base_task(request)
+}
+
+fn shim_create_task_request(
+    task_name: String,
+    project: ProjectConfig,
+    base_request: CreateBaseTaskRequest,
+) -> CreateTaskRequest {
+    CreateTaskRequest {
+        task_name,
+        repositories: vec![project],
+        agent: base_request.agent,
+        branch_source: TaskBranchSource::BaseBranch,
     }
 }
 
