@@ -40,6 +40,8 @@ mod dialogs_projects_crud;
 mod dialogs_projects_defaults;
 #[path = "dialogs/dialogs_projects_key.rs"]
 mod dialogs_projects_key;
+#[path = "dialogs/dialogs_projects_search.rs"]
+mod dialogs_projects_search;
 #[path = "dialogs/dialogs_projects_state.rs"]
 mod dialogs_projects_state;
 #[path = "dialogs/dialogs_rename_tab.rs"]
@@ -215,19 +217,19 @@ mod tests {
         AppDependencies, ClipboardAccess, CommandTmuxInput, CreateDialogField, CreateDialogTab,
         CreateWorkspaceCompletion, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
         DeleteWorkspaceCompletion, EditDialogField, GroveApp, HIT_ID_CREATE_DIALOG_TAB,
-        HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_PROJECT_DIALOG_LIST, HIT_ID_STATUS,
-        HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW, HelpHintContext,
-        LaunchDialogField, LaunchDialogState, LaunchDialogTarget, LazygitLaunchCompletion,
-        LivePreviewCapture, MergeDialogField, MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS,
-        PendingResizeVerification, PreviewPollCompletion, PreviewTab, ProjectAddDialogField,
-        ProjectDefaultsDialogField, RefreshWorkspacesCompletion, SettingsDialogField,
-        StartAgentCompletion, StartAgentConfigField, StartAgentConfigState, StopAgentCompletion,
-        StopDialogField, TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField,
-        WORKSPACE_ITEM_HEIGHT, WorkspaceAttention, WorkspaceShellLaunchCompletion,
-        WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind, WorkspaceTabRuntimeState,
-        ansi_16_color, ansi_lines_to_styled_lines, ansi_lines_to_styled_lines_for_theme,
-        decode_create_dialog_tab_hit_data, decode_workspace_pr_hit_data, parse_cursor_metadata,
-        ui_theme, ui_theme_for, usize_to_u64,
+        HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_PROJECT_ADD_RESULTS_LIST, HIT_ID_PROJECT_DIALOG_LIST,
+        HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW,
+        HelpHintContext, LaunchDialogField, LaunchDialogState, LaunchDialogTarget,
+        LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, MergeWorkspaceCompletion,
+        Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
+        ProjectAddDialogField, ProjectDefaultsDialogField, RefreshWorkspacesCompletion,
+        SettingsDialogField, StartAgentCompletion, StartAgentConfigField, StartAgentConfigState,
+        StopAgentCompletion, StopDialogField, TextSelectionPoint, TmuxInput, UiCommand,
+        UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceAttention,
+        WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind,
+        WorkspaceTabRuntimeState, ansi_16_color, ansi_lines_to_styled_lines,
+        ansi_lines_to_styled_lines_for_theme, decode_create_dialog_tab_hit_data,
+        decode_workspace_pr_hit_data, parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
     };
     use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
     use crate::application::interactive::InteractiveState;
@@ -10857,10 +10859,6 @@ mod tests {
                 );
                 ftui::Model::update(
                     &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-                );
-                ftui::Model::update(
-                    &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('/')).with_kind(KeyEventKind::Press)),
                 );
                 ftui::Model::update(
@@ -10929,13 +10927,13 @@ mod tests {
                 assert_eq!(
                     app.project_dialog()
                         .and_then(|dialog| dialog.add_dialog.as_ref())
-                        .map(|dialog| dialog.name_input.focused()),
+                        .map(|dialog| dialog.path_input.focused()),
                     Some(true)
                 );
                 assert_eq!(
                     app.project_dialog()
                         .and_then(|dialog| dialog.add_dialog.as_ref())
-                        .map(|dialog| dialog.path_input.focused()),
+                        .map(|dialog| dialog.name_input.focused()),
                     Some(false)
                 );
             }
@@ -11378,8 +11376,14 @@ mod tests {
             }
 
             #[test]
-            fn project_add_dialog_ctrl_n_and_ctrl_p_cycle_fields() {
+            fn project_add_dialog_ctrl_n_and_ctrl_p_match_arrow_keys_in_path_field() {
                 let mut app = fixture_app();
+                let search_root = unique_temp_workspace_dir("project-add-search-nav");
+                let repo_root_a = search_root.join("grove");
+                let repo_root_b = search_root.join("grove-docs");
+                fs::create_dir_all(repo_root_a.join(".git")).expect("repo root should exist");
+                fs::create_dir_all(repo_root_b.join(".git")).expect("repo root should exist");
+                let partial_path = search_root.join("gro");
 
                 ftui::Model::update(
                     &mut app,
@@ -11398,7 +11402,29 @@ mod tests {
                     app.project_dialog()
                         .and_then(|dialog| dialog.add_dialog.as_ref())
                         .map(|dialog| dialog.focused_field),
-                    Some(ProjectAddDialogField::Name)
+                    Some(ProjectAddDialogField::Path)
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Paste(PasteEvent::bracketed(partial_path.display().to_string())),
+                );
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| {
+                            dialog
+                                .path_matches
+                                .iter()
+                                .map(|path_match| path_match.path.clone())
+                                .collect::<Vec<_>>()
+                        }),
+                    Some(vec![repo_root_a.clone(), repo_root_b.clone()])
+                );
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .and_then(|dialog| dialog.path_match_list.selected()),
+                    Some(0)
                 );
                 ftui::Model::update(
                     &mut app,
@@ -11411,8 +11437,8 @@ mod tests {
                 assert_eq!(
                     app.project_dialog()
                         .and_then(|dialog| dialog.add_dialog.as_ref())
-                        .map(|dialog| dialog.focused_field),
-                    Some(ProjectAddDialogField::Path)
+                        .and_then(|dialog| dialog.path_match_list.selected()),
+                    Some(1)
                 );
                 ftui::Model::update(
                     &mut app,
@@ -11425,8 +11451,403 @@ mod tests {
                 assert_eq!(
                     app.project_dialog()
                         .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .and_then(|dialog| dialog.path_match_list.selected()),
+                    Some(0)
+                );
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| dialog.focused_field),
+                    Some(ProjectAddDialogField::Path)
+                );
+            }
+
+            #[test]
+            fn project_add_dialog_ctrl_n_and_ctrl_p_do_not_cycle_modal_fields() {
+                let mut app = fixture_app();
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('a'))
+                            .with_modifiers(Modifiers::CTRL)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+                );
+
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
                         .map(|dialog| dialog.focused_field),
                     Some(ProjectAddDialogField::Name)
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('n'))
+                            .with_modifiers(Modifiers::CTRL)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('p'))
+                            .with_modifiers(Modifiers::CTRL)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| dialog.focused_field),
+                    Some(ProjectAddDialogField::Name)
+                );
+            }
+
+            #[test]
+            fn project_add_dialog_allows_paste_into_path_field() {
+                let mut app = fixture_app();
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('a'))
+                            .with_modifiers(Modifiers::CTRL)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| dialog.focused_field),
+                    Some(ProjectAddDialogField::Path)
+                );
+
+                ftui::Model::update(&mut app, Msg::Paste(PasteEvent::bracketed("/repos/grove")));
+
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| dialog.path_input.value().to_string()),
+                    Some("/repos/grove".to_string())
+                );
+            }
+
+            #[test]
+            fn project_add_dialog_enter_accepts_ranked_repo_match() {
+                let mut app = fixture_app();
+                let search_root = unique_temp_workspace_dir("project-add-search");
+                let repo_root = search_root.join("grove");
+                fs::create_dir_all(repo_root.join(".git")).expect("repo root should exist");
+                let partial_path = search_root.join("gro");
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('a'))
+                            .with_modifiers(Modifiers::CTRL)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Paste(PasteEvent::bracketed(partial_path.display().to_string())),
+                );
+
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| {
+                            dialog
+                                .path_matches
+                                .iter()
+                                .map(|path_match| path_match.path.clone())
+                                .collect::<Vec<_>>()
+                        }),
+                    Some(vec![repo_root.clone()])
+                );
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| dialog.path_input.value().to_string()),
+                    Some(repo_root.display().to_string())
+                );
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| dialog.name_input.value().to_string()),
+                    Some("grove".to_string())
+                );
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| dialog.focused_field),
+                    Some(ProjectAddDialogField::AddButton)
+                );
+            }
+
+            #[test]
+            fn project_add_dialog_native_mouse_click_accepts_search_result() {
+                let mut app = fixture_app();
+                let search_root = unique_temp_workspace_dir("project-add-search-mouse");
+                let repo_root = search_root.join("grove");
+                fs::create_dir_all(repo_root.join(".git")).expect("repo root should exist");
+                let partial_path = search_root.join("gro");
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('a'))
+                            .with_modifiers(Modifiers::CTRL)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Paste(PasteEvent::bracketed(partial_path.display().to_string())),
+                );
+
+                let mut hit = None;
+                with_rendered_frame(&app, 100, 24, |frame| {
+                    hit = (0..frame.height()).find_map(|y| {
+                        (0..frame.width()).find_map(|x| {
+                            frame.hit_test(x, y).and_then(|(id, _region, data)| {
+                                if id == HitId::new(HIT_ID_PROJECT_ADD_RESULTS_LIST) && data == 0 {
+                                    Some((x, y))
+                                } else {
+                                    None
+                                }
+                            })
+                        })
+                    });
+                });
+                let (x, y) = hit.expect("search result row should exist");
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Mouse(MouseEvent::new(
+                        MouseEventKind::Down(MouseButton::Left),
+                        x,
+                        y,
+                    )),
+                );
+
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| dialog.path_input.value().to_string()),
+                    Some(repo_root.display().to_string())
+                );
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| dialog.focused_field),
+                    Some(ProjectAddDialogField::AddButton)
+                );
+            }
+
+            #[test]
+            fn project_add_dialog_duplicate_match_renders_already_added_marker() {
+                let mut app = fixture_app();
+                let search_root = unique_temp_workspace_dir("project-add-duplicate-render");
+                let repo_root = search_root.join("grove");
+                fs::create_dir_all(repo_root.join(".git")).expect("repo root should exist");
+                app.projects.push(ProjectConfig {
+                    name: "grove-copy".to_string(),
+                    path: repo_root.clone(),
+                    defaults: Default::default(),
+                });
+                let partial_path = search_root.join("gro");
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('a'))
+                            .with_modifiers(Modifiers::CTRL)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Paste(PasteEvent::bracketed(partial_path.display().to_string())),
+                );
+
+                with_rendered_frame(&app, 100, 24, |frame| {
+                    let text = (0..frame.height())
+                        .map(|row| row_text(frame, row, 0, frame.width()))
+                        .collect::<Vec<_>>();
+                    assert!(
+                        text.iter().any(|row| row.contains("Already added")),
+                        "duplicate marker should be rendered: {text:?}"
+                    );
+                });
+            }
+
+            #[test]
+            fn project_add_dialog_duplicate_match_enter_does_not_accept_result() {
+                let mut app = fixture_app();
+                let search_root = unique_temp_workspace_dir("project-add-duplicate-enter");
+                let repo_root = search_root.join("grove");
+                fs::create_dir_all(repo_root.join(".git")).expect("repo root should exist");
+                app.projects.push(ProjectConfig {
+                    name: "grove-copy".to_string(),
+                    path: repo_root.clone(),
+                    defaults: Default::default(),
+                });
+                let partial_path = search_root.join("gro");
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('a'))
+                            .with_modifiers(Modifiers::CTRL)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Paste(PasteEvent::bracketed(partial_path.display().to_string())),
+                );
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| {
+                            dialog
+                                .path_matches
+                                .iter()
+                                .map(|path_match| path_match.path.clone())
+                                .collect::<Vec<_>>()
+                        }),
+                    Some(vec![repo_root.clone()])
+                );
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| dialog.path_input.value().to_string()),
+                    Some(partial_path.display().to_string())
+                );
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| dialog.name_input.value().to_string()),
+                    Some(String::new())
+                );
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| dialog.focused_field),
+                    Some(ProjectAddDialogField::Path)
+                );
+            }
+
+            #[test]
+            fn project_add_dialog_duplicate_match_mouse_click_does_not_accept_result() {
+                let mut app = fixture_app();
+                let search_root = unique_temp_workspace_dir("project-add-duplicate-mouse");
+                let repo_root = search_root.join("grove");
+                fs::create_dir_all(repo_root.join(".git")).expect("repo root should exist");
+                app.projects.push(ProjectConfig {
+                    name: "grove-copy".to_string(),
+                    path: repo_root.clone(),
+                    defaults: Default::default(),
+                });
+                let partial_path = search_root.join("gro");
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('a'))
+                            .with_modifiers(Modifiers::CTRL)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Paste(PasteEvent::bracketed(partial_path.display().to_string())),
+                );
+
+                let mut hit = None;
+                with_rendered_frame(&app, 100, 24, |frame| {
+                    hit = (0..frame.height()).find_map(|y| {
+                        (0..frame.width()).find_map(|x| {
+                            frame.hit_test(x, y).and_then(|(id, _region, data)| {
+                                if id == HitId::new(HIT_ID_PROJECT_ADD_RESULTS_LIST) && data == 0 {
+                                    Some((x, y))
+                                } else {
+                                    None
+                                }
+                            })
+                        })
+                    });
+                });
+                let (x, y) = hit.expect("duplicate search result row should exist");
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Mouse(MouseEvent::new(
+                        MouseEventKind::Down(MouseButton::Left),
+                        x,
+                        y,
+                    )),
+                );
+
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| dialog.path_input.value().to_string()),
+                    Some(partial_path.display().to_string())
+                );
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.add_dialog.as_ref())
+                        .map(|dialog| dialog.focused_field),
+                    Some(ProjectAddDialogField::Path)
                 );
             }
 
@@ -11598,6 +12019,40 @@ mod tests {
                         .and_then(|dialog| dialog.defaults_dialog.as_ref())
                         .map(|dialog| dialog.focused_field),
                     Some(ProjectDefaultsDialogField::BaseBranch)
+                );
+            }
+
+            #[test]
+            fn project_defaults_dialog_allows_paste_into_focused_input() {
+                let mut app = fixture_app();
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('e'))
+                            .with_modifiers(Modifiers::CTRL)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.defaults_dialog.as_ref())
+                        .map(|dialog| dialog.focused_field),
+                    Some(ProjectDefaultsDialogField::BaseBranch)
+                );
+
+                ftui::Model::update(&mut app, Msg::Paste(PasteEvent::bracketed("release")));
+
+                assert_eq!(
+                    app.project_dialog()
+                        .and_then(|dialog| dialog.defaults_dialog.as_ref())
+                        .map(|dialog| dialog.base_branch_input.value().to_string()),
+                    Some("release".to_string())
                 );
             }
 

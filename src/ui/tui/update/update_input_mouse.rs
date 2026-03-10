@@ -250,6 +250,24 @@ impl GroveApp {
             })
     }
 
+    fn project_add_dialog_result_row_at_pointer(&self, x: u16, y: u16) -> Option<usize> {
+        self.last_hit_grid
+            .borrow()
+            .as_ref()
+            .and_then(|grid| grid.hit_test(x, y))
+            .and_then(|(id, _region, data)| {
+                if id.id() == HIT_ID_PROJECT_ADD_RESULTS_LIST {
+                    usize::try_from(data).ok()
+                } else {
+                    None
+                }
+            })
+    }
+
+    fn rect_contains_point(area: Rect, x: u16, y: u16) -> bool {
+        x >= area.x && x < area.right() && y >= area.y && y < area.bottom()
+    }
+
     pub(super) fn handle_mouse_event(&mut self, mouse_event: MouseEvent) {
         if let Some(state) = self.session.interactive.as_mut() {
             state.note_mouse_event(Instant::now());
@@ -285,12 +303,182 @@ impl GroveApp {
         if self.modal_open() {
             if self.project_dialog().is_some()
                 && matches!(mouse_event.kind, MouseEventKind::Down(MouseButton::Left))
-                && let Some(index) =
-                    self.project_dialog_list_row_at_pointer(mouse_event.x, mouse_event.y)
-                && let Some(dialog) = self.project_dialog_mut()
             {
-                dialog.set_selected_filtered_index(index);
-                return;
+                if self
+                    .project_dialog()
+                    .and_then(|dialog| dialog.add_dialog.as_ref())
+                    .is_some()
+                {
+                    if let Some(index) =
+                        self.project_add_dialog_result_row_at_pointer(mouse_event.x, mouse_event.y)
+                    {
+                        if let Some(project_dialog) = self.project_dialog_mut()
+                            && let Some(add_dialog) = project_dialog.add_dialog.as_mut()
+                        {
+                            add_dialog.set_selected_path_match_index(index);
+                        }
+                        self.accept_selected_project_add_path_match();
+                        return;
+                    }
+                    if let Some(layout) = self.project_add_dialog_layout() {
+                        if Self::rect_contains_point(
+                            layout.path_input,
+                            mouse_event.x,
+                            mouse_event.y,
+                        ) {
+                            if let Some(project_dialog) = self.project_dialog_mut()
+                                && let Some(add_dialog) = project_dialog.add_dialog.as_mut()
+                            {
+                                add_dialog.focused_field = ProjectAddDialogField::Path;
+                                add_dialog.sync_focus();
+                            }
+                            return;
+                        }
+                        if Self::rect_contains_point(
+                            layout.name_input,
+                            mouse_event.x,
+                            mouse_event.y,
+                        ) {
+                            if let Some(project_dialog) = self.project_dialog_mut()
+                                && let Some(add_dialog) = project_dialog.add_dialog.as_mut()
+                            {
+                                add_dialog.focused_field = ProjectAddDialogField::Name;
+                                add_dialog.sync_focus();
+                            }
+                            return;
+                        }
+                        if Self::rect_contains_point(
+                            layout.add_button,
+                            mouse_event.x,
+                            mouse_event.y,
+                        ) {
+                            self.add_project_from_dialog();
+                            return;
+                        }
+                        if Self::rect_contains_point(
+                            layout.cancel_button,
+                            mouse_event.x,
+                            mouse_event.y,
+                        ) {
+                            if let Some(project_dialog) = self.project_dialog_mut() {
+                                project_dialog.add_dialog = None;
+                            }
+                            return;
+                        }
+                    }
+                    return;
+                }
+
+                if self
+                    .project_dialog()
+                    .and_then(|dialog| dialog.defaults_dialog.as_ref())
+                    .is_some()
+                {
+                    if let Some(layout) = self.project_defaults_dialog_layout() {
+                        if Self::rect_contains_point(
+                            layout.base_branch_input,
+                            mouse_event.x,
+                            mouse_event.y,
+                        ) {
+                            if let Some(project_dialog) = self.project_dialog_mut()
+                                && let Some(defaults_dialog) =
+                                    project_dialog.defaults_dialog.as_mut()
+                            {
+                                defaults_dialog.focused_field =
+                                    ProjectDefaultsDialogField::BaseBranch;
+                                defaults_dialog.sync_focus();
+                            }
+                            return;
+                        }
+                        if Self::rect_contains_point(
+                            layout.init_command_input,
+                            mouse_event.x,
+                            mouse_event.y,
+                        ) {
+                            if let Some(project_dialog) = self.project_dialog_mut()
+                                && let Some(defaults_dialog) =
+                                    project_dialog.defaults_dialog.as_mut()
+                            {
+                                defaults_dialog.focused_field =
+                                    ProjectDefaultsDialogField::WorkspaceInitCommand;
+                                defaults_dialog.sync_focus();
+                            }
+                            return;
+                        }
+                        if Self::rect_contains_point(
+                            layout.claude_env_input,
+                            mouse_event.x,
+                            mouse_event.y,
+                        ) {
+                            if let Some(project_dialog) = self.project_dialog_mut()
+                                && let Some(defaults_dialog) =
+                                    project_dialog.defaults_dialog.as_mut()
+                            {
+                                defaults_dialog.focused_field =
+                                    ProjectDefaultsDialogField::ClaudeEnv;
+                                defaults_dialog.sync_focus();
+                            }
+                            return;
+                        }
+                        if Self::rect_contains_point(
+                            layout.codex_env_input,
+                            mouse_event.x,
+                            mouse_event.y,
+                        ) {
+                            if let Some(project_dialog) = self.project_dialog_mut()
+                                && let Some(defaults_dialog) =
+                                    project_dialog.defaults_dialog.as_mut()
+                            {
+                                defaults_dialog.focused_field =
+                                    ProjectDefaultsDialogField::CodexEnv;
+                                defaults_dialog.sync_focus();
+                            }
+                            return;
+                        }
+                        if Self::rect_contains_point(
+                            layout.opencode_env_input,
+                            mouse_event.x,
+                            mouse_event.y,
+                        ) {
+                            if let Some(project_dialog) = self.project_dialog_mut()
+                                && let Some(defaults_dialog) =
+                                    project_dialog.defaults_dialog.as_mut()
+                            {
+                                defaults_dialog.focused_field =
+                                    ProjectDefaultsDialogField::OpenCodeEnv;
+                                defaults_dialog.sync_focus();
+                            }
+                            return;
+                        }
+                        if Self::rect_contains_point(
+                            layout.save_button,
+                            mouse_event.x,
+                            mouse_event.y,
+                        ) {
+                            self.save_project_defaults_from_dialog();
+                            return;
+                        }
+                        if Self::rect_contains_point(
+                            layout.cancel_button,
+                            mouse_event.x,
+                            mouse_event.y,
+                        ) {
+                            if let Some(project_dialog) = self.project_dialog_mut() {
+                                project_dialog.defaults_dialog = None;
+                            }
+                            return;
+                        }
+                    }
+                    return;
+                }
+
+                if let Some(index) =
+                    self.project_dialog_list_row_at_pointer(mouse_event.x, mouse_event.y)
+                    && let Some(dialog) = self.project_dialog_mut()
+                {
+                    dialog.set_selected_filtered_index(index);
+                    return;
+                }
             }
             if matches!(mouse_event.kind, MouseEventKind::Down(MouseButton::Left))
                 && let Some(next_tab) = self

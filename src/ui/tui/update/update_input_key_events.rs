@@ -70,8 +70,77 @@ impl GroveApp {
         handled
     }
 
+    fn paste_text_input(input: &mut TextInput, text: &str) -> bool {
+        input.handle_event(&Event::Paste(PasteEvent::new(text.to_string(), true)))
+    }
+
+    fn apply_paste_to_project_dialog(&mut self, text: &str) -> bool {
+        enum PostAction {
+            None,
+            RefreshProjectFilter,
+            RefreshProjectAddMatches,
+        }
+
+        let mut handled = false;
+        let mut post_action = PostAction::None;
+        if let Some(project_dialog) = self.project_dialog_mut() {
+            if let Some(add_dialog) = project_dialog.add_dialog.as_mut() {
+                handled = match add_dialog.focused_field {
+                    ProjectAddDialogField::Path => {
+                        let changed = Self::paste_text_input(&mut add_dialog.path_input, text);
+                        if changed {
+                            post_action = PostAction::RefreshProjectAddMatches;
+                        }
+                        changed
+                    }
+                    ProjectAddDialogField::Name => {
+                        Self::paste_text_input(&mut add_dialog.name_input, text)
+                    }
+                    ProjectAddDialogField::AddButton | ProjectAddDialogField::CancelButton => false,
+                };
+            } else if let Some(defaults_dialog) = project_dialog.defaults_dialog.as_mut() {
+                handled = match defaults_dialog.focused_field {
+                    ProjectDefaultsDialogField::BaseBranch => {
+                        Self::paste_text_input(&mut defaults_dialog.base_branch_input, text)
+                    }
+                    ProjectDefaultsDialogField::WorkspaceInitCommand => Self::paste_text_input(
+                        &mut defaults_dialog.workspace_init_command_input,
+                        text,
+                    ),
+                    ProjectDefaultsDialogField::ClaudeEnv => {
+                        Self::paste_text_input(&mut defaults_dialog.claude_env_input, text)
+                    }
+                    ProjectDefaultsDialogField::CodexEnv => {
+                        Self::paste_text_input(&mut defaults_dialog.codex_env_input, text)
+                    }
+                    ProjectDefaultsDialogField::OpenCodeEnv => {
+                        Self::paste_text_input(&mut defaults_dialog.opencode_env_input, text)
+                    }
+                    ProjectDefaultsDialogField::SaveButton
+                    | ProjectDefaultsDialogField::CancelButton => false,
+                };
+            } else {
+                handled = Self::paste_text_input(&mut project_dialog.filter_input, text);
+                if handled {
+                    post_action = PostAction::RefreshProjectFilter;
+                }
+            }
+        }
+
+        match post_action {
+            PostAction::None => {}
+            PostAction::RefreshProjectFilter => self.refresh_project_dialog_filtered(),
+            PostAction::RefreshProjectAddMatches => self.refresh_project_add_dialog_matches(),
+        }
+
+        handled
+    }
+
     pub(super) fn handle_paste_event(&mut self, paste_event: PasteEvent) -> Cmd<Msg> {
         if self.apply_paste_to_create_dialog(&paste_event.text) {
+            return Cmd::None;
+        }
+        if self.apply_paste_to_project_dialog(&paste_event.text) {
             return Cmd::None;
         }
 

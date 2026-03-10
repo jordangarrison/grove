@@ -153,14 +153,25 @@ impl GroveApp {
             return;
         };
 
+        enum PostAction {
+            None,
+            Add,
+            Close,
+            RefreshMatches,
+            AcceptSelectedPathMatch,
+        }
+
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
             && matches!(key_event.code, KeyCode::Char('n') | KeyCode::Char('N'));
         let ctrl_p = key_event.modifiers == Modifiers::CTRL
             && matches!(key_event.code, KeyCode::Char('p') | KeyCode::Char('P'));
+        let move_down = key_event.code == KeyCode::Down || ctrl_n;
+        let move_up = key_event.code == KeyCode::Up || ctrl_p;
+        let mut post_action = PostAction::None;
 
         match key_event.code {
             KeyCode::Escape => {
-                project_dialog.add_dialog = None;
+                post_action = PostAction::Close;
             }
             KeyCode::Tab => {
                 add_dialog.focused_field = add_dialog.focused_field.next();
@@ -170,48 +181,107 @@ impl GroveApp {
                 add_dialog.focused_field = add_dialog.focused_field.previous();
                 add_dialog.sync_focus();
             }
-            KeyCode::Char(_) if ctrl_n => {
-                add_dialog.focused_field = add_dialog.focused_field.next();
-                add_dialog.sync_focus();
+            _ if move_up => {
+                if add_dialog.focused_field == ProjectAddDialogField::Path
+                    && add_dialog.path_match_list.selected().is_some()
+                {
+                    add_dialog.path_match_list.select_previous();
+                }
             }
-            KeyCode::Char(_) if ctrl_p => {
-                add_dialog.focused_field = add_dialog.focused_field.previous();
-                add_dialog.sync_focus();
+            _ if move_down => {
+                if add_dialog.focused_field == ProjectAddDialogField::Path
+                    && !add_dialog.path_matches.is_empty()
+                {
+                    add_dialog
+                        .path_match_list
+                        .select_next(add_dialog.path_matches.len());
+                }
             }
             KeyCode::Enter => match add_dialog.focused_field {
-                ProjectAddDialogField::AddButton => self.add_project_from_dialog(),
-                ProjectAddDialogField::CancelButton => project_dialog.add_dialog = None,
-                ProjectAddDialogField::Name | ProjectAddDialogField::Path => {
+                ProjectAddDialogField::AddButton => post_action = PostAction::Add,
+                ProjectAddDialogField::CancelButton => post_action = PostAction::Close,
+                ProjectAddDialogField::Path => {
+                    if add_dialog.selected_path_match().is_some() {
+                        post_action = PostAction::AcceptSelectedPathMatch;
+                    } else {
+                        add_dialog.focused_field = add_dialog.focused_field.next();
+                        add_dialog.sync_focus();
+                    }
+                }
+                ProjectAddDialogField::Name => {
                     add_dialog.focused_field = add_dialog.focused_field.next();
                     add_dialog.sync_focus();
                 }
             },
+            KeyCode::Left | KeyCode::Right
+                if matches!(
+                    add_dialog.focused_field,
+                    ProjectAddDialogField::AddButton | ProjectAddDialogField::CancelButton
+                ) =>
+            {
+                add_dialog.focused_field =
+                    if add_dialog.focused_field == ProjectAddDialogField::AddButton {
+                        ProjectAddDialogField::CancelButton
+                    } else {
+                        ProjectAddDialogField::AddButton
+                    };
+                add_dialog.sync_focus();
+            }
             KeyCode::Backspace
             | KeyCode::Delete
             | KeyCode::Left
             | KeyCode::Right
             | KeyCode::Home
             | KeyCode::End => match add_dialog.focused_field {
+                ProjectAddDialogField::Path => {
+                    if add_dialog.path_input.handle_event(&Event::Key(key_event)) {
+                        post_action = PostAction::RefreshMatches;
+                    }
+                }
                 ProjectAddDialogField::Name => {
                     let _ = add_dialog.name_input.handle_event(&Event::Key(key_event));
                 }
-                ProjectAddDialogField::Path => {
-                    let _ = add_dialog.path_input.handle_event(&Event::Key(key_event));
-                }
                 ProjectAddDialogField::AddButton | ProjectAddDialogField::CancelButton => {}
             },
-            KeyCode::Char(_) if Self::allows_text_input_modifiers(key_event.modifiers) => {
+            KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
+                if matches!(
+                    add_dialog.focused_field,
+                    ProjectAddDialogField::AddButton | ProjectAddDialogField::CancelButton
+                ) && matches!(character, 'h' | 'H' | 'l' | 'L')
+                {
+                    add_dialog.focused_field = if matches!(character, 'h' | 'H') {
+                        ProjectAddDialogField::AddButton
+                    } else {
+                        ProjectAddDialogField::CancelButton
+                    };
+                    add_dialog.sync_focus();
+                    return;
+                }
                 match add_dialog.focused_field {
+                    ProjectAddDialogField::Path => {
+                        if add_dialog.path_input.handle_event(&Event::Key(key_event)) {
+                            post_action = PostAction::RefreshMatches;
+                        }
+                    }
                     ProjectAddDialogField::Name => {
                         let _ = add_dialog.name_input.handle_event(&Event::Key(key_event));
-                    }
-                    ProjectAddDialogField::Path => {
-                        let _ = add_dialog.path_input.handle_event(&Event::Key(key_event));
                     }
                     ProjectAddDialogField::AddButton | ProjectAddDialogField::CancelButton => {}
                 }
             }
             _ => {}
+        }
+
+        match post_action {
+            PostAction::None => {}
+            PostAction::Add => self.add_project_from_dialog(),
+            PostAction::Close => {
+                if let Some(project_dialog) = self.project_dialog_mut() {
+                    project_dialog.add_dialog = None;
+                }
+            }
+            PostAction::RefreshMatches => self.refresh_project_add_dialog_matches(),
+            PostAction::AcceptSelectedPathMatch => self.accept_selected_project_add_path_match(),
         }
     }
 

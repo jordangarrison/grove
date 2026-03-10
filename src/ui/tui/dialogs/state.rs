@@ -483,17 +483,33 @@ impl ProjectDialogState {
 
 #[derive(Debug, Clone)]
 pub(super) struct ProjectAddDialogState {
-    pub(super) name_input: TextInput,
     pub(super) path_input: TextInput,
+    pub(super) name_input: TextInput,
     pub(super) focused_field: ProjectAddDialogField,
+    pub(super) path_matches: Vec<ProjectPathMatch>,
+    pub(super) path_match_list: ListState,
+    pub(super) cached_search_root: Option<PathBuf>,
+    pub(super) cached_repo_roots: Vec<PathBuf>,
 }
 
 impl ProjectAddDialogState {
     pub(super) fn sync_focus(&mut self) {
-        self.name_input
-            .set_focused(self.focused_field == ProjectAddDialogField::Name);
         self.path_input
             .set_focused(self.focused_field == ProjectAddDialogField::Path);
+        self.name_input
+            .set_focused(self.focused_field == ProjectAddDialogField::Name);
+    }
+
+    pub(super) fn selected_path_match_index(&self) -> usize {
+        self.path_match_list.selected().unwrap_or(0)
+    }
+
+    pub(super) fn set_selected_path_match_index(&mut self, index: usize) {
+        self.path_match_list.select(Some(index));
+    }
+
+    pub(super) fn selected_path_match(&self) -> Option<&ProjectPathMatch> {
+        self.path_matches.get(self.selected_path_match_index())
     }
 }
 
@@ -523,10 +539,17 @@ impl ProjectDefaultsDialogState {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ProjectPathMatch {
+    pub(super) path: PathBuf,
+    pub(super) score: i64,
+    pub(super) already_added: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ProjectAddDialogField {
-    Name,
     Path,
+    Name,
     AddButton,
     CancelButton,
 }
@@ -543,7 +566,7 @@ pub(super) enum ProjectDefaultsDialogField {
 }
 
 cyclic_field_nav!(pub(super) ProjectAddDialogField {
-    Name, Path, AddButton, CancelButton,
+    Path, Name, AddButton, CancelButton,
 });
 
 cyclic_field_nav!(pub(super) ProjectDefaultsDialogField {
