@@ -14,7 +14,11 @@ pub(super) fn modal_labeled_input_row(
     let prefix = format!("{marker} {badge}");
     let prefix_width = text_display_width(prefix.as_str());
     let value_raw = if value.is_empty() { placeholder } else { value };
-    let rendered = truncate_to_display_width(value_raw, content_width.saturating_sub(prefix_width));
+    let rendered = ftui::text::truncate_with_ellipsis(
+        value_raw,
+        content_width.saturating_sub(prefix_width),
+        "…",
+    );
     let used = prefix_width.saturating_add(text_display_width(rendered.as_str()));
     let pad = " ".repeat(content_width.saturating_sub(used));
 
@@ -58,7 +62,7 @@ pub(super) fn modal_static_badged_row(
     let badge = format!("[{label}] ");
     let prefix = format!("  {badge}");
     let available = content_width.saturating_sub(text_display_width(prefix.as_str()));
-    let rendered = truncate_to_display_width(value, available);
+    let rendered = ftui::text::truncate_with_ellipsis(value, available, "…");
     let used =
         text_display_width(prefix.as_str()).saturating_add(text_display_width(rendered.as_str()));
     let pad = " ".repeat(content_width.saturating_sub(used));
@@ -85,7 +89,8 @@ pub(super) fn modal_focus_badged_row(
     let badge = format!("[{label}] ");
     let prefix = format!("{marker} {badge}");
     let prefix_width = text_display_width(prefix.as_str());
-    let rendered = truncate_to_display_width(value, content_width.saturating_sub(prefix_width));
+    let rendered =
+        ftui::text::truncate_with_ellipsis(value, content_width.saturating_sub(prefix_width), "…");
     let used = prefix_width.saturating_add(text_display_width(rendered.as_str()));
     let pad = " ".repeat(content_width.saturating_sub(used));
 
@@ -136,13 +141,15 @@ pub(super) fn modal_actions_row(
     } else {
         format!(" {secondary_label} ")
     };
-    let row = pad_or_truncate_to_display_width(
+    let row = ftui::text::truncate_to_width(
         format!("{actions_prefix}{primary}   {secondary}").as_str(),
         content_width,
     );
+    let used = text_display_width(row.as_str());
+    let padded = format!("{row}{}", " ".repeat(content_width.saturating_sub(used)));
 
     FtLine::from_spans(vec![FtSpan::styled(
-        row,
+        padded,
         Style::new().fg(theme.text).bg(actions_bg).bold(),
     )])
 }
@@ -262,6 +269,29 @@ pub(super) fn render_modal_dialog(
         .backdrop(BackdropConfig::new(spec.theme.crust, 0.55))
         .hit_id(HitId::new(spec.hit_id))
         .render(area, frame);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn modal_labeled_input_row_uses_native_single_cell_truncation() {
+        let theme = ui_theme();
+        let row = modal_labeled_input_row(7, theme, "X", "abcdef", "", false);
+
+        assert_eq!(row.width(), 7);
+        assert_eq!(row.to_plain_text(), "  [X] a");
+    }
+
+    #[test]
+    fn modal_actions_row_pads_to_exact_width_after_truncation() {
+        let theme = ui_theme();
+        let row = modal_actions_row(12, theme, "Primary", "Secondary", false, false);
+
+        assert_eq!(row.width(), 12);
+        assert_eq!(row.to_plain_text(), "   Primary  ");
+    }
 }
 
 #[derive(Debug, Clone)]

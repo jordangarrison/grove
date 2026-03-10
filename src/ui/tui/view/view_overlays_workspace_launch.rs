@@ -20,6 +20,13 @@ impl GroveApp {
         let focused = |field| dialog.focused_field == field;
         let start_focused = focused(LaunchDialogField::StartButton);
         let cancel_focused = focused(LaunchDialogField::CancelButton);
+        let fit = |text: &str| {
+            let text = ftui::text::truncate_with_ellipsis(text, content_width, "…");
+            format!(
+                "{text}{}",
+                " ".repeat(content_width.saturating_sub(ftui::text::display_width(text.as_str())))
+            )
+        };
         let agent_row = |agent: AgentType| {
             let mut style = Style::new().fg(theme.overlay0);
             if dialog.focused_field == LaunchDialogField::Agent {
@@ -28,7 +35,7 @@ impl GroveApp {
             let marker = if dialog.agent == agent { "●" } else { "○" };
             let label = format!("{marker} {}", agent.label());
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width(label.as_str(), content_width),
+                fit(label.as_str()),
                 if dialog.agent == agent {
                     style.fg(self.workspace_agent_color(agent)).bold()
                 } else {
@@ -42,12 +49,12 @@ impl GroveApp {
             });
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width("Launch profile", content_width),
+                fit("Launch profile"),
                 Style::new().fg(theme.overlay0),
             )]),
             FtLine::raw(""),
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width("Agent", content_width),
+                fit("Agent"),
                 Style::new().fg(theme.overlay0),
             )]),
             agent_row(AgentType::Claude),

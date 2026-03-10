@@ -103,10 +103,7 @@ use bootstrap_config::{
 use terminal::{
     ClipboardAccess, CommandTmuxInput, SystemClipboardAccess, TmuxInput, parse_cursor_metadata,
 };
-use text::{
-    ansi_line_to_plain_text, line_visual_width, pad_or_truncate_to_display_width,
-    truncate_for_log, truncate_to_display_width, visual_grapheme_at, visual_substring,
-};
+use text::ansi_line_to_plain_text;
 use selection::{TextSelectionPoint, TextSelectionState};
 use msg::*;
 use shared::*;

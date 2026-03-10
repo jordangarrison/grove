@@ -51,9 +51,16 @@ impl GroveApp {
         let cancel_focused = focused(DeleteDialogField::CancelButton);
         let path = dialog.task.root_path.display().to_string();
         let worktree_count = dialog.task.worktrees.len().to_string();
+        let fit = |text: &str| {
+            let text = ftui::text::truncate_with_ellipsis(text, content_width, "…");
+            format!(
+                "{text}{}",
+                " ".repeat(content_width.saturating_sub(ftui::text::display_width(text.as_str())))
+            )
+        };
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width("Deletion plan", content_width),
+                fit("Deletion plan"),
                 Style::new().fg(theme.overlay0),
             )]),
             FtLine::raw(""),
@@ -90,14 +97,11 @@ impl GroveApp {
                 theme.overlay0,
             ),
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width(
-                    if dialog.is_base_task {
-                        "  [Info] Remove from Grove only"
-                    } else {
-                        "  [Risk] Changes are destructive"
-                    },
-                    content_width,
-                ),
+                fit(if dialog.is_base_task {
+                    "  [Info] Remove from Grove only"
+                } else {
+                    "  [Risk] Changes are destructive"
+                }),
                 Style::new()
                     .fg(if dialog.is_base_task {
                         theme.blue

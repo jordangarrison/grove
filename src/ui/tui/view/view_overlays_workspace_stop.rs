@@ -17,10 +17,17 @@ impl GroveApp {
         let stop_focused = focused(StopDialogField::StopButton);
         let cancel_focused = focused(StopDialogField::CancelButton);
         let path = dialog.workspace.path.display().to_string();
+        let fit = |text: &str| {
+            let text = ftui::text::truncate_with_ellipsis(text, content_width, "…");
+            format!(
+                "{text}{}",
+                " ".repeat(content_width.saturating_sub(ftui::text::display_width(text.as_str())))
+            )
+        };
 
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width("Session termination", content_width),
+                fit("Session termination"),
                 Style::new().fg(theme.overlay0),
             )]),
             FtLine::raw(""),
@@ -58,10 +65,7 @@ impl GroveApp {
             ),
             FtLine::raw(""),
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width(
-                    "  [Risk] Agent process will be interrupted immediately",
-                    content_width,
-                ),
+                fit("  [Risk] Agent process will be interrupted immediately"),
                 Style::new().fg(theme.peach).bold(),
             )]),
             FtLine::raw(""),

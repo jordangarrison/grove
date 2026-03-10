@@ -59,7 +59,7 @@ impl GroveApp {
         }
 
         let max_message_width = usize::from(max_width).saturating_sub(8).max(16);
-        truncate_to_display_width(normalized.as_str(), max_message_width)
+        ftui::text::truncate_with_ellipsis(normalized.as_str(), max_message_width, "…")
     }
 
     pub(super) fn msg_kind(msg: &Msg) -> &'static str {

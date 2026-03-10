@@ -51,35 +51,47 @@ impl GroveApp {
         } else {
             "disabled, protect attached sessions".to_string()
         };
+        let fit = |text: &str| {
+            let text = ftui::text::truncate_with_ellipsis(text, content_width, "…");
+            format!(
+                "{text}{}",
+                " ".repeat(content_width.saturating_sub(ftui::text::display_width(text.as_str())))
+            )
+        };
+        let fit_nested = |text: &str| {
+            let width = content_width.saturating_sub(2);
+            let text = ftui::text::truncate_with_ellipsis(text, width, "…");
+            format!(
+                "{text}{}",
+                " ".repeat(width.saturating_sub(ftui::text::display_width(text.as_str())))
+            )
+        };
 
         let mut lines = vec![FtLine::from_spans(vec![FtSpan::styled(
-            pad_or_truncate_to_display_width(
-                format!(
-                    "Candidates: {} · Skipped attached: {}",
-                    dialog.plan.candidates.len(),
-                    dialog.plan.skipped_attached.len()
-                )
-                .as_str(),
-                content_width,
-            ),
+            fit(format!(
+                "Candidates: {} · Skipped attached: {}",
+                dialog.plan.candidates.len(),
+                dialog.plan.skipped_attached.len()
+            )
+            .as_str()),
             Style::new().fg(theme.overlay0),
         )])];
         if let Some(error) = dialog.last_error.as_ref() {
             lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width(format!("Error: {error}").as_str(), content_width),
+                fit(format!("Error: {error}").as_str()),
                 Style::new().fg(theme.red).bold(),
             )]));
         }
         lines.push(FtLine::raw(""));
         lines.push(FtLine::from_spans(vec![FtSpan::styled(
-            pad_or_truncate_to_display_width("Planned session cleanup", content_width),
+            fit("Planned session cleanup"),
             Style::new().fg(theme.subtext1).bold(),
         )]));
 
         let max_list_rows = usize::from(dialog_height).saturating_sub(13).max(3);
         if dialog.plan.candidates.is_empty() {
             lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width("  none", content_width),
+                fit("  none"),
                 Style::new().fg(theme.subtext0),
             )]));
         } else {
@@ -97,25 +109,16 @@ impl GroveApp {
                 };
                 lines.push(FtLine::from_spans(vec![
                     FtSpan::styled("  ", Style::new().fg(theme.subtext0)),
-                    FtSpan::styled(
-                        pad_or_truncate_to_display_width(
-                            line.trim_start(),
-                            content_width.saturating_sub(2),
-                        ),
-                        Style::new().fg(reason_color),
-                    ),
+                    FtSpan::styled(fit_nested(line.trim_start()), Style::new().fg(reason_color)),
                 ]));
             }
             if dialog.plan.candidates.len() > max_list_rows {
                 lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                    pad_or_truncate_to_display_width(
-                        format!(
-                            "  ... +{} more",
-                            dialog.plan.candidates.len().saturating_sub(max_list_rows)
-                        )
-                        .as_str(),
-                        content_width,
-                    ),
+                    fit(format!(
+                        "  ... +{} more",
+                        dialog.plan.candidates.len().saturating_sub(max_list_rows)
+                    )
+                    .as_str()),
                     Style::new().fg(theme.overlay0),
                 )]));
             }

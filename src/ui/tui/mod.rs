@@ -8446,6 +8446,64 @@ mod tests {
             }
 
             #[test]
+            fn selection_snapshot_fields_log_full_line_values() {
+                let (mut app, _commands, _captures, _cursor_captures, _events) =
+                    fixture_app_with_tmux_and_events(
+                        WorkspaceStatus::Active,
+                        Vec::new(),
+                        Vec::new(),
+                    );
+                let long_line = format!("prefix-{}", "x".repeat(140));
+                app.preview.lines = vec![long_line.clone()];
+                app.preview.render_lines = app.preview.lines.clone();
+
+                let event = app.add_selection_point_snapshot_fields(
+                    LoggedEvent::new("selection", "snapshot"),
+                    "",
+                    TextSelectionPoint { line: 0, col: 4 },
+                );
+
+                assert_eq!(
+                    event.data["line_raw_preview"],
+                    Value::from(long_line.clone())
+                );
+                assert_eq!(
+                    event.data["line_clean_preview"],
+                    Value::from(long_line.clone())
+                );
+                assert_eq!(event.data["line_render_preview"], Value::from(long_line));
+            }
+
+            #[test]
+            fn copy_selection_logs_full_preview_payload() {
+                let (mut app, _commands, _captures, _cursor_captures, events) =
+                    fixture_app_with_tmux_and_events(
+                        WorkspaceStatus::Active,
+                        Vec::new(),
+                        Vec::new(),
+                    );
+                let selected_text = format!("payload-{}", "x".repeat(260));
+                app.preview.lines = vec![selected_text.clone()];
+                app.preview.render_lines = app.preview.lines.clone();
+                app.preview_selection
+                    .prepare_drag(TextSelectionPoint { line: 0, col: 0 });
+                app.preview_selection.handle_drag(TextSelectionPoint {
+                    line: 0,
+                    col: selected_text.len().saturating_sub(1),
+                });
+                app.preview_selection.finish_drag();
+
+                app.copy_interactive_selection_or_visible();
+
+                let events = recorded_events(&events);
+                let copy_event = events
+                    .iter()
+                    .find(|event| event.kind == "interactive_copy_payload")
+                    .expect("copy payload event should exist");
+                assert_eq!(copy_event.data["preview"], Value::from(selected_text));
+            }
+
+            #[test]
             fn preview_render_lines_align_with_plain_visible_range_when_lengths_differ() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());

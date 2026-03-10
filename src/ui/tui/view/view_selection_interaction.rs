@@ -1,6 +1,70 @@
 use super::view_prelude::*;
 
 impl GroveApp {
+    #[inline]
+    pub(super) fn preview_line_display_width(line: &str) -> usize {
+        ftui::text::display_width(line)
+    }
+
+    // ftui exposes width and grapheme primitives, but preview selection needs
+    // inclusive cell-range slicing and grapheme-at-cell metadata.
+    pub(super) fn preview_substring_by_cells(
+        line: &str,
+        start_col: usize,
+        end_col_inclusive: Option<usize>,
+    ) -> String {
+        let mut out = String::new();
+        let end_col_exclusive = end_col_inclusive.map(|end| end.saturating_add(1));
+        let mut visual_col = 0usize;
+
+        for grapheme in ftui::text::graphemes(line) {
+            if end_col_exclusive.is_some_and(|end| visual_col >= end) {
+                break;
+            }
+
+            let width = Self::preview_line_display_width(grapheme);
+            let next_col = visual_col.saturating_add(width);
+            let intersects = if width == 0 {
+                visual_col >= start_col
+            } else {
+                next_col > start_col
+            };
+
+            if intersects {
+                out.push_str(grapheme);
+            }
+
+            visual_col = next_col;
+        }
+
+        out
+    }
+
+    pub(super) fn preview_grapheme_at_col(
+        line: &str,
+        target_col: usize,
+    ) -> Option<(String, usize, usize)> {
+        let mut visual_col = 0usize;
+
+        for grapheme in ftui::text::graphemes(line) {
+            let width = Self::preview_line_display_width(grapheme);
+            let start_col = visual_col;
+            let end_col = if width == 0 {
+                start_col
+            } else {
+                start_col.saturating_add(width.saturating_sub(1))
+            };
+
+            if (width == 0 && target_col == start_col) || (width > 0 && target_col <= end_col) {
+                return Some((grapheme.to_string(), start_col, end_col));
+            }
+
+            visual_col = visual_col.saturating_add(width);
+        }
+
+        None
+    }
+
     pub(super) fn prepare_preview_selection_drag(&mut self, x: u16, y: u16) {
         let point = self.preview_text_point_at(x, y);
         self.log_preview_drag_started(x, y, point);
@@ -56,7 +120,7 @@ impl GroveApp {
                 continue;
             };
 
-            let line_width = line_visual_width(line);
+            let line_width = Self::preview_line_display_width(line);
             if line_width == 0 {
                 continue;
             }
@@ -116,13 +180,13 @@ impl GroveApp {
         }
 
         if lines.len() == 1 {
-            lines[0] = visual_substring(&lines[0], start.col, Some(end.col));
+            lines[0] = Self::preview_substring_by_cells(&lines[0], start.col, Some(end.col));
             return Some(lines);
         }
 
-        lines[0] = visual_substring(&lines[0], start.col, None);
+        lines[0] = Self::preview_substring_by_cells(&lines[0], start.col, None);
         let last_idx = lines.len().saturating_sub(1);
-        lines[last_idx] = visual_substring(&lines[last_idx], 0, Some(end.col));
+        lines[last_idx] = Self::preview_substring_by_cells(&lines[last_idx], 0, Some(end.col));
 
         Some(lines)
     }
@@ -163,7 +227,7 @@ impl GroveApp {
                     "char_count",
                     Value::from(usize_to_u64(text.chars().count())),
                 )
-                .with_data("preview", Value::from(truncate_for_log(&text, 240))),
+                .with_data("preview", Value::from(text.clone())),
         );
         self.copied_text = Some(text.clone());
         match self.clipboard.write_text(&text) {

@@ -426,9 +426,10 @@ impl Widget for ProjectAddModalContent<'_> {
                         .saturating_add(ftui::text::display_width(separator))
                         .saturating_add(badge_reserved);
                     let path_width = max_row_width.saturating_sub(reserved_width).max(8);
-                    let rendered_path = truncate_to_display_width(
+                    let rendered_path = ftui::text::truncate_with_ellipsis(
                         path_match.path.display().to_string().as_str(),
                         path_width,
+                        "…",
                     );
                     let mut spans = vec![
                         FtSpan::styled(

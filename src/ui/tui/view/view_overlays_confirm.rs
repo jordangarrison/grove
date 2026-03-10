@@ -15,6 +15,13 @@ impl GroveApp {
         let content_width = usize::from(dialog_width.saturating_sub(2));
         let confirm_focused = dialog.focused_field == ConfirmDialogField::ConfirmButton;
         let cancel_focused = dialog.focused_field == ConfirmDialogField::CancelButton;
+        let fit = |text: &str| {
+            let text = ftui::text::truncate_with_ellipsis(text, content_width, "…");
+            format!(
+                "{text}{}",
+                " ".repeat(content_width.saturating_sub(ftui::text::display_width(text.as_str())))
+            )
+        };
 
         let (title, message, detail, border_color) = match &dialog.action {
             ConfirmDialogAction::CloseActiveTab { session_name, .. } => (
@@ -33,12 +40,12 @@ impl GroveApp {
 
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width(message.as_str(), content_width),
+                fit(message.as_str()),
                 Style::new().fg(theme.text).bold(),
             )]),
             FtLine::raw(""),
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width(detail.as_str(), content_width),
+                fit(detail.as_str()),
                 Style::new().fg(theme.overlay0),
             )]),
             FtLine::raw(""),

@@ -82,21 +82,25 @@ impl GroveApp {
                 .join(", ")
         };
         let focused = |field| dialog.focused_field == field;
+        let fit = |text: &str| {
+            let text = ftui::text::truncate_with_ellipsis(text, content_width, "…");
+            format!(
+                "{text}{}",
+                " ".repeat(content_width.saturating_sub(ftui::text::display_width(text.as_str())))
+            )
+        };
 
         let (mode_tabs_row, mode_tab_ranges) =
             Self::create_dialog_mode_tabs_row(content_width, theme, dialog.tab);
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width("Task setup (create)", content_width),
+                fit("Task setup (create)"),
                 Style::new().fg(theme.overlay0),
             )]),
             FtLine::raw(""),
             mode_tabs_row,
             FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width(
-                    "  [Mode] click tab or Alt+[/Alt+]",
-                    content_width,
-                ),
+                fit("  [Mode] click tab or Alt+[/Alt+]"),
                 Style::new().fg(theme.overlay0),
             )]),
         ];
@@ -162,10 +166,7 @@ impl GroveApp {
             .render(rows[4], frame);
 
             Paragraph::new(FtText::from_line(FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width(
-                    format!("{filtered_projects} of {total_projects} projects").as_str(),
-                    content_width,
-                ),
+                fit(format!("{filtered_projects} of {total_projects} projects").as_str()),
                 Style::new().fg(theme.overlay0),
             )])))
             .style(content_style)
@@ -183,14 +184,11 @@ impl GroveApp {
                 };
                 Paragraph::new(FtText::from_lines(vec![
                     FtLine::from_spans(vec![FtSpan::styled(
-                        pad_or_truncate_to_display_width(empty_label, content_width),
+                        fit(empty_label),
                         Style::new().fg(theme.subtext0),
                     )]),
                     FtLine::from_spans(vec![FtSpan::styled(
-                        pad_or_truncate_to_display_width(
-                            "Need a project first? Close this dialog, press p, then Ctrl+A",
-                            content_width,
-                        ),
+                        fit("Need a project first? Close this dialog, press p, then Ctrl+A"),
                         Style::new().fg(theme.overlay0),
                     )]),
                 ]))
@@ -261,10 +259,7 @@ impl GroveApp {
                     theme.subtext0,
                 ));
                 lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                    pad_or_truncate_to_display_width(
-                        "  [Defaults] base branch is implicit per project, configure in Project Defaults",
-                        content_width,
-                    ),
+                    fit("  [Defaults] base branch is implicit per project, configure in Project Defaults"),
                     Style::new().fg(theme.overlay0),
                 )]));
             }
@@ -299,10 +294,7 @@ impl GroveApp {
             && let Some(project) = self.projects.get(dialog.project_index)
         {
             lines.push(FtLine::from_spans(vec![FtSpan::styled(
-                pad_or_truncate_to_display_width(
-                    format!("  [ProjectPath] {}", project.path.display()).as_str(),
-                    content_width,
-                ),
+                fit(format!("  [ProjectPath] {}", project.path.display()).as_str()),
                 Style::new().fg(theme.overlay0),
             )]));
         }
