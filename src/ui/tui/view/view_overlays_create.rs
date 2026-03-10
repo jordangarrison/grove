@@ -23,10 +23,14 @@ impl GroveApp {
         let mut spans = Vec::new();
         let mut tab_ranges = Vec::new();
         let mut used_width = 0usize;
-        for (index, tab) in [CreateDialogTab::Manual, CreateDialogTab::PullRequest]
-            .iter()
-            .copied()
-            .enumerate()
+        for (index, tab) in [
+            CreateDialogTab::Manual,
+            CreateDialogTab::PullRequest,
+            CreateDialogTab::Base,
+        ]
+        .iter()
+        .copied()
+        .enumerate()
         {
             if index > 0 {
                 spans.push(FtSpan::styled(" ".to_string(), Style::new().bg(theme.base)));
