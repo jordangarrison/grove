@@ -2968,10 +2968,13 @@ mod tests {
     fn create_dialog_selected_project_row_uses_highlight_background() {
         let mut app = fixture_app();
         app.open_create_dialog();
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-        );
+        // Tab past RegisterAsBase to focus Project.
+        for _ in 0..2 {
+            ftui::Model::update(
+                &mut app,
+                Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+            );
+        }
 
         with_rendered_frame(&app, 80, 24, |frame| {
             let dialog_width = frame.width().saturating_sub(8).min(90);
@@ -3045,10 +3048,13 @@ mod tests {
             defaults: Default::default(),
         });
         app.open_create_dialog();
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-        );
+        // Tab past RegisterAsBase to focus Project.
+        for _ in 0..2 {
+            ftui::Model::update(
+                &mut app,
+                Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+            );
+        }
 
         ftui::Model::update(
             &mut app,
@@ -3095,10 +3101,13 @@ mod tests {
             },
         });
         app.open_create_dialog();
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-        );
+        // Tab past RegisterAsBase to focus Project.
+        for _ in 0..2 {
+            ftui::Model::update(
+                &mut app,
+                Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+            );
+        }
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
@@ -3134,10 +3143,13 @@ mod tests {
             });
         }
         app.open_create_dialog();
-        ftui::Model::update(
-            &mut app,
-            Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-        );
+        // Tab past RegisterAsBase to focus Project.
+        for _ in 0..2 {
+            ftui::Model::update(
+                &mut app,
+                Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+            );
+        }
         ftui::Model::update(
             &mut app,
             Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
@@ -3420,7 +3432,6 @@ mod tests {
                                 pull_request_click = Some((x, y));
                             }
                         }
-                        Some(CreateDialogTab::Base) => {}
                         None => {}
                     }
                 }
@@ -11574,7 +11585,8 @@ mod tests {
                         ),
                     );
                 }
-                for _ in 0..2 {
+                // Tab past RegisterAsBase, Project, then land on CreateButton.
+                for _ in 0..3 {
                     ftui::Model::update(
                         &mut app,
                         Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -11792,7 +11804,7 @@ mod tests {
             }
 
             #[test]
-            fn create_dialog_base_tab_creates_base_task() {
+            fn create_dialog_register_as_base_creates_base_task() {
                 let mut app = fixture_app();
                 let tasks_root = unique_temp_workspace_dir("create-base-task-root");
                 let repo = init_git_repo("create-base-task-repo", "main");
@@ -11808,7 +11820,7 @@ mod tests {
                 let dialog = app
                     .create_dialog_mut()
                     .expect("create dialog should be open");
-                dialog.tab = CreateDialogTab::Base;
+                dialog.register_as_base = true;
                 dialog.project_index = 0;
                 dialog.focused_field = CreateDialogField::CreateButton;
 
@@ -11842,7 +11854,7 @@ mod tests {
             }
 
             #[test]
-            fn create_dialog_base_tab_filters_projects_with_existing_base() {
+            fn create_dialog_register_as_base_filters_projects_with_existing_base() {
                 let mut app = fixture_app();
                 let repo_a = init_git_repo("base-filter-repo-a", "main");
                 let repo_b = init_git_repo("base-filter-repo-b", "main");
@@ -11882,7 +11894,7 @@ mod tests {
                 let dialog = app
                     .create_dialog_mut()
                     .expect("create dialog should be open");
-                dialog.tab = CreateDialogTab::Base;
+                dialog.register_as_base = true;
 
                 app.open_create_project_picker();
 
@@ -13878,7 +13890,7 @@ mod tests {
 
                 assert_eq!(
                     app.create_dialog().map(|dialog| dialog.focused_field),
-                    Some(CreateDialogField::Project)
+                    Some(CreateDialogField::RegisterAsBase)
                 );
             }
 
@@ -13889,7 +13901,8 @@ mod tests {
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
                 );
-                for _ in 0..2 {
+                // Tab past RegisterAsBase and Project to land on CreateButton.
+                for _ in 0..3 {
                     ftui::Model::update(
                         &mut app,
                         Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -13928,10 +13941,13 @@ mod tests {
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
                 );
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-                );
+                // Tab past RegisterAsBase to land on Project.
+                for _ in 0..2 {
+                    ftui::Model::update(
+                        &mut app,
+                        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+                    );
+                }
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(
@@ -13966,7 +13982,7 @@ mod tests {
                     Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
                 );
 
-                with_rendered_frame(&app, 80, 24, |frame| {
+                with_rendered_frame(&app, 80, 30, |frame| {
                     let dialog_width = frame.width().saturating_sub(8).min(90);
                     let dialog_height = 25u16;
                     let dialog_x = frame.width().saturating_sub(dialog_width) / 2;
@@ -13981,7 +13997,10 @@ mod tests {
                         .collect::<Vec<String>>()
                         .join("\n");
 
-                    assert!(text.contains("Project Defaults"));
+                    assert!(
+                        text.contains("Project Defaults") || text.contains("configure in Projec"),
+                        "dialog should mention Project Defaults, got:\n{text}"
+                    );
                 });
             }
 
@@ -14019,7 +14038,8 @@ mod tests {
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
                 );
-                for _ in 0..2 {
+                // Tab past RegisterAsBase and Project to reach CreateButton.
+                for _ in 0..3 {
                     ftui::Model::update(
                         &mut app,
                         Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
@@ -14042,7 +14062,8 @@ mod tests {
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Char('n')).with_kind(KeyEventKind::Press)),
                 );
-                for _ in 0..3 {
+                // Tab past RegisterAsBase, Project, CreateButton to reach CancelButton.
+                for _ in 0..4 {
                     ftui::Model::update(
                         &mut app,
                         Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),

@@ -18,11 +18,13 @@ struct RestoredTmuxTabMetadata {
 
 impl GroveApp {
     fn home_tab_title_for_workspace(&self, workspace: &Workspace) -> &'static str {
+        if workspace.is_main {
+            return WorkspaceTabKind::Home.label();
+        }
         workspace
             .task_slug
             .as_deref()
             .and_then(|task_slug| self.state.tasks.iter().find(|task| task.slug == task_slug))
-            .filter(|task| task.root_path != workspace.path)
             .map(|_| "Task Home")
             .unwrap_or_else(|| WorkspaceTabKind::Home.label())
     }

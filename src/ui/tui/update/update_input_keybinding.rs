@@ -80,9 +80,13 @@ impl GroveApp {
                 }
                 if let Some(dialog) = self.create_dialog_mut() {
                     match dialog.focused_field {
-                        CreateDialogField::WorkspaceName => dialog.task_name.clear(),
+                        CreateDialogField::WorkspaceName if !dialog.register_as_base => {
+                            dialog.task_name.clear();
+                        }
                         CreateDialogField::PullRequestUrl => dialog.pr_url.clear(),
-                        CreateDialogField::Project
+                        CreateDialogField::WorkspaceName
+                        | CreateDialogField::RegisterAsBase
+                        | CreateDialogField::Project
                         | CreateDialogField::CreateButton
                         | CreateDialogField::CancelButton => {}
                     }

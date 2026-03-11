@@ -45,7 +45,7 @@ impl GroveApp {
         let mut handled = false;
         if let Some(dialog) = self.create_dialog_mut() {
             match dialog.focused_field {
-                CreateDialogField::WorkspaceName => {
+                CreateDialogField::WorkspaceName if !dialog.register_as_base => {
                     handled = true;
                     for character in text.chars() {
                         if character.is_ascii_alphanumeric() || character == '-' || character == '_'
@@ -62,7 +62,9 @@ impl GroveApp {
                         }
                     }
                 }
-                CreateDialogField::Project
+                CreateDialogField::WorkspaceName
+                | CreateDialogField::RegisterAsBase
+                | CreateDialogField::Project
                 | CreateDialogField::CreateButton
                 | CreateDialogField::CancelButton => {}
             }

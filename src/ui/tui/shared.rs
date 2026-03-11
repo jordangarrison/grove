@@ -99,7 +99,6 @@ pub(super) fn encode_create_dialog_tab_hit_data(tab: crate::ui::tui::CreateDialo
     match tab {
         crate::ui::tui::CreateDialogTab::Manual => 0,
         crate::ui::tui::CreateDialogTab::PullRequest => 1,
-        crate::ui::tui::CreateDialogTab::Base => 2,
     }
 }
 
@@ -109,7 +108,6 @@ pub(super) fn decode_create_dialog_tab_hit_data(
     match data {
         0 => Some(crate::ui::tui::CreateDialogTab::Manual),
         1 => Some(crate::ui::tui::CreateDialogTab::PullRequest),
-        2 => Some(crate::ui::tui::CreateDialogTab::Base),
         _ => None,
     }
 }

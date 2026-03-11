@@ -332,6 +332,7 @@ pub(super) struct CreateDialogState {
     pub(super) tab: CreateDialogTab,
     pub(super) task_name: String,
     pub(super) pr_url: String,
+    pub(super) register_as_base: bool,
     pub(super) project_index: usize,
     pub(super) selected_repository_indices: Vec<usize>,
     pub(super) project_picker: Option<CreateProjectPickerState>,
@@ -389,6 +390,7 @@ pub(super) struct RenameTabDialogState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum CreateDialogField {
     WorkspaceName,
+    RegisterAsBase,
     PullRequestUrl,
     Project,
     CreateButton,
@@ -399,7 +401,6 @@ pub(super) enum CreateDialogField {
 pub(super) enum CreateDialogTab {
     Manual,
     PullRequest,
-    Base,
 }
 
 impl CreateDialogTab {
@@ -407,23 +408,20 @@ impl CreateDialogTab {
         match self {
             Self::Manual => "Manual",
             Self::PullRequest => "From GitHub PR",
-            Self::Base => "Base",
         }
     }
 
     pub(super) fn next(self) -> Self {
         match self {
             Self::Manual => Self::PullRequest,
-            Self::PullRequest => Self::Base,
-            Self::Base => Self::Manual,
+            Self::PullRequest => Self::Manual,
         }
     }
 
     pub(super) fn previous(self) -> Self {
         match self {
-            Self::Manual => Self::Base,
+            Self::Manual => Self::PullRequest,
             Self::PullRequest => Self::Manual,
-            Self::Base => Self::PullRequest,
         }
     }
 }
@@ -455,14 +453,14 @@ impl CreateDialogField {
         match tab {
             CreateDialogTab::Manual => Self::WorkspaceName,
             CreateDialogTab::PullRequest => Self::Project,
-            CreateDialogTab::Base => Self::Project,
         }
     }
 
     pub(super) fn next(self, tab: CreateDialogTab) -> Self {
         match tab {
             CreateDialogTab::Manual => match self {
-                Self::WorkspaceName => Self::Project,
+                Self::WorkspaceName => Self::RegisterAsBase,
+                Self::RegisterAsBase => Self::Project,
                 Self::Project => Self::CreateButton,
                 Self::CreateButton => Self::CancelButton,
                 Self::CancelButton => Self::WorkspaceName,
@@ -473,13 +471,7 @@ impl CreateDialogField {
                 Self::PullRequestUrl => Self::CreateButton,
                 Self::CreateButton => Self::CancelButton,
                 Self::CancelButton => Self::Project,
-                Self::WorkspaceName => Self::Project,
-            },
-            CreateDialogTab::Base => match self {
-                Self::Project => Self::CreateButton,
-                Self::CreateButton => Self::CancelButton,
-                Self::CancelButton => Self::Project,
-                Self::WorkspaceName | Self::PullRequestUrl => Self::Project,
+                Self::WorkspaceName | Self::RegisterAsBase => Self::Project,
             },
         }
     }
@@ -488,7 +480,8 @@ impl CreateDialogField {
         match tab {
             CreateDialogTab::Manual => match self {
                 Self::WorkspaceName => Self::CancelButton,
-                Self::Project => Self::WorkspaceName,
+                Self::RegisterAsBase => Self::WorkspaceName,
+                Self::Project => Self::RegisterAsBase,
                 Self::CreateButton => Self::Project,
                 Self::CancelButton => Self::CreateButton,
                 Self::PullRequestUrl => Self::Project,
@@ -498,13 +491,7 @@ impl CreateDialogField {
                 Self::PullRequestUrl => Self::Project,
                 Self::CreateButton => Self::PullRequestUrl,
                 Self::CancelButton => Self::CreateButton,
-                Self::WorkspaceName => Self::Project,
-            },
-            CreateDialogTab::Base => match self {
-                Self::Project => Self::CancelButton,
-                Self::CreateButton => Self::Project,
-                Self::CancelButton => Self::CreateButton,
-                Self::WorkspaceName | Self::PullRequestUrl => Self::Project,
+                Self::WorkspaceName | Self::RegisterAsBase => Self::Project,
             },
         }
     }
@@ -513,6 +500,7 @@ impl CreateDialogField {
     pub(super) fn label(self) -> &'static str {
         match self {
             Self::WorkspaceName => "name",
+            Self::RegisterAsBase => "register_as_base",
             Self::PullRequestUrl => "pr_url",
             Self::Project => "project",
             Self::CreateButton => "create",

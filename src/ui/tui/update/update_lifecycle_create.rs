@@ -50,12 +50,14 @@ impl GroveApp {
             self.show_info_toast("project is required");
             return;
         };
-        let repositories = match dialog.tab {
-            CreateDialogTab::Manual => self.selected_create_dialog_projects(),
-            CreateDialogTab::PullRequest | CreateDialogTab::Base => vec![project.clone()],
+        let repositories = if dialog.tab == CreateDialogTab::PullRequest || dialog.register_as_base
+        {
+            vec![project.clone()]
+        } else {
+            self.selected_create_dialog_projects()
         };
 
-        if dialog.tab == CreateDialogTab::Base {
+        if dialog.register_as_base {
             let base_branch = {
                 let configured = project.defaults.base_branch.trim();
                 if configured.is_empty() {
@@ -159,7 +161,6 @@ impl GroveApp {
                     },
                 )
             }
-            CreateDialogTab::Base => unreachable!("Base tab handled above"),
         };
         self.log_dialog_event_with_fields(
             "create",

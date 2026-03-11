@@ -2,9 +2,9 @@ use super::*;
 
 impl GroveApp {
     fn filtered_create_dialog_project_indices(&self, query: &str) -> Vec<usize> {
-        let is_base_tab = self
+        let is_base_mode = self
             .create_dialog()
-            .is_some_and(|dialog| dialog.tab == CreateDialogTab::Base);
+            .is_some_and(|dialog| dialog.register_as_base);
 
         let mut indices: Vec<usize> = if query.trim().is_empty() {
             (0..self.projects.len()).collect()
@@ -25,7 +25,7 @@ impl GroveApp {
                 .collect()
         };
 
-        if is_base_tab {
+        if is_base_mode {
             indices.retain(|index| {
                 let Some(project) = self.projects.get(*index) else {
                     return false;
@@ -61,27 +61,25 @@ impl GroveApp {
             return Vec::new();
         };
 
-        match dialog.tab {
-            CreateDialogTab::Manual => dialog
-                .selected_repository_indices
-                .iter()
-                .filter_map(|index| self.projects.get(*index).cloned())
-                .collect(),
-            CreateDialogTab::PullRequest | CreateDialogTab::Base => self
+        if dialog.tab == CreateDialogTab::PullRequest || dialog.register_as_base {
+            return self
                 .projects
                 .get(dialog.project_index)
                 .cloned()
                 .into_iter()
-                .collect(),
+                .collect();
         }
+
+        dialog
+            .selected_repository_indices
+            .iter()
+            .filter_map(|index| self.projects.get(*index).cloned())
+            .collect()
     }
 
     pub(super) fn toggle_create_dialog_project_selection(&mut self) {
         if self.create_dialog().is_some_and(|dialog| {
-            matches!(
-                dialog.tab,
-                CreateDialogTab::PullRequest | CreateDialogTab::Base
-            )
+            dialog.tab == CreateDialogTab::PullRequest || dialog.register_as_base
         }) {
             return;
         }
@@ -212,6 +210,7 @@ impl GroveApp {
             tab: CreateDialogTab::Manual,
             task_name: String::new(),
             pr_url: String::new(),
+            register_as_base: false,
             project_index,
             selected_repository_indices: vec![project_index],
             project_picker: None,

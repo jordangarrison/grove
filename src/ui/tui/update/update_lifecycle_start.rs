@@ -8,7 +8,7 @@ impl GroveApp {
         let Some(workspace) = self.state.selected_workspace() else {
             return false;
         };
-        task.root_path != workspace.path
+        !workspace.is_main && task.root_path != workspace.path
     }
 
     pub(super) fn selected_home_tab_targets_task_root(&self) -> bool {

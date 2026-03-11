@@ -114,7 +114,7 @@ impl GroveApp {
                 };
                 if let Some(dialog) = self.create_dialog_mut() {
                     dialog.project_index = project_index;
-                    if dialog.tab == CreateDialogTab::PullRequest {
+                    if dialog.tab == CreateDialogTab::PullRequest || dialog.register_as_base {
                         return;
                     }
                 }
@@ -187,6 +187,7 @@ impl GroveApp {
                     CreateDialogField::CreateButton => EnterAction::ConfirmCreate,
                     CreateDialogField::CancelButton => EnterAction::CancelDialog,
                     CreateDialogField::WorkspaceName
+                    | CreateDialogField::RegisterAsBase
                     | CreateDialogField::PullRequestUrl
                     | CreateDialogField::Project => EnterAction::AdvanceField,
                 });
@@ -210,6 +211,17 @@ impl GroveApp {
                 self.create_dialog_focus_previous();
             }
             KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down => {}
+            KeyCode::Char(' ') if key_event.modifiers.is_empty() => {
+                if let Some(dialog) = self.create_dialog_mut()
+                    && dialog.focused_field == CreateDialogField::RegisterAsBase
+                {
+                    dialog.register_as_base = !dialog.register_as_base;
+                    if dialog.register_as_base {
+                        dialog.task_name.clear();
+                        dialog.selected_repository_indices = vec![dialog.project_index];
+                    }
+                }
+            }
             KeyCode::Char(_) if ctrl_n || ctrl_p => {
                 if ctrl_n {
                     self.create_dialog_focus_next();
@@ -220,13 +232,15 @@ impl GroveApp {
             KeyCode::Backspace => {
                 if let Some(dialog) = self.create_dialog_mut() {
                     match dialog.focused_field {
-                        CreateDialogField::WorkspaceName => {
+                        CreateDialogField::WorkspaceName if !dialog.register_as_base => {
                             dialog.task_name.pop();
                         }
                         CreateDialogField::PullRequestUrl => {
                             dialog.pr_url.pop();
                         }
-                        CreateDialogField::Project
+                        CreateDialogField::WorkspaceName
+                        | CreateDialogField::RegisterAsBase
+                        | CreateDialogField::Project
                         | CreateDialogField::CreateButton
                         | CreateDialogField::CancelButton => {}
                     }
@@ -247,7 +261,7 @@ impl GroveApp {
                         return;
                     }
                     match dialog.focused_field {
-                        CreateDialogField::WorkspaceName => {
+                        CreateDialogField::WorkspaceName if !dialog.register_as_base => {
                             if character.is_ascii_alphanumeric()
                                 || character == '-'
                                 || character == '_'
@@ -260,7 +274,9 @@ impl GroveApp {
                                 dialog.pr_url.push(character);
                             }
                         }
-                        CreateDialogField::Project => {}
+                        CreateDialogField::WorkspaceName
+                        | CreateDialogField::RegisterAsBase
+                        | CreateDialogField::Project => {}
                         CreateDialogField::CreateButton | CreateDialogField::CancelButton => {}
                     }
                 }
