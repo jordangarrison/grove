@@ -2965,10 +2965,10 @@ mod tests {
     }
 
     #[test]
-    fn create_dialog_selected_project_row_uses_highlight_background() {
+    fn create_dialog_selected_included_row_uses_highlight_background() {
         let mut app = fixture_app();
         app.open_create_dialog();
-        // Tab past RegisterAsBase to focus Project.
+        // Tab past RegisterAsBase to focus Included.
         for _ in 0..2 {
             ftui::Model::update(
                 &mut app,
@@ -2989,8 +2989,8 @@ mod tests {
                 (y_start..y_end).find(|&row| row_text(frame, row, x_start, x_end).contains(needle))
             };
 
-            let Some(selected_row) = find_dialog_row("[Project] grove") else {
-                panic!("selected project row should be rendered");
+            let Some(selected_row) = find_dialog_row("[Included] grove  Enter browse") else {
+                panic!("selected included row should be rendered");
             };
             assert_row_bg(frame, selected_row, x_start, x_end, ui_theme().surface1);
 
@@ -3010,7 +3010,7 @@ mod tests {
     }
 
     #[test]
-    fn create_dialog_unfocused_project_row_uses_base_background() {
+    fn create_dialog_unfocused_included_row_uses_base_background() {
         let mut app = fixture_app();
         app.open_create_dialog();
 
@@ -3032,10 +3032,10 @@ mod tests {
             };
             assert_row_bg(frame, name_row, x_start, x_end, ui_theme().surface1);
 
-            let Some(project_row) = find_dialog_row("[Project] grove") else {
-                panic!("project row should be rendered");
+            let Some(included_row) = find_dialog_row("[Included] grove  Enter browse") else {
+                panic!("included row should be rendered");
             };
-            assert_row_bg(frame, project_row, x_start, x_end, ui_theme().base);
+            assert_row_bg(frame, included_row, x_start, x_end, ui_theme().base);
         });
     }
 
