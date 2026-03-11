@@ -4103,6 +4103,11 @@ mod tests {
         assert!(
             list_ids
                 .iter()
+                .any(|id| id == &palette_id(UiCommand::AddWorktree))
+        );
+        assert!(
+            !list_ids
+                .iter()
                 .any(|id| id == &palette_id(UiCommand::StartAgent))
         );
         assert!(
@@ -4598,12 +4603,12 @@ mod tests {
                 .iter()
                 .filter(|command| command.meta().palette.is_some())
                 .count(),
-            38
+            40
         );
         assert_eq!(UiCommand::help_hints_for(HelpHintContext::Global).len(), 13);
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::Workspace).len(),
-            15
+            16
         );
         assert_eq!(UiCommand::help_hints_for(HelpHintContext::List).len(), 2);
         assert_eq!(
