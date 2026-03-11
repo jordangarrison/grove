@@ -9242,7 +9242,7 @@ mod tests {
                     assert!(tabs_line.contains("Home"));
                     assert!(tabs_line.contains("Shell"));
                     assert!(tabs_line.contains("Git"));
-                    assert!(output_line.contains("lazygit"));
+                    assert!(output_line.contains("lazygit"), "{output_line}");
                 });
             }
 
@@ -9664,10 +9664,13 @@ mod tests {
                     .get("frame_lines")
                     .and_then(Value::as_array)
                     .expect("frame_lines should be array");
-                assert!(lines.iter().any(|line| {
-                    line.as_str()
-                        .is_some_and(|text| text.contains("render-check 🧪"))
-                }));
+                assert!(
+                    lines.iter().any(|line| {
+                        line.as_str()
+                            .is_some_and(|text| text.contains("render-check 🧪"))
+                    }),
+                    "{lines:?}"
+                );
                 assert!(frame_event.data.get("frame_hash").is_some());
                 assert_eq!(
                     frame_event.data.get("degradation").and_then(Value::as_str),

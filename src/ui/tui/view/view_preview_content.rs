@@ -146,30 +146,24 @@ impl GroveApp {
         preview_height: usize,
         allow_cursor_overlay: bool,
     ) -> Vec<PreviewParsedLine> {
-        let mut visible_parsed_lines = if self.preview.parsed_lines.is_empty() {
-            Vec::new()
+        let parsed_start = visible_start.min(self.preview.parsed_lines.len());
+        let parsed_end = visible_end.min(self.preview.parsed_lines.len());
+        let visible_parsed_slice = if parsed_start < parsed_end {
+            &self.preview.parsed_lines[parsed_start..parsed_end]
         } else {
-            let parsed_start = visible_start.min(self.preview.parsed_lines.len());
-            let parsed_end = visible_end.min(self.preview.parsed_lines.len());
-            if parsed_start < parsed_end {
-                self.preview.parsed_lines[parsed_start..parsed_end].to_vec()
-            } else {
-                Vec::new()
-            }
+            &[]
         };
-        if visible_parsed_lines.len() < visible_plain_lines.len() {
-            visible_parsed_lines.extend(
-                visible_plain_lines[visible_parsed_lines.len()..]
-                    .iter()
-                    .map(|line| plain_preview_line(line)),
-            );
-        }
-        if visible_parsed_lines.is_empty() && !visible_plain_lines.is_empty() {
-            visible_parsed_lines = visible_plain_lines
-                .iter()
-                .map(|line| plain_preview_line(line))
-                .collect();
-        }
+        let mut visible_parsed_lines = visible_plain_lines
+            .iter()
+            .enumerate()
+            .map(|(index, plain_line)| {
+                visible_parsed_slice
+                    .get(index)
+                    .filter(|line| preview_parsed_line_plain_text(line) == plain_line.as_str())
+                    .cloned()
+                    .unwrap_or_else(|| plain_preview_line(plain_line))
+            })
+            .collect::<Vec<_>>();
         if allow_cursor_overlay {
             self.apply_interactive_cursor_overlay_parsed(&mut visible_parsed_lines, preview_height);
         }
@@ -271,6 +265,9 @@ fn parsed_preview_line_to_ft_line(line: &PreviewParsedLine, theme: UiTheme) -> F
     if line.spans.is_empty() {
         return FtLine::raw("");
     }
+    if line.spans.len() == 1 && preview_style_is_plain(&line.spans[0].style) {
+        return FtLine::raw(line.spans[0].text.clone());
+    }
 
     FtLine::from_spans(
         line.spans
@@ -321,16 +318,7 @@ fn parsed_preview_style_to_ft_style(style: &PreviewParsedStyle, theme: UiTheme) 
         ft_style = ft_style.strikethrough();
     }
 
-    if foreground.is_none()
-        && background.is_none()
-        && !style.bold
-        && !style.dim
-        && !style.italic
-        && !style.underline
-        && !style.blink
-        && !style.reverse
-        && !style.strikethrough
-    {
+    if preview_style_is_plain(style) {
         None
     } else {
         Some(ft_style)
@@ -373,4 +361,53 @@ fn preview_effective_background(style: &PreviewParsedStyle, theme: UiTheme) -> P
 
 fn packed_rgb(color: Option<(u8, u8, u8)>) -> Option<PackedRgba> {
     color.map(|(r, g, b)| PackedRgba::rgb(r, g, b))
+}
+
+fn preview_parsed_line_plain_text(line: &PreviewParsedLine) -> String {
+    line.spans.iter().map(|span| span.text.as_str()).collect()
+}
+
+fn preview_style_is_plain(style: &PreviewParsedStyle) -> bool {
+    style.foreground_rgb.is_none()
+        && style.background_rgb.is_none()
+        && !style.bold
+        && !style.dim
+        && !style.italic
+        && !style.underline
+        && !style.blink
+        && !style.reverse
+        && !style.strikethrough
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        PreviewParsedLine, PreviewParsedSpan, PreviewParsedStyle, parsed_preview_line_to_ft_line,
+    };
+    use crate::ui::tui::shared::ui_theme;
+
+    #[test]
+    fn plain_preview_line_preserves_unicode_text() {
+        let line = PreviewParsedLine {
+            spans: vec![PreviewParsedSpan {
+                text: "render-check 🧪".to_string(),
+                style: PreviewParsedStyle {
+                    foreground_rgb: None,
+                    background_rgb: None,
+                    bold: false,
+                    dim: false,
+                    italic: false,
+                    underline: false,
+                    blink: false,
+                    reverse: false,
+                    strikethrough: false,
+                },
+            }],
+        };
+
+        assert_eq!(
+            parsed_preview_line_to_ft_line(&line, ui_theme()).to_plain_text(),
+            "render-check 🧪"
+        );
+    }
 }

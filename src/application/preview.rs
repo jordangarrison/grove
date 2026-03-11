@@ -135,6 +135,13 @@ struct PreviewSnapshot {
 }
 
 fn parse_preview_snapshot(lines: &[String]) -> PreviewSnapshot {
+    if lines.is_empty() {
+        return PreviewSnapshot {
+            plain_lines: Vec::new(),
+            parsed_lines: Vec::new(),
+        };
+    }
+
     let height = u16::try_from(lines.len().max(1)).unwrap_or(u16::MAX);
     let width = u16::try_from(
         lines
@@ -389,5 +396,16 @@ mod tests {
                 "third".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn apply_capture_with_empty_output_keeps_parsed_lines_empty() {
+        let mut state = PreviewState::new();
+
+        state.apply_capture("");
+
+        assert!(state.lines.is_empty());
+        assert!(state.parsed_lines.is_empty());
+        assert!(state.render_lines.is_empty());
     }
 }
