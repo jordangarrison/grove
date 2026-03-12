@@ -11355,6 +11355,86 @@ mod tests {
             }
 
             #[test]
+            fn preview_poll_preserves_manual_viewport_when_scrollback_window_expands() {
+                let (mut app, _commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+                select_workspace(&mut app, 1);
+                focus_agent_preview_tab(&mut app);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+
+                let idle_output = (101..=220)
+                    .map(|value| value.to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+                    + "\n";
+                ftui::Model::update(
+                    &mut app,
+                    Msg::PreviewPollCompleted(PreviewPollCompletion {
+                        generation: 1,
+                        live_capture: Some(LivePreviewCapture {
+                            session: feature_workspace_session(),
+                            scrollback_lines: crate::ui::tui::LIVE_PREVIEW_IDLE_SCROLLBACK_LINES,
+                            include_escape_sequences: false,
+                            capture_ms: 1,
+                            total_ms: 1,
+                            result: Ok(idle_output),
+                        }),
+                        cursor_capture: None,
+                        workspace_status_captures: Vec::new(),
+                    }),
+                );
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('k')).with_kind(KeyEventKind::Press)),
+                );
+
+                let preview_height = preview_output_height(&app);
+                let (before_start, before_end) =
+                    app.preview_visible_range_for_height(preview_height);
+                let before_lines = app.preview_plain_lines_range(before_start, before_end);
+                assert!(!before_lines.is_empty());
+                assert!(!preview_auto_scroll(&app));
+                assert_eq!(
+                    app.live_preview_scrollback_lines(),
+                    crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES
+                );
+
+                let full_output = (1..=220)
+                    .map(|value| value.to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+                    + "\n";
+                ftui::Model::update(
+                    &mut app,
+                    Msg::PreviewPollCompleted(PreviewPollCompletion {
+                        generation: 2,
+                        live_capture: Some(LivePreviewCapture {
+                            session: feature_workspace_session(),
+                            scrollback_lines: crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES,
+                            include_escape_sequences: false,
+                            capture_ms: 1,
+                            total_ms: 1,
+                            result: Ok(full_output),
+                        }),
+                        cursor_capture: None,
+                        workspace_status_captures: Vec::new(),
+                    }),
+                );
+
+                let (after_start, after_end) = app.preview_visible_range_for_height(preview_height);
+                let after_lines = app.preview_plain_lines_range(after_start, after_end);
+                assert_eq!(after_lines, before_lines);
+            }
+
+            #[test]
             fn switching_workspace_drops_in_flight_capture_for_previous_session() {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
                 select_workspace(&mut app, 1);

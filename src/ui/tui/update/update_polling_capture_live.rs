@@ -1,6 +1,67 @@
 use super::update_prelude::*;
 
+struct PreviewViewportAnchor {
+    lines: Vec<String>,
+    bottom_gap: usize,
+    preview_height: usize,
+}
+
 impl GroveApp {
+    fn manual_preview_viewport_anchor(&self) -> Option<PreviewViewportAnchor> {
+        let (_, preview_height) = self.preview_output_dimensions()?;
+        let preview_height = usize::from(preview_height);
+        if self.preview_auto_scroll_for_height(preview_height) {
+            return None;
+        }
+
+        let (visible_start, visible_end) = self.preview_visible_range_for_height(preview_height);
+        let lines = self.preview_plain_lines_range(visible_start, visible_end);
+        if lines.is_empty() {
+            return None;
+        }
+
+        Some(PreviewViewportAnchor {
+            lines,
+            bottom_gap: self.preview_line_count().saturating_sub(visible_end),
+            preview_height,
+        })
+    }
+
+    fn restore_manual_preview_viewport(&mut self, anchor: PreviewViewportAnchor) {
+        let visible_count = anchor.lines.len();
+        if visible_count == 0 {
+            return;
+        }
+
+        let total_lines = self.preview_line_count();
+        if total_lines < visible_count {
+            return;
+        }
+
+        let expected_start =
+            total_lines.saturating_sub(anchor.bottom_gap.saturating_add(visible_count));
+        let max_start = total_lines.saturating_sub(visible_count);
+        let best_start = (0..=max_start)
+            .filter(|start| {
+                anchor.lines.iter().enumerate().all(|(offset, line)| {
+                    self.preview_plain_line(start.saturating_add(offset))
+                        .as_deref()
+                        == Some(line.as_str())
+                })
+            })
+            .min_by_key(|start| start.abs_diff(expected_start));
+
+        let Some(start) = best_start else {
+            return;
+        };
+
+        let mut preview_scroll = self.preview_scroll.borrow_mut();
+        preview_scroll.set_external_len(total_lines);
+        let viewport_height = u16::try_from(anchor.preview_height).unwrap_or(u16::MAX);
+        let _ = preview_scroll.visible_range(viewport_height);
+        preview_scroll.scroll_to(start);
+    }
+
     pub(super) fn apply_live_preview_capture(
         &mut self,
         session_name: &str,
@@ -12,9 +73,15 @@ impl GroveApp {
     ) {
         match result {
             Ok(output) => {
+                let viewport_anchor = self.manual_preview_viewport_anchor();
                 let processing_started_at = Instant::now();
                 let apply_started_at = Instant::now();
                 let update = self.preview.apply_capture(&output);
+                if update.changed_raw
+                    && let Some(anchor) = viewport_anchor
+                {
+                    self.restore_manual_preview_viewport(anchor);
+                }
                 let apply_capture_ms = Self::duration_millis(
                     Instant::now().saturating_duration_since(apply_started_at),
                 );
