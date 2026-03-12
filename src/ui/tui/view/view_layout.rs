@@ -1,6 +1,5 @@
 use super::panes::PaneRole;
 use super::view_prelude::*;
-use crate::application::preview::{PreviewParsedLine, PreviewParsedSpan, PreviewParsedStyle};
 
 impl GroveApp {
     fn effective_viewport_size(&self) -> (u16, u16) {
@@ -196,231 +195,27 @@ impl GroveApp {
         ))
     }
 
-    #[cfg(test)]
-    pub(super) fn apply_interactive_cursor_overlay(
+    pub(super) fn interactive_cursor_screen_position(
         &self,
-        visible_lines: &mut [String],
+        output_x: u16,
+        output_y: u16,
         preview_height: usize,
-    ) {
-        let Some((visible_index, cursor_col, cursor_visible)) =
-            self.interactive_cursor_target(preview_height)
-        else {
-            return;
-        };
+    ) -> Option<(u16, u16)> {
+        let (visible_index, cursor_col, cursor_visible) =
+            self.interactive_cursor_target(preview_height)?;
 
-        let Some(line) = visible_lines.get_mut(visible_index) else {
-            return;
-        };
-
-        *line = render_cursor_overlay(line, cursor_col, cursor_visible);
-    }
-
-    pub(super) fn apply_interactive_cursor_overlay_parsed(
-        &self,
-        parsed_visible_lines: &mut [PreviewParsedLine],
-        preview_height: usize,
-    ) {
-        let Some((visible_index, cursor_col, cursor_visible)) =
-            self.interactive_cursor_target(preview_height)
-        else {
-            return;
-        };
-
-        let Some(line) = parsed_visible_lines.get_mut(visible_index) else {
-            return;
-        };
-
-        apply_cursor_overlay_to_parsed_line(line, cursor_col, cursor_visible);
-    }
-}
-
-fn apply_cursor_overlay_to_parsed_line(
-    line: &mut PreviewParsedLine,
-    cursor_col: usize,
-    cursor_visible: bool,
-) {
-    if !cursor_visible {
-        return;
-    }
-
-    let plain_text: String = line.spans.iter().map(|span| span.text.as_str()).collect();
-    let plain_len = plain_text.chars().count();
-    let trailing_style = line
-        .spans
-        .last()
-        .map(|span| span.style.clone())
-        .unwrap_or_else(plain_preview_style);
-    if cursor_col >= plain_len {
-        if cursor_col > plain_len {
-            line.spans.push(PreviewParsedSpan {
-                text: " ".repeat(cursor_col.saturating_sub(plain_len)),
-                style: trailing_style.clone(),
-            });
+        if !cursor_visible {
+            return None;
         }
-        line.spans.push(PreviewParsedSpan {
-            text: "|".to_string(),
-            style: trailing_style,
-        });
-        return;
-    }
 
-    let mut rendered_spans = Vec::new();
-    let mut visible_index = 0usize;
-    let mut inserted = false;
-
-    for span in &line.spans {
-        let mut current = String::new();
-        for character in span.text.chars() {
-            if !inserted && visible_index == cursor_col {
-                if !current.is_empty() {
-                    rendered_spans.push(PreviewParsedSpan {
-                        text: std::mem::take(&mut current),
-                        style: span.style.clone(),
-                    });
-                }
-                rendered_spans.push(PreviewParsedSpan {
-                    text: "|".to_string(),
-                    style: span.style.clone(),
-                });
-                inserted = true;
-            }
-            current.push(character);
-            visible_index = visible_index.saturating_add(1);
-        }
-        if !current.is_empty() {
-            rendered_spans.push(PreviewParsedSpan {
-                text: current,
-                style: span.style.clone(),
-            });
-        }
-    }
-
-    if !inserted {
-        rendered_spans.push(PreviewParsedSpan {
-            text: "|".to_string(),
-            style: trailing_style,
-        });
-    }
-
-    line.spans = rendered_spans;
-}
-
-fn plain_preview_style() -> PreviewParsedStyle {
-    PreviewParsedStyle {
-        foreground_rgb: None,
-        background_rgb: None,
-        bold: false,
-        dim: false,
-        italic: false,
-        underline: false,
-        blink: false,
-        reverse: false,
-        strikethrough: false,
+        let x_offset = u16::try_from(cursor_col).ok()?;
+        let y_offset = u16::try_from(visible_index).ok()?;
+        Some((
+            output_x.saturating_add(x_offset),
+            output_y.saturating_add(y_offset),
+        ))
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{apply_cursor_overlay_to_parsed_line, plain_preview_style};
-    use crate::application::preview::{PreviewParsedLine, PreviewParsedSpan, PreviewParsedStyle};
-
-    #[test]
-    fn parsed_cursor_overlay_inherits_active_span_style() {
-        let accent_style = PreviewParsedStyle {
-            foreground_rgb: Some((120, 10, 10)),
-            background_rgb: Some((5, 6, 7)),
-            bold: true,
-            dim: false,
-            italic: false,
-            underline: false,
-            blink: false,
-            reverse: false,
-            strikethrough: false,
-        };
-        let mut line = PreviewParsedLine {
-            spans: vec![PreviewParsedSpan {
-                text: "ABC".to_string(),
-                style: accent_style.clone(),
-            }],
-        };
-
-        apply_cursor_overlay_to_parsed_line(&mut line, 1, true);
-
-        assert_eq!(
-            line.spans,
-            vec![
-                PreviewParsedSpan {
-                    text: "A".to_string(),
-                    style: accent_style.clone(),
-                },
-                PreviewParsedSpan {
-                    text: "|".to_string(),
-                    style: accent_style.clone(),
-                },
-                PreviewParsedSpan {
-                    text: "BC".to_string(),
-                    style: accent_style,
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn parsed_cursor_overlay_after_line_end_uses_last_span_style() {
-        let accent_style = PreviewParsedStyle {
-            foreground_rgb: Some((120, 10, 10)),
-            background_rgb: Some((5, 6, 7)),
-            bold: true,
-            dim: false,
-            italic: false,
-            underline: false,
-            blink: false,
-            reverse: false,
-            strikethrough: false,
-        };
-        let mut line = PreviewParsedLine {
-            spans: vec![PreviewParsedSpan {
-                text: "AB".to_string(),
-                style: accent_style.clone(),
-            }],
-        };
-
-        apply_cursor_overlay_to_parsed_line(&mut line, 4, true);
-
-        assert_eq!(
-            line.spans,
-            vec![
-                PreviewParsedSpan {
-                    text: "AB".to_string(),
-                    style: accent_style.clone(),
-                },
-                PreviewParsedSpan {
-                    text: "  ".to_string(),
-                    style: accent_style.clone(),
-                },
-                PreviewParsedSpan {
-                    text: "|".to_string(),
-                    style: accent_style,
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn plain_preview_style_has_no_terminal_attributes() {
-        assert_eq!(
-            plain_preview_style(),
-            PreviewParsedStyle {
-                foreground_rgb: None,
-                background_rgb: None,
-                bold: false,
-                dim: false,
-                italic: false,
-                underline: false,
-                blink: false,
-                reverse: false,
-                strikethrough: false,
-            }
-        );
-    }
-}
+mod tests {}

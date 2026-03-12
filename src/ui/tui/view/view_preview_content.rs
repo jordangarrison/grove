@@ -143,8 +143,8 @@ impl GroveApp {
         visible_plain_lines: &[String],
         visible_start: usize,
         visible_end: usize,
-        preview_height: usize,
-        allow_cursor_overlay: bool,
+        _preview_height: usize,
+        _allow_cursor_overlay: bool,
     ) -> Vec<PreviewParsedLine> {
         let parsed_start = visible_start.min(self.preview.parsed_lines.len());
         let parsed_end = visible_end.min(self.preview.parsed_lines.len());
@@ -153,7 +153,7 @@ impl GroveApp {
         } else {
             &[]
         };
-        let mut visible_parsed_lines = visible_plain_lines
+        visible_plain_lines
             .iter()
             .enumerate()
             .map(|(index, plain_line)| {
@@ -163,11 +163,7 @@ impl GroveApp {
                     .cloned()
                     .unwrap_or_else(|| plain_preview_line(plain_line))
             })
-            .collect::<Vec<_>>();
-        if allow_cursor_overlay {
-            self.apply_interactive_cursor_overlay_parsed(&mut visible_parsed_lines, preview_height);
-        }
-        visible_parsed_lines
+            .collect::<Vec<_>>()
     }
 
     fn preview_git_fallback_line(&self, selected_workspace: Option<&Workspace>) -> FtLine<'static> {

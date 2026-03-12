@@ -8243,7 +8243,7 @@ mod tests {
             }
 
             #[test]
-            fn tick_polls_cursor_metadata_and_renders_overlay() {
+            fn tick_polls_cursor_metadata_and_updates_real_cursor_state() {
                 let config_path = unique_config_path("cursor-overlay");
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux_and_config_path(
@@ -8279,11 +8279,12 @@ mod tests {
                     )),
                     Some((1, 1, 34))
                 );
-                assert!(rendered.contains("s|econd"), "{rendered}");
+                assert!(rendered.contains("second"), "{rendered}");
+                assert!(!rendered.contains("s|econd"), "{rendered}");
             }
 
             #[test]
-            fn interactive_agent_preview_renders_cursor_overlay_for_codex_in_frame() {
+            fn interactive_agent_preview_renders_real_cursor_for_codex_in_frame() {
                 let config_path = unique_config_path("cursor-overlay-frame-codex");
                 let (mut app, _commands, _captures, cursor_captures) =
                     fixture_app_with_tmux_and_config_path(
@@ -8352,7 +8353,7 @@ mod tests {
                         .collect::<Vec<_>>(),
                     vec![
                         "first".to_string(),
-                        "s|econd".to_string(),
+                        "second".to_string(),
                         "third".to_string(),
                     ]
                 );
@@ -8362,15 +8363,20 @@ mod tests {
                         .map(|row| row_text(frame, row, x_start, x_end))
                         .collect::<Vec<_>>();
                     assert!(
-                        rows.iter().any(|row| row.contains("s|econd")),
+                        rows.iter().any(|row| row.contains("second")),
                         "{}",
                         rows.join("\n")
                     );
+                    assert_eq!(
+                        frame.cursor_position,
+                        Some((x_start.saturating_add(1), output_y.saturating_add(1)))
+                    );
+                    assert!(frame.cursor_visible);
                 });
             }
 
             #[test]
-            fn interactive_agent_preview_renders_cursor_overlay_for_claude_in_frame() {
+            fn interactive_agent_preview_renders_real_cursor_for_claude_in_frame() {
                 let config_path = unique_config_path("cursor-overlay-frame-claude");
                 let (mut app, _commands, _captures, cursor_captures) =
                     fixture_app_with_tmux_and_config_path(
@@ -8440,7 +8446,7 @@ mod tests {
                         .collect::<Vec<_>>(),
                     vec![
                         "first".to_string(),
-                        "s|econd".to_string(),
+                        "second".to_string(),
                         "third".to_string(),
                     ]
                 );
@@ -8450,15 +8456,20 @@ mod tests {
                         .map(|row| row_text(frame, row, x_start, x_end))
                         .collect::<Vec<_>>();
                     assert!(
-                        rows.iter().any(|row| row.contains("s|econd")),
+                        rows.iter().any(|row| row.contains("second")),
                         "{}",
                         rows.join("\n")
                     );
+                    assert_eq!(
+                        frame.cursor_position,
+                        Some((x_start.saturating_add(1), output_y.saturating_add(1)))
+                    );
+                    assert!(frame.cursor_visible);
                 });
             }
 
             #[test]
-            fn interactive_preview_renders_cursor_on_missing_trailing_blank_row() {
+            fn interactive_preview_places_real_cursor_on_missing_trailing_blank_row() {
                 let config_path = unique_config_path("cursor-overlay-trailing-blank-row");
                 let (mut app, _commands, _captures, cursor_captures) =
                     fixture_app_with_tmux_and_config_path(
@@ -8523,7 +8534,88 @@ mod tests {
                     let rows = (output_y..preview_inner.bottom())
                         .map(|row| row_text(frame, row, x_start, x_end))
                         .collect::<Vec<_>>();
-                    assert_eq!(rows.last(), Some(&"|".to_string()), "{}", rows.join("\n"));
+                    assert_eq!(rows.last(), Some(&String::new()), "{}", rows.join("\n"));
+                    assert_eq!(
+                        frame.cursor_position,
+                        Some((x_start, output_y.saturating_add(33)))
+                    );
+                    assert!(frame.cursor_visible);
+                });
+            }
+
+            #[test]
+            fn interactive_preview_ignores_offscreen_real_cursor() {
+                let config_path = unique_config_path("cursor-offscreen-frame");
+                let (mut app, _commands, _captures, cursor_captures) =
+                    fixture_app_with_tmux_and_config_path(
+                        WorkspaceStatus::Active,
+                        vec![
+                            Ok("first\nsecond\nthird\n".to_string()),
+                            Ok("first\nsecond\nthird\n".to_string()),
+                        ],
+                        Vec::new(),
+                        config_path,
+                    );
+                app.state.workspaces[1].agent = AgentType::Claude;
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+                let (pane_width, pane_height) = app
+                    .preview_output_dimensions()
+                    .expect("preview output dimensions should be available after resize");
+                *cursor_captures.borrow_mut() = vec![
+                    Ok(format!("1 1 {} {pane_width} {pane_height}", pane_height)),
+                    Ok(format!("1 1 {} {pane_width} {pane_height}", pane_height)),
+                ];
+                select_workspace(&mut app, 1);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+                force_tick_due(&mut app);
+                ftui::Model::update(&mut app, Msg::Tick);
+
+                with_rendered_frame(&app, 100, 40, |frame| {
+                    assert!(frame.cursor_position.is_none());
+                    assert!(!frame.cursor_visible);
+                });
+            }
+
+            #[test]
+            fn command_palette_cursor_takes_priority_over_preview_cursor() {
+                let mut app = fixture_app();
+                select_workspace(&mut app, 1);
+                app.preview.apply_capture("first\nsecond\nthird\n");
+                app.open_command_palette();
+                assert!(app.dialogs.command_palette.is_visible());
+                app.session.interactive = Some(InteractiveState::new(
+                    "%1".to_string(),
+                    "grove-ws-feature-a".to_string(),
+                    Instant::now(),
+                    34,
+                    78,
+                ));
+                if let Some(interactive) = app.session.interactive.as_mut() {
+                    let _ = interactive.update_cursor(10, 20, true, 34, 78);
+                }
+
+                let layout = app.panes.test_rects(100, 40);
+                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+                let preview_cursor = (
+                    preview_inner.x.saturating_add(20),
+                    output_y.saturating_add(10),
+                );
+
+                with_rendered_frame(&app, 100, 40, |frame| {
+                    assert!(frame.cursor_position.is_some());
+                    assert_ne!(frame.cursor_position, Some(preview_cursor));
+                    assert!(frame.cursor_visible);
                 });
             }
 

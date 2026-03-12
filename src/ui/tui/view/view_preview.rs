@@ -69,5 +69,17 @@ impl GroveApp {
             &visible_plain_lines,
             visible_start,
         );
+        if interactive_input_active {
+            let output_x = inner.x;
+            let output_y = inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+            if let Some((cursor_x, cursor_y)) =
+                self.interactive_cursor_screen_position(output_x, output_y, preview_height)
+                && cursor_x < inner.right()
+                && cursor_y < inner.bottom()
+            {
+                frame.set_cursor(Some((cursor_x, cursor_y)));
+                frame.set_cursor_visible(true);
+            }
+        }
     }
 }

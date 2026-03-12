@@ -51,8 +51,6 @@ use crate::application::agent_runtime::{
     trimmed_nonempty, workspace_can_enter_interactive, workspace_can_start_agent,
     workspace_can_stop_agent,
 };
-#[cfg(test)]
-use crate::application::interactive::render_cursor_overlay;
 use crate::application::interactive::{
     InteractiveAction, InteractiveKey, InteractiveState, encode_paste_payload,
     multiplexer_send_input_command,
