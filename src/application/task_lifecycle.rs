@@ -1332,4 +1332,40 @@ mod tests {
 
         assert!(result.is_err());
     }
+
+    struct FailingGitRunner;
+
+    impl GitCommandRunner for FailingGitRunner {
+        fn run(&self, _repo_root: &Path, _args: &[String]) -> Result<(), String> {
+            Err("git worktree add failed".to_string())
+        }
+    }
+
+    #[test]
+    fn create_task_cleans_up_empty_dir_on_git_failure() {
+        let temp = TestDir::new("create-cleanup");
+        let tasks_root = temp.path.join("tasks");
+        fs::create_dir_all(&tasks_root).expect("tasks root should exist");
+        let repo_root = temp.path.join("repos").join("myapp");
+        fs::create_dir_all(&repo_root).expect("repo should exist");
+
+        let request = CreateTaskRequest {
+            task_name: "broken-task".to_string(),
+            repositories: vec![repository(repo_root)],
+            agent: AgentType::Codex,
+            branch_source: TaskBranchSource::BaseBranch,
+        };
+        let git = FailingGitRunner;
+        let setup = StubSetupRunner;
+        let setup_command = StubSetupCommandRunner;
+
+        let result =
+            create_task_in_root(tasks_root.as_path(), &request, &git, &setup, &setup_command);
+
+        assert!(result.is_err(), "task creation should fail when git fails");
+        assert!(
+            !tasks_root.join("broken-task").exists(),
+            "empty task directory should be cleaned up on failure"
+        );
+    }
 }

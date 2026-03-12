@@ -122,6 +122,10 @@ impl GroveApp {
             .map(ToOwned::to_owned)
             .collect::<std::collections::HashSet<String>>();
 
+        let mut skipped_invalid_metadata: u32 = 0;
+        let mut skipped_workspace_not_found: u32 = 0;
+        let mut skipped_insert_rejected: u32 = 0;
+
         for row in metadata_rows.lines() {
             if trimmed_nonempty(row).is_none() {
                 continue;
@@ -137,6 +141,7 @@ impl GroveApp {
                             ("row".to_string(), Value::from(row.to_string())),
                         ],
                     );
+                    skipped_invalid_metadata += 1;
                     continue;
                 }
             };
@@ -159,6 +164,7 @@ impl GroveApp {
                         ("session".to_string(), Value::from(metadata.session_name)),
                     ],
                 );
+                skipped_workspace_not_found += 1;
                 continue;
             };
 
@@ -186,6 +192,7 @@ impl GroveApp {
                         ("session".to_string(), Value::from(metadata.session_name)),
                     ],
                 );
+                skipped_insert_rejected += 1;
                 continue;
             }
 
@@ -220,8 +227,43 @@ impl GroveApp {
             }
         }
 
+        let total_skipped =
+            skipped_invalid_metadata + skipped_workspace_not_found + skipped_insert_rejected;
+        if total_skipped > 0 {
+            let message = Self::format_skipped_sessions_warning(
+                total_skipped,
+                skipped_workspace_not_found,
+                skipped_invalid_metadata,
+                skipped_insert_rejected,
+            );
+            self.show_warning_toast(message);
+        }
+
         self.sync_home_tab_titles();
         self.sync_preview_tab_from_active_workspace_tab();
+    }
+
+    pub(super) fn format_skipped_sessions_warning(
+        total: u32,
+        workspace_not_found: u32,
+        invalid_metadata: u32,
+        insert_rejected: u32,
+    ) -> String {
+        let mut parts = Vec::new();
+        if workspace_not_found > 0 {
+            parts.push(format!("{workspace_not_found} workspace not found"));
+        }
+        if invalid_metadata > 0 {
+            parts.push(format!("{invalid_metadata} invalid metadata"));
+        }
+        if insert_rejected > 0 {
+            parts.push(format!("{insert_rejected} insert rejected"));
+        }
+        format!(
+            "{total} tmux session{} skipped during restore ({})",
+            if total == 1 { "" } else { "s" },
+            parts.join(", "),
+        )
     }
 
     pub(super) fn selected_workspace_tabs_state(&self) -> Option<&WorkspaceTabsState> {

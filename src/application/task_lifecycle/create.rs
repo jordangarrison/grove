@@ -106,6 +106,26 @@ pub(super) fn create_task_in_root(
     let task_root = tasks_root.join(&request.task_name);
     fs::create_dir_all(&task_root).map_err(|error| TaskLifecycleError::Io(error.to_string()))?;
 
+    let result = create_task_in_dir(
+        &task_root,
+        request,
+        git_runner,
+        setup_script_runner,
+        setup_command_runner,
+    );
+    if result.is_err() {
+        let _ = remove_dir_if_empty(&task_root);
+    }
+    result
+}
+
+fn create_task_in_dir(
+    task_root: &Path,
+    request: &CreateTaskRequest,
+    git_runner: &impl GitCommandRunner,
+    setup_script_runner: &impl SetupScriptRunner,
+    setup_command_runner: &impl SetupCommandRunner,
+) -> Result<CreateTaskResult, TaskLifecycleError> {
     let mut warnings = Vec::new();
     let mut worktrees = Vec::new();
     let task_branch = match &request.branch_source {
@@ -117,7 +137,7 @@ pub(super) fn create_task_in_root(
         match &request.branch_source {
             TaskBranchSource::BaseBranch => {
                 let (worktree, mut repository_warnings) = create_task_worktree(
-                    task_root.as_path(),
+                    task_root,
                     request.task_name.as_str(),
                     repository,
                     request.agent,
@@ -234,16 +254,23 @@ pub(super) fn create_task_in_root(
     let task: Task = create_task_domain(
         request.task_name.as_str(),
         task_branch.as_str(),
-        task_root.as_path(),
+        task_root,
         worktrees,
     )?;
-    write_task_manifest(&task_root, &task)?;
+    write_task_manifest(task_root, &task)?;
 
     Ok(CreateTaskResult {
-        task_root,
+        task_root: task_root.to_path_buf(),
         task,
         warnings,
     })
+}
+
+fn remove_dir_if_empty(path: &Path) -> std::io::Result<()> {
+    if path.read_dir()?.next().is_none() {
+        fs::remove_dir(path)?;
+    }
+    Ok(())
 }
 
 pub(super) fn create_base_task_in_root(

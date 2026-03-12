@@ -13,6 +13,7 @@ pub(super) struct TransitionSnapshot {
 pub(super) enum ToastSeverity {
     Success,
     Error,
+    Warning,
     Info,
 }
 
@@ -235,6 +236,10 @@ impl GroveApp {
         self.show_toast(text, ToastSeverity::Error);
     }
 
+    pub(super) fn show_warning_toast(&mut self, text: impl Into<String>) {
+        self.show_toast(text, ToastSeverity::Warning);
+    }
+
     pub(super) fn show_info_toast(&mut self, text: impl Into<String>) {
         self.show_toast(text, ToastSeverity::Info);
     }
@@ -253,6 +258,7 @@ impl GroveApp {
                     Value::from(match severity {
                         ToastSeverity::Success => "success",
                         ToastSeverity::Error => "error",
+                        ToastSeverity::Warning => "warning",
                         ToastSeverity::Info => "info",
                     }),
                 ),
@@ -277,6 +283,14 @@ impl GroveApp {
                 Duration::from_secs(12),
                 NotificationPriority::High,
                 theme.red,
+            ),
+            ToastSeverity::Warning => (
+                "Warning",
+                ToastIcon::Warning,
+                ToastStyle::Warning,
+                Duration::from_secs(8),
+                NotificationPriority::Normal,
+                theme.yellow,
             ),
             ToastSeverity::Info => (
                 "Info",

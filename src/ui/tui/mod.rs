@@ -1936,6 +1936,99 @@ mod tests {
     }
 
     #[test]
+    fn restore_shows_warning_toast_when_sessions_skipped() {
+        let rows = format!(
+            "invalid-row\n{}-agent-1\t/repos/unknown\tagent\tCodex 1\tcodex\t8\n{}-agent-1\t{}\tagent\tCodex 1\tcodex\t9\n",
+            feature_workspace_session(),
+            feature_workspace_session(),
+            feature_workspace_path().display(),
+        );
+        let app = GroveApp::from_task_state(
+            "grove".to_string(),
+            crate::ui::state::AppState::new(fixture_tasks(WorkspaceStatus::Idle)),
+            DiscoveryState::Ready,
+            fixture_projects(),
+            AppDependencies {
+                tmux_input: Box::new(RestoreMetadataTmuxInput { rows }),
+                clipboard: test_clipboard(),
+                config_path: unique_config_path("restore-warning-toast"),
+                event_log: Box::new(NullEventLogger),
+                debug_record_start_ts: None,
+            },
+        );
+
+        let toast = app
+            .notifications
+            .visible()
+            .last()
+            .expect("warning toast should be shown when sessions are skipped");
+        assert!(
+            matches!(toast.config.style_variant, ToastStyle::Warning),
+            "toast should use warning style"
+        );
+        assert!(
+            toast.content.message.contains("skipped during restore"),
+            "toast message should mention skipped sessions, got: {}",
+            toast.content.message
+        );
+        assert!(
+            toast.content.message.contains("workspace not found"),
+            "toast message should mention workspace not found reason, got: {}",
+            toast.content.message
+        );
+        assert!(
+            toast.content.message.contains("invalid metadata"),
+            "toast message should mention invalid metadata reason, got: {}",
+            toast.content.message
+        );
+    }
+
+    #[test]
+    fn restore_shows_no_warning_toast_when_all_sessions_restored() {
+        let rows = format!(
+            "{}-agent-1\t{}\tagent\tCodex 1\tcodex\t9\n",
+            feature_workspace_session(),
+            feature_workspace_path().display(),
+        );
+        let app = GroveApp::from_task_state(
+            "grove".to_string(),
+            crate::ui::state::AppState::new(fixture_tasks(WorkspaceStatus::Idle)),
+            DiscoveryState::Ready,
+            fixture_projects(),
+            AppDependencies {
+                tmux_input: Box::new(RestoreMetadataTmuxInput { rows }),
+                clipboard: test_clipboard(),
+                config_path: unique_config_path("restore-no-warning"),
+                event_log: Box::new(NullEventLogger),
+                debug_record_start_ts: None,
+            },
+        );
+
+        assert!(
+            app.notifications.visible().is_empty(),
+            "no toast should be shown when all sessions restore successfully"
+        );
+    }
+
+    #[test]
+    fn restore_warning_toast_message_format() {
+        let message = GroveApp::format_skipped_sessions_warning(5, 3, 1, 1);
+        assert_eq!(
+            message,
+            "5 tmux sessions skipped during restore (3 workspace not found, 1 invalid metadata, 1 insert rejected)"
+        );
+    }
+
+    #[test]
+    fn restore_warning_toast_singular_session() {
+        let message = GroveApp::format_skipped_sessions_warning(1, 1, 0, 0);
+        assert_eq!(
+            message,
+            "1 tmux session skipped during restore (1 workspace not found)"
+        );
+    }
+
+    #[test]
     fn attention_workspace_lookup_supports_numbered_tab_sessions() {
         let mut app = fixture_app();
         select_workspace(&mut app, 1);
