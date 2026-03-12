@@ -89,15 +89,6 @@ const DONE_PATTERNS: [&str; 5] = [
     "exited with code 0",
     "goodbye",
 ];
-const ERROR_PATTERNS: [&str; 6] = [
-    "error:",
-    "failed",
-    "exited with code 1",
-    "panic:",
-    "exception:",
-    "traceback",
-];
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SessionActivity {
     Idle,

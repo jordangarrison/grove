@@ -5,7 +5,7 @@ use crate::domain::{AgentType, WorkspaceStatus};
 
 use super::agents;
 use super::{
-    DONE_PATTERNS, ERROR_PATTERNS, SESSION_ACTIVITY_THRESHOLD, STATUS_TAIL_LINES, SessionActivity,
+    DONE_PATTERNS, SESSION_ACTIVITY_THRESHOLD, STATUS_TAIL_LINES, SessionActivity,
     WAITING_PATTERNS, WAITING_TAIL_LINES,
 };
 
@@ -104,11 +104,7 @@ pub(crate) fn detect_status(
     }
 
     if lines[start..].iter().any(|line| {
-        let normalized = line
-            .trim()
-            .trim_start_matches(['•', '-', '*', '·', '✓', '✔', '☑'])
-            .trim()
-            .to_ascii_lowercase();
+        let normalized = normalize_status_line(line);
         normalized == "done" || normalized == "done."
     }) {
         return WorkspaceStatus::Done;
@@ -121,10 +117,7 @@ pub(crate) fn detect_status(
         return WorkspaceStatus::Done;
     }
 
-    if ERROR_PATTERNS
-        .iter()
-        .any(|pattern| tail_lower.contains(pattern))
-    {
+    if lines[start..].iter().any(|line| is_error_line(line)) {
         return WorkspaceStatus::Error;
     }
 
@@ -259,6 +252,22 @@ fn has_unclosed_tag(text: &str, open_tag: &str, close_tag: &str) -> bool {
         Some(close_index) => close_index < open_index,
         None => true,
     }
+}
+
+fn normalize_status_line(line: &str) -> String {
+    line.trim()
+        .trim_start_matches(['•', '-', '*', '·', '✓', '✔', '☑'])
+        .trim()
+        .to_ascii_lowercase()
+}
+
+fn is_error_line(line: &str) -> bool {
+    let normalized = normalize_status_line(line);
+    normalized.starts_with("error:")
+        || normalized.starts_with("panic:")
+        || normalized.starts_with("exception:")
+        || normalized.starts_with("traceback")
+        || normalized.contains("exited with code 1")
 }
 
 #[cfg(test)]
@@ -683,6 +692,64 @@ mod tests {
         assert_eq!(
             detect_status(&output, SessionActivity::Active, false, true, true),
             WorkspaceStatus::Active
+        );
+    }
+
+    #[test]
+    fn status_resolution_ignores_benign_failed_lines_without_error_markers() {
+        assert_eq!(
+            detect_status(
+                "warning: failed to login mcp\nretrying with cached credentials\n",
+                SessionActivity::Active,
+                false,
+                true,
+                true
+            ),
+            WorkspaceStatus::Active
+        );
+        assert_eq!(
+            detect_status(
+                "The previous approach failed, trying a different implementation.\n",
+                SessionActivity::Active,
+                false,
+                true,
+                true
+            ),
+            WorkspaceStatus::Active
+        );
+    }
+
+    #[test]
+    fn status_resolution_detects_line_anchored_error_markers() {
+        assert_eq!(
+            detect_status(
+                "error: permission denied\n",
+                SessionActivity::Active,
+                false,
+                true,
+                true
+            ),
+            WorkspaceStatus::Error
+        );
+        assert_eq!(
+            detect_status(
+                "Traceback (most recent call last):\n",
+                SessionActivity::Active,
+                false,
+                true,
+                true
+            ),
+            WorkspaceStatus::Error
+        );
+        assert_eq!(
+            detect_status(
+                "tool exited with code 1\n",
+                SessionActivity::Active,
+                false,
+                true,
+                true
+            ),
+            WorkspaceStatus::Error
         );
     }
 
