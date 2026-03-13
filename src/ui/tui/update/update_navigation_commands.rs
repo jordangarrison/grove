@@ -58,7 +58,12 @@ impl GroveApp {
     pub(super) fn execute_ui_command(&mut self, command: UiCommand) -> bool {
         match command {
             UiCommand::ToggleFocus => {
+                let mode_before = self.state.mode;
+                let focus_before = self.state.focus;
                 reduce(&mut self.state, Action::ToggleFocus);
+                if self.state.mode != mode_before || self.state.focus != focus_before {
+                    self.acknowledge_selected_workspace_attention_for_preview_focus();
+                }
             }
             UiCommand::ToggleSidebar => {
                 self.sidebar_hidden = !self.sidebar_hidden;
@@ -78,6 +83,7 @@ impl GroveApp {
                 let focus_before = self.state.focus;
                 reduce(&mut self.state, Action::EnterPreviewMode);
                 if self.state.mode != mode_before || self.state.focus != focus_before {
+                    self.acknowledge_selected_workspace_attention_for_preview_focus();
                     self.poll_preview();
                 }
             }

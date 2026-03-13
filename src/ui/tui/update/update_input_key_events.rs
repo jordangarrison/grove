@@ -184,6 +184,7 @@ impl GroveApp {
     pub(super) fn enter_preview_or_interactive(&mut self) {
         if !self.enter_interactive(Instant::now()) {
             reduce(&mut self.state, Action::EnterPreviewMode);
+            self.acknowledge_selected_workspace_attention_for_preview_focus();
             self.poll_preview();
         }
     }

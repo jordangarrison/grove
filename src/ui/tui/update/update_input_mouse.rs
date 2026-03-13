@@ -604,6 +604,7 @@ impl GroveApp {
                             self.exit_interactive_to_list();
                         }
                         reduce(&mut self.state, Action::EnterPreviewMode);
+                        self.acknowledge_selected_workspace_attention_for_preview_focus();
                         let _ = self.select_tab_by_id_for_selected_workspace(tab_id);
                         self.clear_preview_selection();
                     } else {
@@ -674,6 +675,7 @@ impl GroveApp {
                 } else if matches!(region, HitRegion::Preview) {
                     self.state.mode = UiMode::Preview;
                     self.state.focus = PaneFocus::Preview;
+                    self.acknowledge_selected_workspace_attention_for_preview_focus();
                     if self.preview_scroll_tab_is_focused() {
                         self.scroll_preview(-Self::PREVIEW_MOUSE_SCROLL_LINES);
                     }
@@ -694,6 +696,7 @@ impl GroveApp {
                 } else if matches!(region, HitRegion::Preview) {
                     self.state.mode = UiMode::Preview;
                     self.state.focus = PaneFocus::Preview;
+                    self.acknowledge_selected_workspace_attention_for_preview_focus();
                     if self.preview_scroll_tab_is_focused() {
                         self.scroll_preview(Self::PREVIEW_MOUSE_SCROLL_LINES);
                     }

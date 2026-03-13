@@ -94,6 +94,17 @@ impl GroveApp {
         }
     }
 
+    pub(super) fn acknowledge_selected_workspace_attention_for_preview_focus(&mut self) {
+        if self.state.mode != UiMode::Preview || self.state.focus != PaneFocus::Preview {
+            return;
+        }
+
+        let Some(workspace_path) = self.selected_workspace_path() else {
+            return;
+        };
+        self.clear_attention_for_workspace_path(workspace_path.as_path());
+    }
+
     pub(super) fn track_workspace_status_transition(
         &mut self,
         workspace_path: &Path,

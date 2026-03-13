@@ -9012,6 +9012,41 @@ mod tests {
             }
 
             #[test]
+            fn mouse_click_preview_tab_clears_attention_when_it_focuses_preview() {
+                let mut app = fixture_background_app(WorkspaceStatus::Active);
+                select_workspace(&mut app, 1);
+                app.workspace_attention.insert(
+                    feature_workspace_path(),
+                    super::WorkspaceAttention::NeedsAttention,
+                );
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+                let (tab_x, tab_y) = preview_tab_click_point(&app, WorkspaceTabKind::Agent);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Mouse(MouseEvent::new(
+                        MouseEventKind::Down(MouseButton::Left),
+                        tab_x,
+                        tab_y,
+                    )),
+                );
+
+                assert_eq!(app.state.mode, UiMode::Preview);
+                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert!(
+                    !app.workspace_attention
+                        .contains_key(&feature_workspace_path())
+                );
+            }
+
+            #[test]
             fn mouse_workspace_click_exits_interactive_without_selection_change() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -12194,6 +12229,44 @@ mod tests {
                 assert_eq!(app.state.selected_index, 1);
                 assert!(
                     app.workspace_attention
+                        .contains_key(&feature_workspace_path())
+                );
+            }
+
+            #[test]
+            fn focus_preview_command_clears_attention() {
+                let mut app = fixture_background_app(WorkspaceStatus::Active);
+                select_workspace(&mut app, 1);
+                app.workspace_attention.insert(
+                    feature_workspace_path(),
+                    super::WorkspaceAttention::NeedsAttention,
+                );
+
+                app.execute_ui_command(UiCommand::FocusPreview);
+
+                assert_eq!(app.state.mode, UiMode::Preview);
+                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert!(
+                    !app.workspace_attention
+                        .contains_key(&feature_workspace_path())
+                );
+            }
+
+            #[test]
+            fn toggle_focus_to_preview_clears_attention() {
+                let mut app = fixture_background_app(WorkspaceStatus::Active);
+                select_workspace(&mut app, 1);
+                app.workspace_attention.insert(
+                    feature_workspace_path(),
+                    super::WorkspaceAttention::NeedsAttention,
+                );
+
+                app.execute_ui_command(UiCommand::ToggleFocus);
+
+                assert_eq!(app.state.mode, UiMode::Preview);
+                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert!(
+                    !app.workspace_attention
                         .contains_key(&feature_workspace_path())
                 );
             }
