@@ -1318,6 +1318,38 @@ mod tests {
     }
 
     #[test]
+    fn delete_created_base_task_removes_manifest_directory() {
+        let temp = TestDir::new("delete-created-base-task");
+        let tasks_root = temp.path.join("tasks");
+        let repo_root = temp.path.join("repos").join("flo360");
+        fs::create_dir_all(&repo_root).expect("repo root should exist");
+
+        let request = CreateBaseTaskRequest {
+            repository: repository(repo_root.clone()),
+            agent: AgentType::Codex,
+            base_branch: "main".to_string(),
+        };
+        let result = create_base_task_in_root(tasks_root.as_path(), &request)
+            .expect("base task should create");
+        let git = StubGitRunner::default();
+
+        let delete_result = delete_task_with_runner_in_manifest_root(
+            DeleteTaskRequest {
+                task: result.task,
+                delete_local_branch: true,
+                kill_tmux_sessions: false,
+            },
+            &git,
+            Some(tasks_root.as_path()),
+        );
+
+        assert_eq!(delete_result.0, Ok(()));
+        assert!(repo_root.exists());
+        assert!(!result.task_root.exists());
+        assert!(git.calls().is_empty());
+    }
+
+    #[test]
     fn create_base_task_validates_repository_path_exists() {
         let temp = TestDir::new("create-base-missing");
         let tasks_root = temp.path.join("tasks");

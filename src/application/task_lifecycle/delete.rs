@@ -20,8 +20,11 @@ pub(super) fn delete_task_with_runner(
     } = request;
     let is_base_task = task.has_base_worktree();
     let task_root = task.root_path.clone();
-    let manifest_task_root =
-        manifest_task_root(manifest_tasks_root, task.slug.as_str(), task_root.as_path());
+    let manifest_task_root = if is_base_task {
+        base_task_removal_root(&task, manifest_tasks_root)
+    } else {
+        manifest_task_root(manifest_tasks_root, task.slug.as_str(), task_root.as_path())
+    };
     let mut warnings = Vec::new();
 
     if kill_tmux_sessions {
@@ -90,6 +93,31 @@ fn manifest_task_root(
     }
 
     Some(manifest_task_root)
+}
+
+fn base_task_removal_root(task: &Task, manifest_tasks_root: Option<&Path>) -> Option<PathBuf> {
+    if let Some(manifest_task_root) = manifest_task_root(
+        manifest_tasks_root,
+        task.slug.as_str(),
+        task.root_path.as_path(),
+    ) {
+        return Some(manifest_task_root);
+    }
+
+    let main_checkout_path = task
+        .worktrees
+        .iter()
+        .find(|worktree| worktree.is_main_checkout())
+        .map(|worktree| worktree.path.as_path());
+
+    match main_checkout_path {
+        Some(main_checkout_path)
+            if !refer_to_same_location(task.root_path.as_path(), main_checkout_path) =>
+        {
+            Some(task.root_path.clone())
+        }
+        _ => None,
+    }
 }
 
 fn remove_task_root(task_root: &Path) -> Result<(), String> {
