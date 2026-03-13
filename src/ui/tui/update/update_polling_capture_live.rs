@@ -7,6 +7,65 @@ struct PreviewViewportAnchor {
 }
 
 impl GroveApp {
+    pub(super) fn handle_missing_live_preview_session(&mut self, session_name: &str) {
+        self.session.agent_sessions.remove_ready(session_name);
+        self.session.lazygit_sessions.remove_ready(session_name);
+        self.session.shell_sessions.remove_ready(session_name);
+        self.mark_tab_stopped_for_session(session_name);
+        let selected_workspace_index = self
+            .workspace_path_for_session(session_name)
+            .and_then(|workspace_path| {
+                self.state
+                    .workspaces
+                    .iter()
+                    .position(|workspace| workspace.path == workspace_path)
+            })
+            .or_else(|| {
+                self.state
+                    .selected_workspace()
+                    .filter(|workspace| session_name_for_workspace_ref(workspace) == session_name)
+                    .map(|_| self.state.selected_index)
+            });
+        if let Some(index) = selected_workspace_index {
+            let workspace_path = self.state.workspaces[index].path.clone();
+            let previous_status = self.state.workspaces[index].status;
+            let previous_orphaned = self.state.workspaces[index].is_orphaned;
+            let has_other_running_agent_tab = self
+                .workspace_has_running_agent_tab_excluding_session(
+                    workspace_path.as_path(),
+                    session_name,
+                );
+            let next_status = if has_other_running_agent_tab {
+                previous_status
+            } else if self.state.workspaces[index].is_main {
+                WorkspaceStatus::Main
+            } else {
+                WorkspaceStatus::Idle
+            };
+            let next_orphaned =
+                !self.state.workspaces[index].is_main && !has_other_running_agent_tab;
+            let workspace = &mut self.state.workspaces[index];
+            workspace.status = next_status;
+            workspace.is_orphaned = next_orphaned;
+            self.clear_status_tracking_for_workspace_path(workspace_path.as_path());
+            self.track_workspace_status_transition(
+                &workspace_path,
+                previous_status,
+                next_status,
+                previous_orphaned,
+                next_orphaned,
+            );
+        }
+        if self
+            .session
+            .interactive
+            .as_ref()
+            .is_some_and(|interactive| interactive.target_session == session_name)
+        {
+            self.session.interactive = None;
+        }
+    }
+
     fn manual_preview_viewport_anchor(&self) -> Option<PreviewViewportAnchor> {
         let (_, preview_height) = self.preview_output_dimensions()?;
         let preview_height = usize::from(preview_height);
@@ -306,64 +365,7 @@ impl GroveApp {
                 let capture_error_indicates_missing_session =
                     tmux_capture_error_indicates_missing_session(&message);
                 if capture_error_indicates_missing_session {
-                    self.session.agent_sessions.remove_ready(session_name);
-                    self.session.lazygit_sessions.remove_ready(session_name);
-                    self.session.shell_sessions.remove_ready(session_name);
-                    self.mark_tab_stopped_for_session(session_name);
-                    let selected_workspace_index = self
-                        .workspace_path_for_session(session_name)
-                        .and_then(|workspace_path| {
-                            self.state
-                                .workspaces
-                                .iter()
-                                .position(|workspace| workspace.path == workspace_path)
-                        })
-                        .or_else(|| {
-                            self.state
-                                .selected_workspace()
-                                .filter(|workspace| {
-                                    session_name_for_workspace_ref(workspace) == session_name
-                                })
-                                .map(|_| self.state.selected_index)
-                        });
-                    if let Some(index) = selected_workspace_index {
-                        let workspace_path = self.state.workspaces[index].path.clone();
-                        let previous_status = self.state.workspaces[index].status;
-                        let previous_orphaned = self.state.workspaces[index].is_orphaned;
-                        let has_other_running_agent_tab = self
-                            .workspace_has_running_agent_tab_excluding_session(
-                                workspace_path.as_path(),
-                                session_name,
-                            );
-                        let next_status = if has_other_running_agent_tab {
-                            previous_status
-                        } else if self.state.workspaces[index].is_main {
-                            WorkspaceStatus::Main
-                        } else {
-                            WorkspaceStatus::Idle
-                        };
-                        let next_orphaned =
-                            !self.state.workspaces[index].is_main && !has_other_running_agent_tab;
-                        let workspace = &mut self.state.workspaces[index];
-                        workspace.status = next_status;
-                        workspace.is_orphaned = next_orphaned;
-                        self.clear_status_tracking_for_workspace_path(workspace_path.as_path());
-                        self.track_workspace_status_transition(
-                            &workspace_path,
-                            previous_status,
-                            next_status,
-                            previous_orphaned,
-                            next_orphaned,
-                        );
-                    }
-                    if self
-                        .session
-                        .interactive
-                        .as_ref()
-                        .is_some_and(|interactive| interactive.target_session == session_name)
-                    {
-                        self.session.interactive = None;
-                    }
+                    self.handle_missing_live_preview_session(session_name);
                 }
                 self.telemetry.event_log.log(
                     LogEvent::new("preview_poll", "capture_failed")

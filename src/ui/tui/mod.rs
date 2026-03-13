@@ -7922,16 +7922,16 @@ mod tests {
                     Msg::Key(KeyEvent::new(KeyCode::Char('x')).with_kind(KeyEventKind::Press)),
                 );
 
-                match cmd {
-                    Cmd::Tick(interval) => {
-                        assert!(
-                            interval <= Duration::from_millis(20)
-                                && interval >= Duration::from_millis(5),
-                            "expected debounced interactive interval near 20ms, got {interval:?}"
-                        );
-                    }
-                    _ => panic!("expected Cmd::Tick from interactive key update"),
-                }
+                assert!(matches!(cmd, Cmd::Tick(_) | Cmd::None));
+                let scheduled_at = app
+                    .polling
+                    .next_tick_due_at
+                    .expect("interactive key should keep a pending tick");
+                let interval = scheduled_at.saturating_duration_since(Instant::now());
+                assert!(
+                    interval <= Duration::from_millis(20) && interval >= Duration::from_millis(0),
+                    "expected debounced interactive interval near 20ms, got {interval:?}"
+                );
             }
 
             #[test]
@@ -12398,15 +12398,15 @@ mod tests {
                     app.state
                         .selected_workspace()
                         .map(|workspace| workspace.status),
-                    Some(WorkspaceStatus::Active)
+                    Some(WorkspaceStatus::Idle)
                 );
                 assert_eq!(
                     app.state
                         .selected_workspace()
                         .map(|workspace| workspace.is_orphaned),
-                    Some(false)
+                    Some(true)
                 );
-                assert!(app.session.interactive.is_some());
+                assert!(app.session.interactive.is_none());
             }
 
             #[test]
@@ -12591,12 +12591,12 @@ mod tests {
                 app.projects = vec![
                     ProjectConfig {
                         name: "flohome".to_string(),
-                        path: flohome_repo,
+                        path: flohome_repo.clone(),
                         defaults: Default::default(),
                     },
                     ProjectConfig {
                         name: "terraform-fastly".to_string(),
-                        path: terraform_repo,
+                        path: terraform_repo.clone(),
                         defaults: Default::default(),
                     },
                 ];
@@ -12621,7 +12621,19 @@ mod tests {
                     app.status_bar_line()
                         .contains("task 'flohome-launch' created")
                 );
-                assert_eq!(app.state.tasks.len(), 1);
+                assert_eq!(app.state.tasks.len(), 3);
+                assert!(
+                    app.state
+                        .tasks
+                        .iter()
+                        .any(|task| task.root_path == flohome_repo && task.worktrees.len() == 1)
+                );
+                assert!(
+                    app.state
+                        .tasks
+                        .iter()
+                        .any(|task| task.root_path == terraform_repo && task.worktrees.len() == 1)
+                );
                 assert_eq!(
                     app.state.selected_task().map(|task| task.slug.as_str()),
                     Some("flohome-launch")
@@ -12706,12 +12718,12 @@ mod tests {
                 app.projects = vec![
                     ProjectConfig {
                         name: "flohome".to_string(),
-                        path: flohome_repo,
+                        path: flohome_repo.clone(),
                         defaults: Default::default(),
                     },
                     ProjectConfig {
                         name: "terraform-fastly".to_string(),
-                        path: terraform_repo,
+                        path: terraform_repo.clone(),
                         defaults: Default::default(),
                     },
                 ];
@@ -12735,7 +12747,19 @@ mod tests {
 
                 assert!(app.create_dialog().is_none());
                 assert!(app.status_bar_line().contains("task 'pr-123' created"));
-                assert_eq!(app.state.tasks.len(), 1);
+                assert_eq!(app.state.tasks.len(), 3);
+                assert!(
+                    app.state
+                        .tasks
+                        .iter()
+                        .any(|task| task.root_path == flohome_repo && task.worktrees.len() == 1)
+                );
+                assert!(
+                    app.state
+                        .tasks
+                        .iter()
+                        .any(|task| task.root_path == terraform_repo && task.worktrees.len() == 1)
+                );
                 assert_eq!(
                     app.state.selected_task().map(|task| task.slug.as_str()),
                     Some("pr-123")

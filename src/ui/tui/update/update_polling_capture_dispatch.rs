@@ -180,6 +180,11 @@ impl GroveApp {
                     live_capture.result,
                 );
             } else {
+                if let Err(message) = &live_capture.result
+                    && tmux_capture_error_indicates_missing_session(message)
+                {
+                    self.handle_missing_live_preview_session(live_capture.session.as_str());
+                }
                 let mut event = LogEvent::new("preview_poll", "session_mismatch_dropped")
                     .with_data("captured_session", Value::from(live_capture.session));
                 if let Some(selected_session) = selected_live_session {
