@@ -7,7 +7,7 @@ struct PreviewViewportAnchor {
 }
 
 impl GroveApp {
-    pub(super) fn handle_missing_live_preview_session(&mut self, session_name: &str) {
+    pub(super) fn handle_missing_preview_session(&mut self, session_name: &str) {
         self.session.agent_sessions.remove_ready(session_name);
         self.session.lazygit_sessions.remove_ready(session_name);
         self.session.shell_sessions.remove_ready(session_name);
@@ -365,7 +365,7 @@ impl GroveApp {
                 let capture_error_indicates_missing_session =
                     tmux_capture_error_indicates_missing_session(&message);
                 if capture_error_indicates_missing_session {
-                    self.handle_missing_live_preview_session(session_name);
+                    self.handle_missing_preview_session(session_name);
                 }
                 self.telemetry.event_log.log(
                     LogEvent::new("preview_poll", "capture_failed")

@@ -169,6 +169,12 @@ impl GroveApp {
         let mut had_live_capture = false;
         if let Some(live_capture) = completion.live_capture {
             let selected_live_session = self.selected_live_preview_session_for_completion();
+            let captured_session = live_capture.session.clone();
+            let mismatched_missing_session = live_capture
+                .result
+                .as_ref()
+                .err()
+                .is_some_and(|error| tmux_capture_error_indicates_missing_session(error));
             if selected_live_session.as_deref() == Some(live_capture.session.as_str()) {
                 had_live_capture = true;
                 self.apply_live_preview_capture(
@@ -180,17 +186,15 @@ impl GroveApp {
                     live_capture.result,
                 );
             } else {
-                if let Err(message) = &live_capture.result
-                    && tmux_capture_error_indicates_missing_session(message)
-                {
-                    self.handle_missing_live_preview_session(live_capture.session.as_str());
-                }
                 let mut event = LogEvent::new("preview_poll", "session_mismatch_dropped")
-                    .with_data("captured_session", Value::from(live_capture.session));
+                    .with_data("captured_session", Value::from(captured_session.clone()));
                 if let Some(selected_session) = selected_live_session {
                     event = event.with_data("selected_session", Value::from(selected_session));
                 }
                 self.telemetry.event_log.log(event);
+                if mismatched_missing_session {
+                    self.handle_missing_preview_session(captured_session.as_str());
+                }
                 self.clear_agent_activity_tracking();
                 if self
                     .selected_live_preview_session_for_completion()
