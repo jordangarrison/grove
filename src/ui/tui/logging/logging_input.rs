@@ -56,6 +56,7 @@ impl GroveApp {
         trace_context: InputTraceContext,
         target_session: &str,
         forwarded_at: Instant,
+        suppresses_agent_activity: bool,
     ) {
         self.session
             .pending_interactive_inputs
@@ -64,6 +65,7 @@ impl GroveApp {
                 session: target_session.to_string(),
                 received_at: trace_context.received_at,
                 forwarded_at,
+                suppresses_agent_activity,
             });
 
         if self.session.pending_interactive_inputs.len() <= MAX_PENDING_INPUT_TRACES {

@@ -787,6 +787,7 @@ pub(super) struct PendingInteractiveInput {
     pub(super) session: String,
     pub(super) received_at: Instant,
     pub(super) forwarded_at: Instant,
+    pub(super) suppresses_agent_activity: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -805,6 +806,7 @@ pub(super) struct QueuedInteractiveSend {
     pub(super) action_kind: String,
     pub(super) trace_context: Option<InputTraceContext>,
     pub(super) literal_chars: Option<u64>,
+    pub(super) suppresses_agent_activity: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

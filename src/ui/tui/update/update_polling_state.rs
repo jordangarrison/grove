@@ -167,6 +167,8 @@ impl GroveApp {
     pub(super) fn clear_agent_activity_tracking(&mut self) {
         self.polling.output_changing = false;
         self.polling.agent_output_changing = false;
+        self.polling.last_live_preview_session = None;
+        self.polling.recent_local_echo_session = None;
         self.polling.agent_working_until = None;
         self.polling.agent_idle_polls_since_output = 0;
     }

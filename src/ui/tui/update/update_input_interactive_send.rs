@@ -1,6 +1,30 @@
 use super::update_prelude::*;
 
 impl GroveApp {
+    fn interactive_action_suppresses_agent_activity(action: &InteractiveAction) -> bool {
+        match action {
+            InteractiveAction::SendLiteral(_) | InteractiveAction::PasteClipboard => true,
+            InteractiveAction::SendNamed(key) => matches!(
+                key.as_str(),
+                "Tab"
+                    | "BTab"
+                    | "BSpace"
+                    | "DC"
+                    | "Up"
+                    | "Down"
+                    | "Left"
+                    | "Right"
+                    | "Home"
+                    | "End"
+                    | "PPage"
+                    | "NPage"
+            ),
+            InteractiveAction::ExitInteractive
+            | InteractiveAction::CopySelection
+            | InteractiveAction::Noop => false,
+        }
+    }
+
     pub(super) fn attention_workspace_path_for_session(
         &self,
         session_name: &str,
@@ -64,6 +88,7 @@ impl GroveApp {
                     action_kind,
                     trace_context,
                     literal_chars,
+                    suppresses_agent_activity,
                     ..
                 },
             tmux_send_ms,
@@ -93,7 +118,12 @@ impl GroveApp {
         }
         if let Some(trace_context) = trace_context {
             let forwarded_at = Instant::now();
-            self.track_pending_interactive_input(trace_context, &target_session, forwarded_at);
+            self.track_pending_interactive_input(
+                trace_context,
+                &target_session,
+                forwarded_at,
+                suppresses_agent_activity,
+            );
             let mut fields = vec![
                 ("session".to_string(), Value::from(target_session)),
                 ("action".to_string(), Value::from(action_kind)),
@@ -153,6 +183,9 @@ impl GroveApp {
                 action_kind: Self::interactive_action_kind(action).to_string(),
                 trace_context,
                 literal_chars,
+                suppresses_agent_activity: Self::interactive_action_suppresses_agent_activity(
+                    action,
+                ),
             });
         }
 
@@ -172,6 +205,7 @@ impl GroveApp {
                         trace_context,
                         target_session,
                         forwarded_at,
+                        Self::interactive_action_suppresses_agent_activity(action),
                     );
 
                     let mut fields = vec![

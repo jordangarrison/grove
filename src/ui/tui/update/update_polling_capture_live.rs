@@ -135,7 +135,12 @@ impl GroveApp {
                 let viewport_anchor = self.manual_preview_viewport_anchor();
                 let processing_started_at = Instant::now();
                 let apply_started_at = Instant::now();
+                let continued_live_session =
+                    self.polling.last_live_preview_session.as_deref() == Some(session_name);
+                let suppress_recent_local_echo =
+                    self.polling.recent_local_echo_session.as_deref() == Some(session_name);
                 let update = self.preview.apply_capture(&output);
+                self.polling.last_live_preview_session = Some(session_name.to_string());
                 if update.changed_raw
                     && let Some(anchor) = viewport_anchor
                 {
@@ -153,9 +158,20 @@ impl GroveApp {
                 let drain_pending_inputs_ms = Self::duration_millis(
                     Instant::now().saturating_duration_since(drain_started_at),
                 );
-                self.polling.output_changing = update.changed_cleaned;
-                self.polling.agent_output_changing =
-                    update.changed_cleaned && consumed_inputs.is_empty();
+                let latest_consumed_was_local_echo = consumed_inputs
+                    .last()
+                    .is_some_and(|input| input.suppresses_agent_activity);
+                if latest_consumed_was_local_echo {
+                    self.polling.recent_local_echo_session = Some(session_name.to_string());
+                } else if !update.changed_cleaned && suppress_recent_local_echo {
+                    self.polling.recent_local_echo_session = None;
+                }
+                let activity_changed = continued_live_session
+                    && update.changed_cleaned
+                    && !suppress_recent_local_echo
+                    && !latest_consumed_was_local_echo;
+                self.polling.output_changing = activity_changed;
+                self.polling.agent_output_changing = activity_changed && consumed_inputs.is_empty();
                 self.push_agent_activity_frame(self.polling.agent_output_changing);
                 let mut workspace_status_eval_ms = 0;
                 let mut workspace_status_changed = false;

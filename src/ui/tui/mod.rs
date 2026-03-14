@@ -3150,6 +3150,7 @@ mod tests {
             },
             feature_workspace_session().as_str(),
             Instant::now(),
+            true,
         );
 
         let layout = app.panes.test_rects(160, 24);
@@ -3389,6 +3390,57 @@ mod tests {
                 "status row should show compact context + key hints, got: {status_text}"
             );
         });
+    }
+
+    #[test]
+    fn follow_up_local_echo_frames_do_not_trigger_working() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        select_workspace(&mut app, 1);
+
+        app.apply_live_preview_capture(
+            feature_workspace_session().as_str(),
+            600,
+            false,
+            1,
+            1,
+            Ok("prompt".to_string()),
+        );
+
+        app.track_pending_interactive_input(
+            super::InputTraceContext {
+                seq: 1,
+                received_at: Instant::now(),
+            },
+            feature_workspace_session().as_str(),
+            Instant::now(),
+            true,
+        );
+
+        app.apply_live_preview_capture(
+            feature_workspace_session().as_str(),
+            600,
+            false,
+            1,
+            1,
+            Ok("promptx".to_string()),
+        );
+        assert!(
+            !app.status_is_visually_working(Some(app.state.workspaces[1].path.as_path()), true)
+        );
+
+        app.apply_live_preview_capture(
+            feature_workspace_session().as_str(),
+            600,
+            false,
+            1,
+            1,
+            Ok("promptx ".to_string()),
+        );
+        assert!(
+            !app.status_is_visually_working(Some(app.state.workspaces[1].path.as_path()), true),
+            "follow-up local echo frames should stay suppressed"
+        );
     }
 
     #[test]
@@ -12057,6 +12109,63 @@ mod tests {
             }
 
             #[test]
+            fn first_fresh_capture_after_workspace_switch_does_not_mark_working() {
+                let mut app = fixture_background_app(WorkspaceStatus::Active);
+                if let Some(main_workspace) = app.state.workspaces.get_mut(0) {
+                    main_workspace.status = WorkspaceStatus::Active;
+                }
+                seed_running_agent_tabs_for_running_workspaces(&mut app);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::PreviewPollCompleted(PreviewPollCompletion {
+                        generation: 1,
+                        live_capture: Some(LivePreviewCapture {
+                            session: "grove-ws-grove".to_string(),
+                            scrollback_lines: 600,
+                            include_escape_sequences: false,
+                            capture_ms: 1,
+                            total_ms: 1,
+                            result: Ok("main-live-output\n".to_string()),
+                        }),
+                        cursor_capture: None,
+                        workspace_status_captures: Vec::new(),
+                    }),
+                );
+
+                let switch_cmd =
+                    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('j'))));
+
+                assert_eq!(app.state.selected_index, 1);
+                assert!(cmd_contains_task(&switch_cmd));
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::PreviewPollCompleted(PreviewPollCompletion {
+                        generation: 2,
+                        live_capture: Some(LivePreviewCapture {
+                            session: feature_workspace_session(),
+                            scrollback_lines: 600,
+                            include_escape_sequences: false,
+                            capture_ms: 1,
+                            total_ms: 1,
+                            result: Ok("feature-live-output\n".to_string()),
+                        }),
+                        cursor_capture: None,
+                        workspace_status_captures: Vec::new(),
+                    }),
+                );
+
+                assert!(
+                    !app.status_is_visually_working(
+                        Some(app.state.workspaces[1].path.as_path()),
+                        true,
+                    ),
+                    "first capture after switching workspaces should not imply fresh work"
+                );
+            }
+
+            #[test]
             fn async_preview_capture_failure_sets_toast_message() {
                 let mut app = fixture_app();
                 select_workspace(&mut app, 1);
@@ -12318,13 +12427,13 @@ mod tests {
                             include_escape_sequences: true,
                             capture_ms: 1,
                             total_ms: 1,
-                            result: Ok("hello\u{1b}[?1000h\u{1b}[<35;192;47M".to_string()),
+                            result: Ok("hello".to_string()),
                         }),
                         cursor_capture: None,
                         workspace_status_captures: Vec::new(),
                     }),
                 );
-                assert!(app.polling.output_changing);
+                assert!(!app.polling.output_changing);
 
                 ftui::Model::update(
                     &mut app,

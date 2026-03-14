@@ -234,6 +234,8 @@ struct ReplayQueuedInteractiveSend {
     action_kind: String,
     trace_context: Option<ReplayInputTraceContext>,
     literal_chars: Option<u64>,
+    #[serde(default)]
+    suppresses_agent_activity: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -922,6 +924,7 @@ impl ReplayQueuedInteractiveSend {
                 .as_ref()
                 .map(ReplayInputTraceContext::from_trace_context),
             literal_chars: send.literal_chars,
+            suppresses_agent_activity: send.suppresses_agent_activity,
         }
     }
 
@@ -936,6 +939,7 @@ impl ReplayQueuedInteractiveSend {
                 .as_ref()
                 .map(ReplayInputTraceContext::to_trace_context),
             literal_chars: self.literal_chars,
+            suppresses_agent_activity: self.suppresses_agent_activity,
         }
     }
 }

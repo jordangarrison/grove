@@ -168,6 +168,8 @@ impl GroveApp {
             polling: PollingState {
                 output_changing: false,
                 agent_output_changing: false,
+                last_live_preview_session: None,
+                recent_local_echo_session: None,
                 agent_working_until: None,
                 agent_idle_polls_since_output: 0,
                 workspace_status_digests: HashMap::new(),
