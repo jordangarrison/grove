@@ -112,6 +112,14 @@ impl RenderItem for SidebarListLine {
                 let content_x = area.x.saturating_add(2);
                 let content_width = area.width.saturating_sub(4);
                 let content_area = Rect::new(content_x, area.y, content_width, 1);
+                if let Ok(data) = u64::try_from(*workspace_index) {
+                    let _ = frame.register_hit(
+                        area,
+                        HitId::new(HIT_ID_WORKSPACE_ROW),
+                        FrameHitRegion::Content,
+                        data,
+                    );
+                }
                 if content_width > 0 {
                     let trailing_width =
                         sidebar_segments_width(self.trailing_segments.as_slice());
@@ -164,16 +172,6 @@ impl RenderItem for SidebarListLine {
                         }
                     }
                 }
-
-                if let Ok(data) = u64::try_from(*workspace_index) {
-                    let _ = frame.register_hit(
-                        area,
-                        HitId::new(HIT_ID_WORKSPACE_ROW),
-                        FrameHitRegion::Content,
-                        data,
-                    );
-                }
-
             }
         }
     }

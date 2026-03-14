@@ -2438,7 +2438,8 @@ mod tests {
     fn preview_working_workspace_header_uses_theme_accent_color() {
         let mut app = fixture_app();
         select_workspace(&mut app, 1);
-        app.state.workspaces[1].status = WorkspaceStatus::Thinking;
+        app.polling.output_changing = true;
+        app.polling.agent_output_changing = true;
         focus_agent_preview_tab(&mut app);
 
         let layout = app.panes.test_rects(140, 24);
