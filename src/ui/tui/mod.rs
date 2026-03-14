@@ -3037,7 +3037,7 @@ mod tests {
     #[test]
     fn waiting_workspace_row_has_no_status_badge_or_input_banner() {
         let (mut app, _commands, _captures, _cursor_captures) =
-            fixture_app_with_tmux(WorkspaceStatus::Waiting, Vec::new());
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         select_workspace(&mut app, 0);
         app.sidebar_width_pct = 70;
         app.workspace_attention
@@ -3066,9 +3066,11 @@ mod tests {
     #[test]
     fn waiting_workspace_row_shows_waiting_only_and_suppresses_details() {
         let (mut app, _commands, _captures, _cursor_captures) =
-            fixture_app_with_tmux(WorkspaceStatus::Waiting, Vec::new());
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         select_workspace(&mut app, 1);
         app.sidebar_width_pct = 80;
+        app.workspace_attention
+            .insert(feature_workspace_path(), WorkspaceAttention::NeedsAttention);
         app.state.workspaces[1].pull_requests = vec![PullRequest {
             number: 101,
             url: "https://github.com/acme/grove/pull/101".to_string(),
@@ -3100,9 +3102,59 @@ mod tests {
     }
 
     #[test]
-    fn waiting_workspace_row_shows_working_while_local_input_is_pending() {
+    fn waiting_workspace_row_clears_after_preview_focus() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        select_workspace(&mut app, 1);
+        app.sidebar_width_pct = 80;
+        app.workspace_attention
+            .insert(feature_workspace_path(), WorkspaceAttention::NeedsAttention);
+
+        app.execute_ui_command(UiCommand::FocusPreview);
+
+        let layout = app.panes.test_rects(160, 24);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 160, 24, |frame| {
+            let Some(selected_row) = find_workspace_row(frame, 1, x_start, x_end) else {
+                panic!("selected workspace row should be rendered");
+            };
+            let metadata_row_text = row_text(frame, selected_row.saturating_add(1), x_start, x_end);
+            assert!(
+                !metadata_row_text.contains("WAITING"),
+                "preview focus should clear WAITING label, got: {metadata_row_text}"
+            );
+        });
+    }
+
+    #[test]
+    fn raw_waiting_status_without_attention_does_not_render_waiting_label() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Waiting, Vec::new());
+        select_workspace(&mut app, 1);
+        app.sidebar_width_pct = 80;
+
+        let layout = app.panes.test_rects(160, 24);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 160, 24, |frame| {
+            let Some(selected_row) = find_workspace_row(frame, 1, x_start, x_end) else {
+                panic!("selected workspace row should be rendered");
+            };
+            let metadata_row_text = row_text(frame, selected_row.saturating_add(1), x_start, x_end);
+            assert!(
+                !metadata_row_text.contains("WAITING"),
+                "raw waiting status should not render WAITING label, got: {metadata_row_text}"
+            );
+        });
+    }
+
+    #[test]
+    fn local_input_pending_does_not_change_sidebar_status() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         select_workspace(&mut app, 1);
         app.sidebar_width_pct = 80;
         app.session.interactive = Some(InteractiveState::new(
@@ -3132,11 +3184,11 @@ mod tests {
             let metadata_row_text = row_text(frame, selected_row.saturating_add(1), x_start, x_end);
             assert!(
                 !metadata_row_text.contains("WAITING"),
-                "pending local input should suppress WAITING, got: {metadata_row_text}"
+                "pending local input should not fabricate WAITING, got: {metadata_row_text}"
             );
             assert!(
-                metadata_row_text.contains("WORKING"),
-                "pending local input should show WORKING, got: {metadata_row_text}"
+                !metadata_row_text.contains("WORKING"),
+                "pending local input should not fabricate WORKING, got: {metadata_row_text}"
             );
         });
     }

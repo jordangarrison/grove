@@ -73,7 +73,6 @@ pub(super) const LIVE_PREVIEW_IDLE_SCROLLBACK_LINES: usize = 200;
 pub(super) const LIVE_PREVIEW_FULL_SCROLLBACK_LINES: usize = 0;
 pub(super) const LAZYGIT_COMMAND: &str = "lazygit";
 pub(super) const AGENT_ACTIVITY_WINDOW_FRAMES: usize = 6;
-pub(super) const LOCAL_TYPING_SUPPRESS_MS: u64 = 400;
 pub(super) const AGENT_ENV_SEPARATOR: char = ';';
 
 pub(super) fn usize_to_u64(value: usize) -> u64 {

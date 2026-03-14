@@ -131,14 +131,13 @@ impl GroveApp {
         }];
         let mut line2_width = line2_prefix_width;
         let mut pr_hits = Vec::new();
-        let local_input_pending =
-            self.workspace_has_pending_local_input(workspace.path.as_path(), is_selected);
-        if workspace.status == WorkspaceStatus::Waiting && !local_input_pending {
+        let needs_attention = self.workspace_attention(workspace.path.as_path()).is_some();
+        if needs_attention {
             line2_segments.push(SidebarSegment {
                 text: "WAITING".to_string(),
                 style: secondary_style.fg(theme.yellow).bold(),
             });
-        } else if is_working || local_input_pending {
+        } else if is_working {
             line2_segments.push(SidebarSegment {
                 text: "WORKING".to_string(),
                 style: secondary_style.fg(self.workspace_agent_color(workspace.agent)).bold(),

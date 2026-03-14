@@ -217,50 +217,6 @@ impl GroveApp {
         self.polling.agent_activity_frames.contains(&true)
     }
 
-    pub(super) fn workspace_has_pending_local_input(
-        &self,
-        workspace_path: &Path,
-        is_selected: bool,
-    ) -> bool {
-        if !is_selected {
-            return false;
-        }
-
-        let Some(interactive) = self.session.interactive.as_ref() else {
-            return false;
-        };
-        let Some(interactive_workspace_path) =
-            self.attention_workspace_path_for_session(interactive.target_session.as_str())
-        else {
-            return false;
-        };
-        if interactive_workspace_path != workspace_path {
-            return false;
-        }
-
-        if Instant::now().saturating_duration_since(interactive.last_key_time)
-            < Duration::from_millis(LOCAL_TYPING_SUPPRESS_MS)
-        {
-            return true;
-        }
-        if self.session.interactive_send_in_flight {
-            return true;
-        }
-        if self
-            .session
-            .pending_interactive_sends
-            .iter()
-            .any(|send| send.target_session == interactive.target_session)
-        {
-            return true;
-        }
-
-        self.session
-            .pending_interactive_inputs
-            .iter()
-            .any(|input| input.session == interactive.target_session)
-    }
-
     fn visual_tick_interval(&self) -> Option<Duration> {
         let selected_workspace_path = self
             .state
@@ -292,18 +248,6 @@ impl GroveApp {
         status: WorkspaceStatus,
         is_selected: bool,
     ) -> bool {
-        if is_selected
-            && self
-                .session
-                .interactive
-                .as_ref()
-                .is_some_and(|interactive| {
-                    Instant::now().saturating_duration_since(interactive.last_key_time)
-                        < Duration::from_millis(LOCAL_TYPING_SUPPRESS_MS)
-                })
-        {
-            return false;
-        }
         match status {
             WorkspaceStatus::Thinking => true,
             WorkspaceStatus::Active => {
