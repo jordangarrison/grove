@@ -3064,15 +3064,11 @@ mod tests {
     }
 
     #[test]
-    fn waiting_workspace_row_shows_waiting_snippet_and_suppresses_prs() {
+    fn waiting_workspace_row_shows_waiting_only_and_suppresses_details() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Waiting, Vec::new());
         select_workspace(&mut app, 1);
         app.sidebar_width_pct = 80;
-        app.set_sidebar_waiting_snippet(
-            feature_workspace_path().as_path(),
-            "approve plan changes".to_string(),
-        );
         app.state.workspaces[1].pull_requests = vec![PullRequest {
             number: 101,
             url: "https://github.com/acme/grove/pull/101".to_string(),
@@ -3093,8 +3089,8 @@ mod tests {
                 "waiting workspace should render WAITING label, got: {metadata_row_text}"
             );
             assert!(
-                metadata_row_text.contains("approve plan changes"),
-                "waiting workspace should render waiting snippet, got: {metadata_row_text}"
+                !metadata_row_text.contains("approve plan changes"),
+                "waiting workspace should not render waiting snippet, got: {metadata_row_text}"
             );
             assert!(
                 !metadata_row_text.contains("PRs:"),
@@ -3109,10 +3105,6 @@ mod tests {
             fixture_app_with_tmux(WorkspaceStatus::Waiting, Vec::new());
         select_workspace(&mut app, 1);
         app.sidebar_width_pct = 80;
-        app.set_sidebar_waiting_snippet(
-            feature_workspace_path().as_path(),
-            "approve plan changes".to_string(),
-        );
         app.session.interactive = Some(InteractiveState::new(
             "%1".to_string(),
             feature_workspace_session(),
@@ -12269,60 +12261,10 @@ mod tests {
                         .map(|workspace| workspace.status),
                     Some(WorkspaceStatus::Waiting)
                 );
-                assert_eq!(
-                    app.sidebar_waiting_snippet(feature_workspace_path().as_path()),
-                    Some("Approve command? [y/n]")
-                );
                 assert!(
                     !app.workspace_attention
                         .contains_key(&feature_workspace_path())
                 );
-            }
-
-            #[test]
-            fn waiting_snippet_round_trips_by_workspace_path() {
-                let mut app = fixture_background_app(WorkspaceStatus::Idle);
-                let workspace_path = feature_workspace_path();
-
-                app.set_sidebar_waiting_snippet(
-                    workspace_path.as_path(),
-                    "approve command".to_string(),
-                );
-
-                assert_eq!(
-                    app.sidebar_waiting_snippet(workspace_path.as_path()),
-                    Some("approve command")
-                );
-            }
-
-            #[test]
-            fn clear_status_tracking_for_workspace_path_clears_waiting_snippet() {
-                let mut app = fixture_background_app(WorkspaceStatus::Idle);
-                let workspace_path = feature_workspace_path();
-
-                app.set_sidebar_waiting_snippet(
-                    workspace_path.as_path(),
-                    "approve command".to_string(),
-                );
-
-                app.clear_status_tracking_for_workspace_path(workspace_path.as_path());
-
-                assert_eq!(app.sidebar_waiting_snippet(workspace_path.as_path()), None);
-            }
-
-            #[test]
-            fn clear_status_tracking_clears_waiting_snippets() {
-                let mut app = fixture_background_app(WorkspaceStatus::Idle);
-                let base_path = main_workspace_path();
-                let feature_path = feature_workspace_path();
-
-                app.set_sidebar_waiting_snippet(base_path.as_path(), "base".to_string());
-                app.set_sidebar_waiting_snippet(feature_path.as_path(), "feature".to_string());
-
-                app.clear_status_tracking();
-
-                assert_eq!(app.sidebar_waiting_snippet(base_path.as_path()), None);
-                assert_eq!(app.sidebar_waiting_snippet(feature_path.as_path()), None);
             }
 
             #[test]
@@ -12418,10 +12360,6 @@ mod tests {
                 );
 
                 assert_eq!(app.state.workspaces[1].status, WorkspaceStatus::Active);
-                assert_eq!(
-                    app.sidebar_waiting_snippet(feature_workspace_path().as_path()),
-                    None
-                );
                 assert!(
                     !app.workspace_attention
                         .contains_key(&feature_workspace_path())
@@ -12526,10 +12464,6 @@ mod tests {
 
                 assert_eq!(app.state.workspaces[1].status, WorkspaceStatus::Waiting);
                 assert!(!app.state.workspaces[1].is_orphaned);
-                assert_eq!(
-                    app.sidebar_waiting_snippet(feature_workspace_path().as_path()),
-                    Some("? for shortcuts")
-                );
             }
 
             #[test]
@@ -12551,11 +12485,6 @@ mod tests {
                 select_workspace(&mut app, 0);
                 app.state.workspaces[1].status = WorkspaceStatus::Active;
                 app.state.workspaces[1].is_orphaned = false;
-                app.set_sidebar_waiting_snippet(
-                    feature_workspace_path().as_path(),
-                    "approve command".to_string(),
-                );
-
                 ftui::Model::update(
                     &mut app,
                     Msg::PreviewPollCompleted(PreviewPollCompletion {
@@ -12578,10 +12507,6 @@ mod tests {
 
                 assert_eq!(app.state.workspaces[1].status, WorkspaceStatus::Idle);
                 assert!(app.state.workspaces[1].is_orphaned);
-                assert_eq!(
-                    app.sidebar_waiting_snippet(feature_workspace_path().as_path()),
-                    None
-                );
             }
 
             #[test]
@@ -12670,11 +12595,6 @@ mod tests {
                     workspace.status = WorkspaceStatus::Active;
                     workspace.is_orphaned = false;
                 }
-                app.set_sidebar_waiting_snippet(
-                    feature_workspace_path().as_path(),
-                    "approve command".to_string(),
-                );
-
                 ftui::Model::update(
                     &mut app,
                     Msg::PreviewPollCompleted(PreviewPollCompletion {
@@ -12706,10 +12626,6 @@ mod tests {
                         .selected_workspace()
                         .map(|workspace| workspace.is_orphaned),
                     Some(true)
-                );
-                assert_eq!(
-                    app.sidebar_waiting_snippet(feature_workspace_path().as_path()),
-                    None
                 );
                 assert!(app.session.interactive.is_none());
             }

@@ -131,7 +131,6 @@ impl GroveApp {
         }];
         let mut line2_width = line2_prefix_width;
         let mut pr_hits = Vec::new();
-        let waiting_snippet = self.sidebar_waiting_snippet(workspace.path.as_path());
         let local_input_pending =
             self.workspace_has_pending_local_input(workspace.path.as_path(), is_selected);
         if workspace.status == WorkspaceStatus::Waiting && !local_input_pending {
@@ -139,12 +138,6 @@ impl GroveApp {
                 text: "WAITING".to_string(),
                 style: secondary_style.fg(theme.yellow).bold(),
             });
-            if let Some(snippet) = waiting_snippet {
-                line2_segments.push(SidebarSegment {
-                    text: format!(" · {snippet}"),
-                    style: secondary_style,
-                });
-            }
         } else if is_working || local_input_pending {
             line2_segments.push(SidebarSegment {
                 text: "WORKING".to_string(),

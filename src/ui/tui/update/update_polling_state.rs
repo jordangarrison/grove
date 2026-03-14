@@ -175,50 +175,11 @@ impl GroveApp {
         self.polling
             .workspace_output_changing
             .remove(workspace_path);
-        self.polling
-            .workspace_waiting_snippets
-            .remove(workspace_path);
     }
 
     pub(super) fn clear_status_tracking(&mut self) {
         self.polling.workspace_status_digests.clear();
         self.polling.workspace_output_changing.clear();
-        self.polling.workspace_waiting_snippets.clear();
-    }
-
-    pub(super) fn set_sidebar_waiting_snippet(&mut self, workspace_path: &Path, snippet: String) {
-        self.polling
-            .workspace_waiting_snippets
-            .insert(workspace_path.to_path_buf(), snippet);
-    }
-
-    pub(super) fn sidebar_waiting_snippet(&self, workspace_path: &Path) -> Option<&str> {
-        self.polling
-            .workspace_waiting_snippets
-            .get(workspace_path)
-            .map(String::as_str)
-    }
-
-    pub(super) fn sync_sidebar_waiting_snippet(
-        &mut self,
-        workspace_path: &Path,
-        status: WorkspaceStatus,
-        cleaned_output: &str,
-    ) {
-        if status == WorkspaceStatus::Waiting {
-            if let Some(snippet) = detect_waiting_prompt(cleaned_output) {
-                self.set_sidebar_waiting_snippet(workspace_path, snippet);
-            } else {
-                self.polling
-                    .workspace_waiting_snippets
-                    .remove(workspace_path);
-            }
-            return;
-        }
-
-        self.polling
-            .workspace_waiting_snippets
-            .remove(workspace_path);
     }
 
     pub(super) fn capture_changed_cleaned_for_workspace(
