@@ -12166,6 +12166,105 @@ mod tests {
             }
 
             #[test]
+            fn follow_up_bootstrap_capture_after_workspace_switch_stays_suppressed() {
+                let mut app = fixture_background_app(WorkspaceStatus::Active);
+                if let Some(main_workspace) = app.state.workspaces.get_mut(0) {
+                    main_workspace.status = WorkspaceStatus::Active;
+                }
+                seed_running_agent_tabs_for_running_workspaces(&mut app);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::PreviewPollCompleted(PreviewPollCompletion {
+                        generation: 1,
+                        live_capture: Some(LivePreviewCapture {
+                            session: "grove-ws-grove".to_string(),
+                            scrollback_lines: 600,
+                            include_escape_sequences: false,
+                            capture_ms: 1,
+                            total_ms: 1,
+                            result: Ok("main-live-output\n".to_string()),
+                        }),
+                        cursor_capture: None,
+                        workspace_status_captures: Vec::new(),
+                    }),
+                );
+
+                let switch_cmd =
+                    ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('j'))));
+
+                assert_eq!(app.state.selected_index, 1);
+                assert!(cmd_contains_task(&switch_cmd));
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::PreviewPollCompleted(PreviewPollCompletion {
+                        generation: 2,
+                        live_capture: Some(LivePreviewCapture {
+                            session: feature_workspace_session(),
+                            scrollback_lines: 600,
+                            include_escape_sequences: false,
+                            capture_ms: 1,
+                            total_ms: 1,
+                            result: Ok("feature-live-output\n".to_string()),
+                        }),
+                        cursor_capture: None,
+                        workspace_status_captures: Vec::new(),
+                    }),
+                );
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::PreviewPollCompleted(PreviewPollCompletion {
+                        generation: 3,
+                        live_capture: Some(LivePreviewCapture {
+                            session: feature_workspace_session(),
+                            scrollback_lines: 600,
+                            include_escape_sequences: false,
+                            capture_ms: 1,
+                            total_ms: 1,
+                            result: Ok("feature-live-output\nready\n".to_string()),
+                        }),
+                        cursor_capture: None,
+                        workspace_status_captures: Vec::new(),
+                    }),
+                );
+
+                assert!(
+                    !app.status_is_visually_working(
+                        Some(app.state.workspaces[1].path.as_path()),
+                        true,
+                    ),
+                    "bootstrap follow-up captures after switching should stay suppressed"
+                );
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::PreviewPollCompleted(PreviewPollCompletion {
+                        generation: 4,
+                        live_capture: Some(LivePreviewCapture {
+                            session: feature_workspace_session(),
+                            scrollback_lines: 600,
+                            include_escape_sequences: false,
+                            capture_ms: 1,
+                            total_ms: 1,
+                            result: Ok("feature-live-output\nready\nstill-going\n".to_string()),
+                        }),
+                        cursor_capture: None,
+                        workspace_status_captures: Vec::new(),
+                    }),
+                );
+
+                assert!(
+                    app.status_is_visually_working(
+                        Some(app.state.workspaces[1].path.as_path()),
+                        true,
+                    ),
+                    "bootstrap suppression should end after the bounded follow-up frame"
+                );
+            }
+
+            #[test]
             fn async_preview_capture_failure_sets_toast_message() {
                 let mut app = fixture_app();
                 select_workspace(&mut app, 1);

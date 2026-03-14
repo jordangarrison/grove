@@ -137,6 +137,9 @@ impl GroveApp {
                 let apply_started_at = Instant::now();
                 let continued_live_session =
                     self.polling.last_live_preview_session.as_deref() == Some(session_name);
+                let suppress_bootstrap_follow_up =
+                    self.polling.pending_selected_session_bootstrap.as_deref()
+                        == Some(session_name);
                 let suppress_recent_local_echo =
                     self.polling.recent_local_echo_session.as_deref() == Some(session_name);
                 let update = self.preview.apply_capture(&output);
@@ -166,8 +169,15 @@ impl GroveApp {
                 } else if !update.changed_cleaned && suppress_recent_local_echo {
                     self.polling.recent_local_echo_session = None;
                 }
+                if !continued_live_session && update.changed_cleaned {
+                    self.polling.pending_selected_session_bootstrap =
+                        Some(session_name.to_string());
+                } else if suppress_bootstrap_follow_up {
+                    self.polling.pending_selected_session_bootstrap = None;
+                }
                 let activity_changed = continued_live_session
                     && update.changed_cleaned
+                    && !suppress_bootstrap_follow_up
                     && !suppress_recent_local_echo
                     && !latest_consumed_was_local_echo;
                 self.polling.output_changing = activity_changed;

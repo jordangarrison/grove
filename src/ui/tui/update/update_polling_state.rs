@@ -168,6 +168,7 @@ impl GroveApp {
         self.polling.output_changing = false;
         self.polling.agent_output_changing = false;
         self.polling.last_live_preview_session = None;
+        self.polling.pending_selected_session_bootstrap = None;
         self.polling.recent_local_echo_session = None;
         self.polling.agent_working_until = None;
         self.polling.agent_idle_polls_since_output = 0;

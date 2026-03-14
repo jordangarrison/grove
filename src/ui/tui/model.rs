@@ -218,6 +218,7 @@ struct PollingState {
     output_changing: bool,
     agent_output_changing: bool,
     last_live_preview_session: Option<String>,
+    pending_selected_session_bootstrap: Option<String>,
     recent_local_echo_session: Option<String>,
     agent_working_until: Option<Instant>,
     agent_idle_polls_since_output: u8,
