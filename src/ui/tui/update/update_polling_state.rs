@@ -222,11 +222,7 @@ impl GroveApp {
             .state
             .selected_workspace()
             .map(|workspace| workspace.path.as_path());
-        if self.status_is_visually_working(
-            selected_workspace_path,
-            self.selected_workspace_status(),
-            true,
-        ) {
+        if self.status_is_visually_working(selected_workspace_path, true) {
             return Some(Duration::from_millis(FAST_ANIMATION_INTERVAL_MS));
         }
         None
@@ -245,22 +241,13 @@ impl GroveApp {
     pub(super) fn status_is_visually_working(
         &self,
         workspace_path: Option<&Path>,
-        status: WorkspaceStatus,
         is_selected: bool,
     ) -> bool {
-        match status {
-            WorkspaceStatus::Thinking => true,
-            WorkspaceStatus::Active => {
-                if workspace_path.is_some_and(|path| self.workspace_output_changing(path)) {
-                    return true;
-                }
-                if is_selected {
-                    return self.polling.agent_output_changing || self.has_recent_agent_activity();
-                }
-                false
-            }
-            _ => false,
+        if is_selected {
+            return self.polling.agent_output_changing || self.has_recent_agent_activity();
         }
+
+        workspace_path.is_some_and(|path| self.workspace_output_changing(path))
     }
 
     pub(super) fn is_due_with_tolerance(now: Instant, due_at: Instant) -> bool {

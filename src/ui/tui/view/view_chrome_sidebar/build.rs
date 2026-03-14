@@ -37,7 +37,6 @@ impl GroveApp {
 
         let is_working = self.status_is_visually_working(
             Some(workspace.path.as_path()),
-            workspace.status,
             is_selected,
         );
         let (attention_symbol, attention_color) = self

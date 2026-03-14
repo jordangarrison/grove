@@ -28,11 +28,8 @@ impl GroveApp {
             } else {
                 selected_workspace.map(|workspace| {
                     let workspace_name = Self::workspace_display_name(workspace);
-                    let is_working = self.status_is_visually_working(
-                        Some(workspace.path.as_path()),
-                        workspace.status,
-                        true,
-                    );
+                    let is_working =
+                        self.status_is_visually_working(Some(workspace.path.as_path()), true);
                     let branch_label = if workspace.branch != workspace_name {
                         Some(workspace.branch.clone())
                     } else {
