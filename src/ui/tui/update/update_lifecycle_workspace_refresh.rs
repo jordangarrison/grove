@@ -135,7 +135,7 @@ impl GroveApp {
         self.reorder_tasks_for_task_order();
         self.state.mode = previous_mode;
         self.state.focus = previous_focus;
-        self.rebuild_workspace_tabs_from_tmux_metadata();
+        self.sync_workspace_tab_maps();
         self.reconcile_workspace_attention_tracking();
         self.clear_agent_activity_tracking();
         self.clear_status_tracking();
@@ -160,7 +160,7 @@ impl GroveApp {
         self.reorder_tasks_for_task_order();
         self.state.mode = previous_mode;
         self.state.focus = previous_focus;
-        self.rebuild_workspace_tabs_from_tmux_metadata();
+        self.sync_workspace_tab_maps();
         self.dialogs.refresh_in_flight = false;
         self.reconcile_workspace_attention_tracking();
         self.clear_agent_activity_tracking();
