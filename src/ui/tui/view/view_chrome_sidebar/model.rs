@@ -24,27 +24,31 @@ enum SidebarLineKind {
 
 #[derive(Debug, Clone)]
 struct SidebarListLine {
-    segments: Vec<SidebarSegment>,
+    leading_segments: Vec<SidebarSegment>,
+    trailing_segments: Vec<SidebarSegment>,
     kind: SidebarLineKind,
 }
 
 impl SidebarListLine {
     fn project(segments: Vec<SidebarSegment>) -> Self {
         Self {
-            segments,
+            leading_segments: segments,
+            trailing_segments: Vec::new(),
             kind: SidebarLineKind::Project,
         }
     }
 
     fn workspace(
-        segments: Vec<SidebarSegment>,
+        leading_segments: Vec<SidebarSegment>,
+        trailing_segments: Vec<SidebarSegment>,
         workspace_index: usize,
         border_style: Style,
         row_style: Style,
         pr_hits: Vec<SidebarPrHit>,
     ) -> Self {
         Self {
-            segments,
+            leading_segments,
+            trailing_segments,
             kind: SidebarLineKind::Workspace {
                 workspace_index,
                 border_style,
@@ -73,7 +77,7 @@ impl RenderItem for SidebarListLine {
 
         match &self.kind {
             SidebarLineKind::Project => {
-                render_sidebar_segments(self.segments.as_slice(), area, frame);
+                render_sidebar_segments(self.leading_segments.as_slice(), area, frame);
             }
             SidebarLineKind::Workspace {
                 workspace_index,
@@ -109,7 +113,56 @@ impl RenderItem for SidebarListLine {
                 let content_width = area.width.saturating_sub(4);
                 let content_area = Rect::new(content_x, area.y, content_width, 1);
                 if content_width > 0 {
-                    render_sidebar_segments(self.segments.as_slice(), content_area, frame);
+                    let trailing_width =
+                        sidebar_segments_width(self.trailing_segments.as_slice());
+                    let trailing_width_u16 = u16::try_from(trailing_width).unwrap_or(u16::MAX);
+                    let leading_width = if trailing_width_u16 >= content_width {
+                        0
+                    } else if trailing_width_u16 == 0 {
+                        content_width
+                    } else {
+                        content_width.saturating_sub(trailing_width_u16.saturating_add(1))
+                    };
+                    if leading_width > 0 {
+                        render_sidebar_segments(
+                            self.leading_segments.as_slice(),
+                            Rect::new(content_x, area.y, leading_width, 1),
+                            frame,
+                        );
+                    }
+                    if trailing_width_u16 > 0 && trailing_width_u16 <= content_width {
+                        let trailing_x =
+                            content_area.right().saturating_sub(trailing_width_u16);
+                        render_sidebar_segments(
+                            self.trailing_segments.as_slice(),
+                            Rect::new(trailing_x, area.y, trailing_width_u16, 1),
+                            frame,
+                        );
+
+                        for pr_hit in pr_hits {
+                            let Some(start) = u16::try_from(pr_hit.start_col).ok() else {
+                                continue;
+                            };
+                            let token_x = trailing_x.saturating_add(start);
+                            if token_x >= content_area.right() {
+                                continue;
+                            }
+                            let Some(token_width) = u16::try_from(pr_hit.width).ok() else {
+                                continue;
+                            };
+                            let visible_width =
+                                token_width.min(content_area.right().saturating_sub(token_x));
+                            if visible_width == 0 {
+                                continue;
+                            }
+                            let _ = frame.register_hit(
+                                Rect::new(token_x, area.y, visible_width, 1),
+                                HitId::new(HIT_ID_WORKSPACE_PR_LINK),
+                                FrameHitRegion::Content,
+                                pr_hit.data,
+                            );
+                        }
+                    }
                 }
 
                 if let Ok(data) = u64::try_from(*workspace_index) {
@@ -121,31 +174,6 @@ impl RenderItem for SidebarListLine {
                     );
                 }
 
-                if content_width > 0 {
-                    for pr_hit in pr_hits {
-                        let Some(start) = u16::try_from(pr_hit.start_col).ok() else {
-                            continue;
-                        };
-                        let token_x = content_x.saturating_add(start);
-                        if token_x >= content_area.right() {
-                            continue;
-                        }
-                        let Some(token_width) = u16::try_from(pr_hit.width).ok() else {
-                            continue;
-                        };
-                        let visible_width =
-                            token_width.min(content_area.right().saturating_sub(token_x));
-                        if visible_width == 0 {
-                            continue;
-                        }
-                        let _ = frame.register_hit(
-                            Rect::new(token_x, area.y, visible_width, 1),
-                            HitId::new(HIT_ID_WORKSPACE_PR_LINK),
-                            FrameHitRegion::Content,
-                            pr_hit.data,
-                        );
-                    }
-                }
             }
         }
     }
@@ -161,4 +189,11 @@ fn render_sidebar_segments(segments: &[SidebarSegment], area: Rect, frame: &mut 
         .map(|segment| FtSpan::styled(segment.text.clone(), segment.style))
         .collect::<Vec<FtSpan>>();
     Paragraph::new(FtText::from_lines(vec![FtLine::from_spans(spans)])).render(area, frame);
+}
+
+fn sidebar_segments_width(segments: &[SidebarSegment]) -> usize {
+    segments
+        .iter()
+        .map(|segment| text_display_width(segment.text.as_str()))
+        .sum()
 }

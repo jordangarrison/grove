@@ -231,10 +231,10 @@ mod tests {
         ProjectDefaultsDialogField, PullUpstreamDialogField, RefreshWorkspacesCompletion,
         SettingsDialogField, StartAgentCompletion, StartAgentConfigField, StartAgentConfigState,
         StopAgentCompletion, StopDialogField, TextSelectionPoint, TmuxInput, UiCommand,
-        UpdateFromBaseDialogField, WORKSPACE_ITEM_HEIGHT, WorkspaceAttention,
-        WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind,
-        WorkspaceTabRuntimeState, decode_create_dialog_tab_hit_data, decode_workspace_pr_hit_data,
-        parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
+        UpdateFromBaseDialogField, WorkspaceAttention, WorkspaceShellLaunchCompletion,
+        WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind, WorkspaceTabRuntimeState,
+        decode_create_dialog_tab_hit_data, decode_workspace_pr_hit_data, parse_cursor_metadata,
+        ui_theme, ui_theme_for, usize_to_u64,
     };
     use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
     use crate::application::interactive::InteractiveState;
@@ -2259,11 +2259,18 @@ mod tests {
         let x_end = layout.sidebar.right().saturating_sub(1);
 
         with_rendered_frame(&app, 160, 24, |frame| {
+            let Some(task_row) = find_row_containing(frame, "[1]", x_start, x_end) else {
+                panic!("single-workspace task should keep a header row");
+            };
             let Some(sidebar_row) = find_row_containing(frame, "feature-a (grove)", x_start, x_end)
             else {
                 panic!("sidebar should show repo name next to single-repo task");
             };
             let sidebar_text = row_text(frame, sidebar_row, x_start, x_end);
+            assert!(
+                task_row < sidebar_row,
+                "task header should stay above its workspace row"
+            );
             assert!(
                 !sidebar_text.contains("feature-a (grove) · feature-a"),
                 "sidebar should not re-add the hidden branch suffix, got: {sidebar_text}"
@@ -2461,6 +2468,7 @@ mod tests {
         let mut app = fixture_app();
         select_workspace(&mut app, 1);
         app.state.workspaces[1].status = WorkspaceStatus::Thinking;
+        let expected_color = app.workspace_agent_color(app.state.workspaces[1].agent);
 
         let layout = app.panes.test_rects(140, 24);
         let sidebar_x_start = layout.sidebar.x.saturating_add(1);
@@ -2480,9 +2488,8 @@ mod tests {
                 panic!("workspace label cell should be rendered");
             };
             assert_eq!(
-                name_cell.fg,
-                ui_theme().blue,
-                "working sidebar row should use theme accent color",
+                name_cell.fg, expected_color,
+                "working sidebar row should use agent accent color",
             );
         });
     }
@@ -2521,14 +2528,13 @@ mod tests {
                 panic!("feature row should be rendered");
             };
             let rendered_row_text = row_text(frame, row, x_start, x_end);
-            let metadata_row_text = row_text(frame, row.saturating_add(1), x_start, x_end);
             assert!(
                 !rendered_row_text.contains("feature-a · feature-a"),
                 "row should not duplicate workspace and branch when they match, got: {rendered_row_text}"
             );
             assert!(
-                !metadata_row_text.contains("running"),
-                "metadata row should not include running count, got: {metadata_row_text}"
+                !rendered_row_text.contains("running"),
+                "workspace row should not include running count, got: {rendered_row_text}"
             );
         });
     }
@@ -2552,25 +2558,25 @@ mod tests {
             let Some(feature_row) = find_workspace_row(frame, 1, x_start, x_end) else {
                 panic!("feature row should be rendered");
             };
-            let feature_row_text = row_text(frame, feature_row.saturating_add(1), x_start, x_end);
+            let feature_row_text = row_text(frame, feature_row, x_start, x_end);
             assert!(
-                feature_row_text.contains(" · De"),
-                "feature metadata row should include deleting indicator, got: {feature_row_text}"
+                feature_row_text.contains("Deleting..."),
+                "feature row should include deleting indicator, got: {feature_row_text}"
             );
 
             let Some(base_row) = find_workspace_row(frame, 0, x_start, x_end) else {
                 panic!("base row should be rendered");
             };
-            let base_row_text = row_text(frame, base_row.saturating_add(1), x_start, x_end);
+            let base_row_text = row_text(frame, base_row, x_start, x_end);
             assert!(
-                !base_row_text.contains(" · De"),
-                "base metadata row should not include deleting indicator, got: {base_row_text}"
+                !base_row_text.contains("Deleting..."),
+                "base row should not include deleting indicator, got: {base_row_text}"
             );
         });
     }
 
     #[test]
-    fn sidebar_second_line_shows_pull_request_status_icons() {
+    fn sidebar_row_shows_pull_request_status_icons() {
         let mut app = fixture_app();
         app.state.workspaces[1].pull_requests = vec![
             PullRequest {
@@ -2599,50 +2605,40 @@ mod tests {
             let Some(row) = find_workspace_row(frame, 1, x_start, x_end) else {
                 panic!("feature row should be rendered");
             };
-            let metadata_row = row.saturating_add(1);
-            let metadata_text = row_text(frame, metadata_row, x_start, x_end);
+            let row_text = row_text(frame, row, x_start, x_end);
             assert!(
-                metadata_text.contains("PRs:"),
-                "metadata row should include PR label, got: {metadata_text}"
+                !row_text.contains("PRs:"),
+                "row should not include PR label, got: {row_text}"
             );
             assert!(
-                metadata_text.contains(" #101")
-                    && metadata_text.contains(" #102")
-                    && metadata_text.contains(" #103"),
-                "metadata row should include PR ids with status icons, got: {metadata_text}"
+                row_text.contains(" #101")
+                    && row_text.contains(" #102")
+                    && row_text.contains(" #103"),
+                "row should include PR ids with status icons, got: {row_text}"
             );
 
-            let Some(open_col) = find_cell_with_char(frame, metadata_row, x_start, x_end, '')
-            else {
+            let Some(open_col) = find_cell_with_char(frame, row, x_start, x_end, '') else {
                 panic!("open PR icon should render");
             };
-            assert_row_fg(
-                frame,
-                metadata_row,
-                open_col,
-                open_col.saturating_add(1),
-                theme.teal,
-            );
+            assert_row_fg(frame, row, open_col, open_col.saturating_add(1), theme.teal);
 
-            let Some(merged_col) = find_cell_with_char(frame, metadata_row, x_start, x_end, '')
-            else {
+            let Some(merged_col) = find_cell_with_char(frame, row, x_start, x_end, '') else {
                 panic!("merged PR icon should render");
             };
             assert_row_fg(
                 frame,
-                metadata_row,
+                row,
                 merged_col,
                 merged_col.saturating_add(1),
                 theme.mauve,
             );
 
-            let Some(closed_col) = find_cell_with_char(frame, metadata_row, x_start, x_end, '')
-            else {
+            let Some(closed_col) = find_cell_with_char(frame, row, x_start, x_end, '') else {
                 panic!("closed PR icon should render");
             };
             assert_row_fg(
                 frame,
-                metadata_row,
+                row,
                 closed_col,
                 closed_col.saturating_add(1),
                 theme.red,
@@ -2667,12 +2663,10 @@ mod tests {
             let Some(row) = find_workspace_row(frame, 1, x_start, x_end) else {
                 panic!("feature row should be rendered");
             };
-            let metadata_row = row.saturating_add(1);
-            let Some(icon_col) = find_cell_with_char(frame, metadata_row, x_start, x_end, '')
-            else {
+            let Some(icon_col) = find_cell_with_char(frame, row, x_start, x_end, '') else {
                 panic!("PR icon should render");
             };
-            let Some((hit_id, _region, hit_data)) = frame.hit_test(icon_col, metadata_row) else {
+            let Some((hit_id, _region, hit_data)) = frame.hit_test(icon_col, row) else {
                 panic!("PR icon should have hit target");
             };
             assert_eq!(hit_id, HitId::new(HIT_ID_WORKSPACE_PR_LINK));
@@ -2697,10 +2691,10 @@ mod tests {
             let Some(base_row) = find_row_containing(frame, "grove", x_start, x_end) else {
                 panic!("base row should render");
             };
-            let metadata_text = row_text(frame, base_row.saturating_add(1), x_start, x_end);
             assert!(
-                !metadata_text.contains("PRs:"),
-                "base workspace should hide PR list, got: {metadata_text}"
+                !row_text(frame, base_row, x_start, x_end).contains(" #777"),
+                "base workspace should hide PR list, got: {}",
+                row_text(frame, base_row, x_start, x_end)
             );
         });
     }
@@ -2953,15 +2947,14 @@ mod tests {
             let Some(selected_row) = find_workspace_row(frame, 1, x_start, x_end) else {
                 panic!("selected workspace row should be rendered");
             };
-            let metadata_row = selected_row.saturating_add(1);
-            let Some(color_col) = find_cell_with_char(frame, metadata_row, x_start, x_end, 'W')
+            let Some(color_col) = find_cell_with_char(frame, selected_row, x_start, x_end, 'W')
             else {
                 panic!("working workspace should render WORKING label");
             };
             initial_color = Some(
                 frame
                     .buffer
-                    .get(color_col, metadata_row)
+                    .get(color_col, selected_row)
                     .expect("working label cell should exist")
                     .fg,
             );
@@ -2974,15 +2967,14 @@ mod tests {
             let Some(selected_row) = find_workspace_row(frame, 1, x_start, x_end) else {
                 panic!("selected workspace row should be rendered");
             };
-            let metadata_row = selected_row.saturating_add(1);
-            let Some(color_col) = find_cell_with_char(frame, metadata_row, x_start, x_end, 'W')
+            let Some(color_col) = find_cell_with_char(frame, selected_row, x_start, x_end, 'W')
             else {
                 panic!("working workspace should render WORKING label");
             };
             advanced_color = Some(
                 frame
                     .buffer
-                    .get(color_col, metadata_row)
+                    .get(color_col, selected_row)
                     .expect("working label cell should exist")
                     .fg,
             );
@@ -3071,7 +3063,7 @@ mod tests {
             let Some(selected_row) = find_workspace_row(frame, 1, x_start, x_end) else {
                 panic!("selected workspace row should be rendered");
             };
-            let metadata_row_text = row_text(frame, selected_row.saturating_add(1), x_start, x_end);
+            let metadata_row_text = row_text(frame, selected_row, x_start, x_end);
             assert!(
                 metadata_row_text.contains("WAITING"),
                 "waiting workspace should render WAITING label, got: {metadata_row_text}"
@@ -3081,7 +3073,7 @@ mod tests {
                 "waiting workspace should not render waiting snippet, got: {metadata_row_text}"
             );
             assert!(
-                !metadata_row_text.contains("PRs:"),
+                !metadata_row_text.contains(" #101"),
                 "waiting workspace should suppress PR metadata, got: {metadata_row_text}"
             );
         });
@@ -3106,7 +3098,7 @@ mod tests {
             let Some(selected_row) = find_workspace_row(frame, 1, x_start, x_end) else {
                 panic!("selected workspace row should be rendered");
             };
-            let metadata_row_text = row_text(frame, selected_row.saturating_add(1), x_start, x_end);
+            let metadata_row_text = row_text(frame, selected_row, x_start, x_end);
             assert!(
                 !metadata_row_text.contains("WAITING"),
                 "preview focus should clear WAITING label, got: {metadata_row_text}"
@@ -3129,7 +3121,7 @@ mod tests {
             let Some(selected_row) = find_workspace_row(frame, 1, x_start, x_end) else {
                 panic!("selected workspace row should be rendered");
             };
-            let metadata_row_text = row_text(frame, selected_row.saturating_add(1), x_start, x_end);
+            let metadata_row_text = row_text(frame, selected_row, x_start, x_end);
             assert!(
                 !metadata_row_text.contains("WAITING"),
                 "raw waiting status should not render WAITING label, got: {metadata_row_text}"
@@ -3167,7 +3159,7 @@ mod tests {
             let Some(selected_row) = find_workspace_row(frame, 1, x_start, x_end) else {
                 panic!("selected workspace row should be rendered");
             };
-            let metadata_row_text = row_text(frame, selected_row.saturating_add(1), x_start, x_end);
+            let metadata_row_text = row_text(frame, selected_row, x_start, x_end);
             assert!(
                 !metadata_row_text.contains("WAITING"),
                 "pending local input should not fabricate WAITING, got: {metadata_row_text}"
@@ -3221,7 +3213,7 @@ mod tests {
             let Some(selected_row) = find_workspace_row(frame, 1, x_start, x_end) else {
                 panic!("selected workspace row should be rendered");
             };
-            let metadata_row_text = row_text(frame, selected_row.saturating_add(1), x_start, x_end);
+            let metadata_row_text = row_text(frame, selected_row, x_start, x_end);
             assert!(
                 metadata_row_text.contains("WORKING"),
                 "working workspace should render WORKING label, got: {metadata_row_text}"
@@ -3246,7 +3238,7 @@ mod tests {
             let Some(selected_row) = find_workspace_row(frame, 1, x_start, x_end) else {
                 panic!("selected workspace row should be rendered");
             };
-            let metadata_row_text = row_text(frame, selected_row.saturating_add(1), x_start, x_end);
+            let metadata_row_text = row_text(frame, selected_row, x_start, x_end);
             assert!(
                 metadata_row_text.contains("WORKING"),
                 "agent output should render WORKING regardless of status, got: {metadata_row_text}"
@@ -3272,7 +3264,7 @@ mod tests {
             let Some(feature_row) = find_workspace_row(frame, 1, x_start, x_end) else {
                 panic!("background workspace row should be rendered");
             };
-            let metadata_row_text = row_text(frame, feature_row.saturating_add(1), x_start, x_end);
+            let metadata_row_text = row_text(frame, feature_row, x_start, x_end);
             assert!(
                 metadata_row_text.contains("WORKING"),
                 "background output change should render WORKING regardless of status, got: {metadata_row_text}"
@@ -3440,16 +3432,36 @@ mod tests {
         let x_end = layout.sidebar.right().saturating_sub(1);
 
         with_rendered_frame(&app, 100, 24, |frame| {
-            let task_row = find_row_containing(frame, "flohome-launch", x_start, x_end);
-            assert!(task_row.is_some(), "task header should be rendered");
+            let Some(task_row) = find_row_containing(frame, "flohome-launch [2]", x_start, x_end)
+            else {
+                panic!("task header should be rendered");
+            };
 
-            let flohome_row = find_row_containing(frame, "flohome", x_start, x_end);
-            assert!(flohome_row.is_some(), "first worktree should be rendered");
-
-            let terraform_row = find_row_containing(frame, "terraform-fastly", x_start, x_end);
+            let Some(flohome_row) = find_workspace_row(frame, 0, x_start, x_end) else {
+                panic!("first worktree should be rendered");
+            };
+            let Some(terraform_row) = find_workspace_row(frame, 1, x_start, x_end) else {
+                panic!("second worktree should be rendered");
+            };
+            let flohome_text = row_text(frame, flohome_row, x_start, x_end);
+            let terraform_text = row_text(frame, terraform_row, x_start, x_end);
             assert!(
-                terraform_row.is_some(),
-                "second worktree should be rendered"
+                flohome_text.contains("flohome"),
+                "first worktree row should mention flohome, got: {flohome_text}"
+            );
+            assert!(
+                terraform_text.contains("terraform-fastly"),
+                "second worktree row should mention terraform-fastly, got: {terraform_text}"
+            );
+            assert_eq!(
+                flohome_row,
+                task_row.saturating_add(1),
+                "first worktree should render immediately below the task header"
+            );
+            assert_eq!(
+                terraform_row,
+                flohome_row.saturating_add(1),
+                "dense sidebar should render one row per worktree"
             );
         });
     }
@@ -6226,12 +6238,11 @@ mod tests {
             let Some(feature_row) = find_workspace_row(frame, 1, x_start, x_end) else {
                 panic!("feature row should be rendered");
             };
-            let metadata_row = feature_row.saturating_add(1);
-            let Some(icon_col) = find_cell_with_char(frame, metadata_row, x_start, x_end, '')
+            let Some(icon_col) = find_cell_with_char(frame, feature_row, x_start, x_end, '')
             else {
                 panic!("PR icon should be rendered");
             };
-            target = Some((icon_col, metadata_row));
+            target = Some((icon_col, feature_row));
         });
         let Some((target_x, target_y)) = target else {
             panic!("PR target should be captured");
@@ -9309,13 +9320,7 @@ mod tests {
                 select_workspace(&mut app, 1);
                 focus_agent_preview_tab(&mut app);
                 assert!(app.enter_interactive(Instant::now()));
-
-                let layout = app.panes.test_rects(100, 40);
-                let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
-                let second_row_y = sidebar_inner
-                    .y
-                    .saturating_add(1)
-                    .saturating_add(WORKSPACE_ITEM_HEIGHT);
+                let mut target = None;
 
                 ftui::Model::update(
                     &mut app,
@@ -9324,12 +9329,24 @@ mod tests {
                         height: 40,
                     },
                 );
+                with_rendered_frame(&app, 100, 40, |frame| {
+                    let layout = app.panes.test_rects(100, 40);
+                    let x_start = layout.sidebar.x.saturating_add(1);
+                    let x_end = layout.sidebar.right().saturating_sub(1);
+                    let Some(row_y) = find_workspace_row(frame, 1, x_start, x_end) else {
+                        panic!("selected workspace row should be rendered");
+                    };
+                    target = Some((x_start, row_y));
+                });
+                let Some((target_x, target_y)) = target else {
+                    panic!("selected workspace row target should be captured");
+                };
                 ftui::Model::update(
                     &mut app,
                     Msg::Mouse(MouseEvent::new(
                         MouseEventKind::Down(MouseButton::Left),
-                        sidebar_inner.x.saturating_add(1),
-                        second_row_y,
+                        target_x,
+                        target_y,
                     )),
                 );
 

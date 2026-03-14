@@ -95,11 +95,11 @@ impl GroveApp {
             String::new()
         };
 
-        let line1_prefix = "   ";
-        let line1_attention_gap = " ";
-        let mut line1_segments = vec![
+        let row_prefix = "   ";
+        let row_attention_gap = " ";
+        let mut leading_segments = vec![
             SidebarSegment {
-                text: line1_prefix.to_string(),
+                text: row_prefix.to_string(),
                 style: primary_style,
             },
             SidebarSegment {
@@ -107,7 +107,7 @@ impl GroveApp {
                 style: primary_style.fg(attention_color).bold(),
             },
             SidebarSegment {
-                text: line1_attention_gap.to_string(),
+                text: row_attention_gap.to_string(),
                 style: primary_style,
             },
             SidebarSegment {
@@ -116,53 +116,45 @@ impl GroveApp {
             },
         ];
         if !branch_text.is_empty() {
-            line1_segments.push(SidebarSegment {
+            leading_segments.push(SidebarSegment {
                 text: branch_text,
                 style: secondary_style,
             });
         }
 
-        let line2_prefix = "     ";
-        let line2_prefix_width = text_display_width(line2_prefix);
-        let mut line2_segments = vec![SidebarSegment {
-            text: line2_prefix.to_string(),
-            style: secondary_style,
-        }];
-        let mut line2_width = line2_prefix_width;
+        let mut trailing_segments = Vec::new();
+        let mut trailing_width = 0usize;
         let mut pr_hits = Vec::new();
         let needs_attention = self.workspace_attention(workspace.path.as_path()).is_some();
         if needs_attention {
-            line2_segments.push(SidebarSegment {
+            trailing_segments.push(SidebarSegment {
                 text: "WAITING".to_string(),
                 style: secondary_style.fg(theme.yellow).bold(),
             });
         } else if is_working {
-            line2_segments.push(SidebarSegment {
+            trailing_segments.push(SidebarSegment {
                 text: "WORKING".to_string(),
                 style: secondary_style.fg(self.workspace_agent_color(workspace.agent)).bold(),
             });
         } else if self.dialogs.delete_requested_workspaces.contains(&workspace.path) {
-            line2_segments.push(SidebarSegment {
+            trailing_segments.push(SidebarSegment {
                 text: "Deleting...".to_string(),
                 style: secondary_style.fg(theme.peach).bold(),
             });
         } else if workspace.is_orphaned {
-            line2_segments.push(SidebarSegment {
+            trailing_segments.push(SidebarSegment {
                 text: "session ended".to_string(),
                 style: secondary_style.fg(theme.peach),
             });
         } else if !workspace.is_main && !workspace.pull_requests.is_empty() {
-            line2_segments.push(SidebarSegment {
-                text: "PRs:".to_string(),
-                style: secondary_style,
-            });
-            line2_width = line2_width.saturating_add(text_display_width("PRs:"));
             for (pull_request_index, pull_request) in workspace.pull_requests.iter().enumerate() {
-                line2_segments.push(SidebarSegment {
-                    text: " ".to_string(),
-                    style: secondary_style,
-                });
-                line2_width = line2_width.saturating_add(1);
+                if pull_request_index > 0 {
+                    trailing_segments.push(SidebarSegment {
+                        text: " ".to_string(),
+                        style: secondary_style,
+                    });
+                    trailing_width = trailing_width.saturating_add(1);
+                }
                 let pull_request_label = format!(
                     "{} #{}",
                     Self::pull_request_status_icon(pull_request.status),
@@ -173,12 +165,12 @@ impl GroveApp {
                     encode_workspace_pr_hit_data(workspace_index, pull_request_index)
                 {
                     pr_hits.push(SidebarPrHit {
-                        start_col: line2_width,
+                        start_col: trailing_width,
                         width: token_width,
                         data: hit_data,
                     });
                 }
-                line2_segments.push(SidebarSegment {
+                trailing_segments.push(SidebarSegment {
                     text: pull_request_label,
                     style: Self::pull_request_status_style(
                         pull_request.status,
@@ -187,30 +179,17 @@ impl GroveApp {
                     )
                     .underline(),
                 });
-                line2_width = line2_width.saturating_add(token_width);
+                trailing_width = trailing_width.saturating_add(token_width);
             }
         }
 
         lines.push(SidebarListLine::workspace(
-            line1_segments,
-            workspace_index,
-            border_style,
-            row_style,
-            Vec::new(),
-        ));
-        lines.push(SidebarListLine::workspace(
-            line2_segments,
+            leading_segments,
+            trailing_segments,
             workspace_index,
             border_style,
             row_style,
             pr_hits,
-        ));
-        lines.push(SidebarListLine::workspace(
-            Vec::new(),
-            workspace_index,
-            border_style,
-            row_style,
-            Vec::new(),
         ));
     }
 
@@ -220,12 +199,17 @@ impl GroveApp {
         let mut workspace_index = 0usize;
 
         for (task_index, task) in self.state.tasks.iter().enumerate() {
-            if task_index > 0 {
+            if task_index > 0 && !lines.is_empty() {
                 lines.push(SidebarListLine::project(Vec::new()));
             }
 
             lines.push(SidebarListLine::project(vec![SidebarSegment {
-                text: format!("{} {}", self.task_header_marker(task), task.name),
+                text: format!(
+                    "{} {} [{}]",
+                    self.task_header_marker(task),
+                    task.name,
+                    task.worktrees.len()
+                ),
                 style: Style::new().fg(theme.overlay0).bold(),
             }]));
 

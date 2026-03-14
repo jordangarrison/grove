@@ -32,8 +32,6 @@ pub(super) const WORKSPACE_SKIP_PERMISSIONS_FILENAME: &str = ".grove/skip_permis
 pub(super) const HEADER_HEIGHT: u16 = 1;
 pub(super) const STATUS_HEIGHT: u16 = 1;
 pub(super) const DIVIDER_WIDTH: u16 = 1;
-#[cfg_attr(not(test), allow(dead_code))]
-pub(super) const WORKSPACE_ITEM_HEIGHT: u16 = 3;
 pub(super) const PREVIEW_METADATA_ROWS: u16 = 2;
 pub(super) const TICK_EARLY_TOLERANCE_MS: u64 = 5;
 pub(super) const HIT_ID_HEADER: u32 = 1;
