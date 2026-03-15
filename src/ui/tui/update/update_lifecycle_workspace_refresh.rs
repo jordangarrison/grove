@@ -14,9 +14,12 @@ struct RefreshedAppState {
 fn refreshed_app_state(
     tasks_root_path: Option<&Path>,
     projects: &[ProjectConfig],
+    hidden_base_project_paths: &[PathBuf],
 ) -> RefreshedAppState {
     let bootstrap = tasks_root_path
-        .map(|tasks_root| bootstrap_task_data_for_root(tasks_root, projects))
+        .map(|tasks_root| {
+            bootstrap_task_data_for_root(tasks_root, projects, hidden_base_project_paths)
+        })
         .unwrap_or_else(|| crate::application::task_discovery::TaskBootstrapData {
             tasks: Vec::new(),
             discovery_state: TaskDiscoveryState::Empty,
@@ -104,9 +107,14 @@ impl GroveApp {
         let target_path = preferred_workspace_path.or_else(|| self.selected_workspace_path());
         let tasks_root_path = self.resolved_tasks_root();
         let projects = self.projects.clone();
+        let hidden_base_project_paths = self.hidden_base_project_paths_for_config();
         self.dialogs.refresh_in_flight = true;
         self.queue_cmd(Cmd::task(move || {
-            let refreshed = refreshed_app_state(tasks_root_path.as_deref(), &projects);
+            let refreshed = refreshed_app_state(
+                tasks_root_path.as_deref(),
+                &projects,
+                &hidden_base_project_paths,
+            );
             Msg::RefreshWorkspacesCompleted(RefreshWorkspacesCompletion {
                 preferred_workspace_path: target_path,
                 repo_name: refreshed.repo_name,
@@ -124,7 +132,11 @@ impl GroveApp {
         let target_path = preferred_workspace_path.or_else(|| self.selected_workspace_path());
         let previous_mode = self.state.mode;
         let previous_focus = self.state.focus;
-        let refreshed = refreshed_app_state(tasks_root_path.as_deref(), &self.projects);
+        let refreshed = refreshed_app_state(
+            tasks_root_path.as_deref(),
+            &self.projects,
+            &self.hidden_base_project_paths_for_config(),
+        );
 
         self.repo_name = refreshed.repo_name;
         self.discovery_state = refreshed.discovery_state;
@@ -272,7 +284,7 @@ mod tests {
         let raw = encode_task_manifest(&task).expect("task manifest should encode");
         fs::write(task_dir.join("task.toml"), raw).expect("task manifest should write");
 
-        let refreshed = refreshed_app_state(Some(temp.path.as_path()), &[]);
+        let refreshed = refreshed_app_state(Some(temp.path.as_path()), &[], &[]);
 
         assert_eq!(refreshed.repo_name, "1 tasks");
         assert_eq!(refreshed.discovery_state, DiscoveryState::Ready);
@@ -295,6 +307,7 @@ mod tests {
                 path: repo_path.clone(),
                 defaults: ProjectDefaults::default(),
             }],
+            &[],
         );
 
         assert_eq!(refreshed.discovery_state, DiscoveryState::Ready);
@@ -306,6 +319,34 @@ mod tests {
         );
         assert!(
             tasks_root
+                .join("mcp")
+                .join(".grove")
+                .join("task.toml")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn refreshed_app_state_skips_hidden_base_project_paths() {
+        let temp = TestDir::new("hidden-configured-repo");
+        let tasks_root = temp.path.join("tasks");
+        let repo_path = temp.path.join("repos").join("mcp");
+        init_git_repo(&repo_path, "main");
+
+        let refreshed = refreshed_app_state(
+            Some(tasks_root.as_path()),
+            &[ProjectConfig {
+                name: "mcp".to_string(),
+                path: repo_path.clone(),
+                defaults: ProjectDefaults::default(),
+            }],
+            std::slice::from_ref(&repo_path),
+        );
+
+        assert_eq!(refreshed.discovery_state, DiscoveryState::Empty);
+        assert!(refreshed.state.tasks.is_empty());
+        assert!(
+            !tasks_root
                 .join("mcp")
                 .join(".grove")
                 .join("task.toml")

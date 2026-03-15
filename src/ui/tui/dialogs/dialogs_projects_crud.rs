@@ -17,6 +17,7 @@ impl GroveApp {
         projects: &[ProjectConfig],
         task_order: &[String],
         attention_acks: &[WorkspaceAttentionAckConfig],
+        hidden_base_project_paths: &[PathBuf],
     ) -> Result<(), String> {
         let projects_path = crate::infrastructure::config::projects_path_for(config_path);
         crate::infrastructure::config::save_projects_to_path(
@@ -24,6 +25,7 @@ impl GroveApp {
             projects,
             task_order,
             attention_acks,
+            hidden_base_project_paths,
         )
     }
 
@@ -70,6 +72,11 @@ impl GroveApp {
         };
         let mut updated_projects = self.projects.clone();
         updated_projects.remove(project_index);
+        let updated_hidden_base_project_paths = self
+            .hidden_base_project_paths_for_config()
+            .into_iter()
+            .filter(|path| !refer_to_same_location(path.as_path(), project.path.as_path()))
+            .collect::<Vec<PathBuf>>();
 
         self.log_dialog_event_with_fields(
             "projects",
@@ -89,11 +96,13 @@ impl GroveApp {
                 &updated_projects,
                 &self.task_order,
                 &self.workspace_attention_acks_for_config(),
+                &updated_hidden_base_project_paths,
             );
             self.apply_delete_project_completion(DeleteProjectCompletion {
                 project_name: project.name,
                 project_path: project.path,
                 projects: updated_projects,
+                hidden_base_project_paths: updated_hidden_base_project_paths,
                 result,
             });
             return;
@@ -109,11 +118,13 @@ impl GroveApp {
                 &updated_projects,
                 &task_order,
                 &attention_acks,
+                &updated_hidden_base_project_paths,
             );
             Msg::DeleteProjectCompleted(DeleteProjectCompletion {
                 project_name: project.name,
                 project_path: project.path,
                 projects: updated_projects,
+                hidden_base_project_paths: updated_hidden_base_project_paths,
                 result,
             })
         }));
@@ -186,6 +197,8 @@ impl GroveApp {
             path: repo_root.clone(),
             defaults: Default::default(),
         };
+        self.hidden_base_project_paths
+            .retain(|path| !refer_to_same_location(path.as_path(), repo_root.as_path()));
         self.projects.push(project.clone());
         if let Err(error) = self.save_projects_config() {
             self.show_error_toast(format!("project save failed: {error}"));

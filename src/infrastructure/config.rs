@@ -46,6 +46,8 @@ pub struct GroveConfig {
     #[serde(default)]
     pub attention_acks: Vec<WorkspaceAttentionAckConfig>,
     #[serde(default)]
+    pub hidden_base_project_paths: Vec<PathBuf>,
+    #[serde(default)]
     pub launch_skip_permissions: bool,
 }
 
@@ -61,6 +63,7 @@ impl Default for GroveConfig {
             projects: Vec::new(),
             task_order: Vec::new(),
             attention_acks: Vec::new(),
+            hidden_base_project_paths: Vec::new(),
             launch_skip_permissions: false,
         }
     }
@@ -148,6 +151,8 @@ pub struct ProjectsState {
     pub task_order: Vec<String>,
     #[serde(default)]
     pub attention_acks: Vec<WorkspaceAttentionAckConfig>,
+    #[serde(default)]
+    pub hidden_base_project_paths: Vec<PathBuf>,
 }
 
 fn config_directory() -> Option<PathBuf> {
@@ -197,6 +202,7 @@ pub fn load_from_path(path: &Path) -> Result<GroveConfig, String> {
         projects: projects.projects,
         task_order: projects.task_order,
         attention_acks: projects.attention_acks,
+        hidden_base_project_paths: projects.hidden_base_project_paths,
         launch_skip_permissions: settings.launch_skip_permissions,
     })
 }
@@ -244,6 +250,7 @@ pub fn save_projects_to_path(
     projects: &[ProjectConfig],
     task_order: &[String],
     attention_acks: &[WorkspaceAttentionAckConfig],
+    hidden_base_project_paths: &[PathBuf],
 ) -> Result<(), String> {
     let Some(parent) = path.parent() else {
         return Err("projects config path missing parent directory".to_string());
@@ -255,6 +262,7 @@ pub fn save_projects_to_path(
         projects: projects.to_vec(),
         task_order: task_order.to_vec(),
         attention_acks: attention_acks.to_vec(),
+        hidden_base_project_paths: hidden_base_project_paths.to_vec(),
     };
     let encoded = toml::to_string_pretty(&projects_state)
         .map_err(|error| format!("projects config encode failed: {error}"))?;
@@ -271,6 +279,7 @@ pub fn save_projects_state_from_config_path(
         &config.projects,
         &config.task_order,
         &config.attention_acks,
+        &config.hidden_base_project_paths,
     )
 }
 
@@ -316,6 +325,7 @@ mod tests {
                 projects: Vec::new(),
                 task_order: Vec::new(),
                 attention_acks: Vec::new(),
+                hidden_base_project_paths: Vec::new(),
                 launch_skip_permissions: false,
             }
         );
@@ -359,6 +369,7 @@ mod tests {
             }],
             task_order: vec!["grove".to_string(), "task-workflow".to_string()],
             attention_acks: Vec::new(),
+            hidden_base_project_paths: vec![PathBuf::from("/repos/hidden")],
             launch_skip_permissions: true,
         };
         save_to_path(&path, &config).expect("config should save");
@@ -379,6 +390,7 @@ mod tests {
         assert_eq!(loaded.theme, ThemeName::CatppuccinMocha);
         assert_eq!(loaded.projects, Vec::<ProjectConfig>::new());
         assert_eq!(loaded.task_order, Vec::<String>::new());
+        assert_eq!(loaded.hidden_base_project_paths, Vec::<PathBuf>::new());
 
         cleanup_files(path.as_path());
     }
@@ -399,6 +411,7 @@ mod tests {
         assert_eq!(loaded.theme, ThemeName::CatppuccinMocha);
         assert_eq!(loaded.attention_acks, Vec::new());
         assert_eq!(loaded.task_order, Vec::<String>::new());
+        assert_eq!(loaded.hidden_base_project_paths, Vec::<PathBuf>::new());
         assert!(!loaded.launch_skip_permissions);
         assert_eq!(loaded.projects[0].defaults.base_branch, "");
         assert_eq!(loaded.projects[0].defaults.workspace_init_command, "");
@@ -424,6 +437,7 @@ mod tests {
             }],
             task_order: vec!["grove".to_string()],
             attention_acks: Vec::new(),
+            hidden_base_project_paths: vec![PathBuf::from("/repos/hidden")],
             launch_skip_permissions: false,
         };
         save_projects_to_path(
@@ -431,6 +445,7 @@ mod tests {
             &initial.projects,
             &initial.task_order,
             &initial.attention_acks,
+            &initial.hidden_base_project_paths,
         )
         .expect("projects should save");
         let updated = GlobalSettings {
@@ -467,7 +482,7 @@ mod tests {
             defaults: ProjectDefaults::default(),
         }];
         let task_order = vec!["task-workflow".to_string(), "grove".to_string()];
-        save_projects_to_path(&projects_path, &projects, &task_order, &[])
+        save_projects_to_path(&projects_path, &projects, &task_order, &[], &[])
             .expect("projects state should save");
 
         let loaded = load_from_path(&path).expect("combined config should load");
@@ -492,7 +507,7 @@ mod tests {
         }];
         let task_order = vec!["task-workflow".to_string(), "grove".to_string()];
 
-        save_projects_to_path(&projects_path, &projects, &task_order, &[])
+        save_projects_to_path(&projects_path, &projects, &task_order, &[], &[])
             .expect("projects state should save");
 
         let loaded = load_from_path(&path).expect("combined config should load");

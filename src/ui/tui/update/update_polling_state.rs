@@ -57,7 +57,18 @@ impl GroveApp {
             &self.projects,
             &self.task_order,
             &self.workspace_attention_acks_for_config(),
+            &self.hidden_base_project_paths_for_config(),
         )
+    }
+
+    pub(super) fn hidden_base_project_paths_for_config(&self) -> Vec<PathBuf> {
+        let mut paths = self
+            .hidden_base_project_paths
+            .iter()
+            .cloned()
+            .collect::<Vec<PathBuf>>();
+        paths.sort();
+        paths
     }
 
     fn refresh_workspace_attention_for_path(&mut self, workspace_path: &Path) {

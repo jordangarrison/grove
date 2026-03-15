@@ -3,6 +3,7 @@ use crate::application::task_lifecycle::{
     AddWorktreeToTaskRequest, AddWorktreeToTaskResult, CreateBaseTaskRequest, TaskBranchSource,
     add_worktree_to_task, add_worktree_to_task_in_root, create_base_task, create_base_task_in_root,
 };
+use crate::infrastructure::paths::refer_to_same_location;
 use crate::infrastructure::process::stderr_trimmed;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -284,6 +285,21 @@ impl GroveApp {
                 CreateWorkspaceResult::CreateTask(result),
             ) => match result {
                 Ok(result) => {
+                    if result.task.has_base_worktree() {
+                        let hidden_before = self.hidden_base_project_paths.len();
+                        for repository in &request.repositories {
+                            self.hidden_base_project_paths.retain(|path| {
+                                !refer_to_same_location(path.as_path(), repository.path.as_path())
+                            });
+                        }
+                        if self.hidden_base_project_paths.len() != hidden_before
+                            && let Err(error) = self.save_projects_config()
+                        {
+                            self.show_error_toast(format!(
+                                "task created, but hidden-base state save failed: {error}"
+                            ));
+                        }
+                    }
                     self.close_active_dialog();
                     let preferred_workspace_path = result
                         .task

@@ -92,6 +92,7 @@ pub(super) struct DeleteWorkspaceCompletion {
     pub(super) workspace_path: PathBuf,
     pub(super) requested_workspace_paths: Vec<PathBuf>,
     pub(super) deleted_task: bool,
+    pub(super) removed_base_task: bool,
     pub(super) result: Result<(), String>,
     pub(super) warnings: Vec<String>,
 }
@@ -101,6 +102,7 @@ pub(super) struct DeleteProjectCompletion {
     pub(super) project_name: String,
     pub(super) project_path: PathBuf,
     pub(super) projects: Vec<ProjectConfig>,
+    pub(super) hidden_base_project_paths: Vec<PathBuf>,
     pub(super) result: Result<(), String>,
 }
 

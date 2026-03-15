@@ -7,11 +7,13 @@ use crate::application::task_discovery::{
 };
 use crate::application::task_lifecycle::materialize_base_task_manifest_for_project_in_root;
 use crate::infrastructure::config::ProjectConfig;
-use std::path::Path;
+use crate::infrastructure::paths::refer_to_same_location;
+use std::path::{Path, PathBuf};
 
 pub(super) fn bootstrap_task_data_for_root(
     tasks_root: &Path,
     projects: &[ProjectConfig],
+    hidden_base_project_paths: &[PathBuf],
 ) -> TaskBootstrapData {
     let running_sessions = running_task_sessions();
     let bootstrap = discover_task_bootstrap_for_root(tasks_root, &running_sessions);
@@ -22,6 +24,12 @@ pub(super) fn bootstrap_task_data_for_root(
     let mut known_tasks = bootstrap.tasks.clone();
     let mut created_manifest = false;
     for project in projects {
+        if hidden_base_project_paths
+            .iter()
+            .any(|path| refer_to_same_location(path.as_path(), project.path.as_path()))
+        {
+            continue;
+        }
         if let Ok(Some(created)) =
             materialize_base_task_manifest_for_project_in_root(tasks_root, project, &known_tasks)
         {
@@ -97,7 +105,7 @@ mod tests {
         let tasks_root = temp.path.join("tasks");
         fs::create_dir_all(&tasks_root).expect("tasks root should exist");
 
-        let bootstrap = bootstrap_task_data_for_root(tasks_root.as_path(), &[]);
+        let bootstrap = bootstrap_task_data_for_root(tasks_root.as_path(), &[], &[]);
 
         assert!(bootstrap.tasks.is_empty());
         assert_eq!(
@@ -125,7 +133,7 @@ mod tests {
         )
         .expect("task manifest should write");
 
-        let bootstrap = bootstrap_task_data_for_root(tasks_root.as_path(), &[]);
+        let bootstrap = bootstrap_task_data_for_root(tasks_root.as_path(), &[], &[]);
 
         assert_eq!(bootstrap.tasks.len(), 1);
         assert_eq!(bootstrap.tasks[0].slug, "feature-a");
@@ -182,12 +190,77 @@ mod tests {
                 path: repo_root.clone(),
                 defaults: Default::default(),
             }],
+            &[],
         );
 
         assert_eq!(bootstrap.tasks.len(), 1);
         assert_eq!(bootstrap.tasks[0].worktrees[0].repository_path, repo_root);
         assert!(
             tasks_root
+                .join("mcp")
+                .join(".grove")
+                .join("task.toml")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn bootstrap_task_data_skips_hidden_base_project_paths() {
+        let temp = TestDir::new("hidden-base-project");
+        let tasks_root = temp.path.join("tasks");
+        let repo_root = temp.path.join("repos").join("mcp");
+        fs::create_dir_all(&repo_root).expect("repo root should exist");
+        let init_output = Command::new("git")
+            .current_dir(&repo_root)
+            .args(["init", "--initial-branch=main"])
+            .output()
+            .expect("git init should run");
+        assert!(init_output.status.success(), "git init should succeed");
+        let user_name_output = Command::new("git")
+            .current_dir(&repo_root)
+            .args(["config", "user.name", "Grove Tests"])
+            .output()
+            .expect("git config should run");
+        assert!(
+            user_name_output.status.success(),
+            "git config should succeed"
+        );
+        let user_email_output = Command::new("git")
+            .current_dir(&repo_root)
+            .args(["config", "user.email", "grove@example.com"])
+            .output()
+            .expect("git config should run");
+        assert!(
+            user_email_output.status.success(),
+            "git config should succeed"
+        );
+        fs::write(repo_root.join("README.md"), "hello\n").expect("readme should write");
+        let add_output = Command::new("git")
+            .current_dir(&repo_root)
+            .args(["add", "README.md"])
+            .output()
+            .expect("git add should run");
+        assert!(add_output.status.success(), "git add should succeed");
+        let commit_output = Command::new("git")
+            .current_dir(&repo_root)
+            .args(["commit", "-m", "init"])
+            .output()
+            .expect("git commit should run");
+        assert!(commit_output.status.success(), "git commit should succeed");
+
+        let bootstrap = bootstrap_task_data_for_root(
+            tasks_root.as_path(),
+            &[ProjectConfig {
+                name: "mcp".to_string(),
+                path: repo_root.clone(),
+                defaults: Default::default(),
+            }],
+            std::slice::from_ref(&repo_root),
+        );
+
+        assert!(bootstrap.tasks.is_empty());
+        assert!(
+            !tasks_root
                 .join("mcp")
                 .join(".grove")
                 .join("task.toml")

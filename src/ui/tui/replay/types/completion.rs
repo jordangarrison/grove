@@ -66,6 +66,7 @@ struct ReplayDeleteProjectCompletion {
     project_name: String,
     project_path: PathBuf,
     projects: Vec<ProjectConfig>,
+    hidden_base_project_paths: Vec<PathBuf>,
     result: ReplayUnitResult,
 }
 
@@ -75,6 +76,7 @@ struct ReplayDeleteWorkspaceCompletion {
     workspace_path: PathBuf,
     requested_workspace_paths: Vec<PathBuf>,
     deleted_task: bool,
+    removed_base_task: bool,
     result: ReplayUnitResult,
     warnings: Vec<String>,
 }
@@ -437,6 +439,7 @@ impl ReplayDeleteProjectCompletion {
             project_name: completion.project_name.clone(),
             project_path: completion.project_path.clone(),
             projects: completion.projects.clone(),
+            hidden_base_project_paths: completion.hidden_base_project_paths.clone(),
             result: ReplayUnitResult::from_result(&completion.result),
         }
     }
@@ -446,6 +449,7 @@ impl ReplayDeleteProjectCompletion {
             project_name: self.project_name.clone(),
             project_path: self.project_path.clone(),
             projects: self.projects.clone(),
+            hidden_base_project_paths: self.hidden_base_project_paths.clone(),
             result: self.result.to_result(),
         }
     }
@@ -458,6 +462,7 @@ impl ReplayDeleteWorkspaceCompletion {
             workspace_path: completion.workspace_path.clone(),
             requested_workspace_paths: completion.requested_workspace_paths.clone(),
             deleted_task: completion.deleted_task,
+            removed_base_task: completion.removed_base_task,
             result: ReplayUnitResult::from_result(&completion.result),
             warnings: completion.warnings.clone(),
         }
@@ -469,6 +474,7 @@ impl ReplayDeleteWorkspaceCompletion {
             workspace_path: self.workspace_path.clone(),
             requested_workspace_paths: self.requested_workspace_paths.clone(),
             deleted_task: self.deleted_task,
+            removed_base_task: self.removed_base_task,
             result: self.result.to_result(),
             warnings: self.warnings.clone(),
         }

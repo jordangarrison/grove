@@ -13362,6 +13362,9 @@ mod tests {
                     path: repo.clone(),
                     defaults: Default::default(),
                 }];
+                app.hidden_base_project_paths.insert(repo.clone());
+                app.save_projects_config()
+                    .expect("projects config should save");
                 app.task_root_override = Some(tasks_root.clone());
 
                 app.open_create_dialog();
@@ -13399,6 +13402,10 @@ mod tests {
                 let worktree = &task.worktrees[0];
                 assert_eq!(worktree.path, worktree.repository_path);
                 assert!(worktree.is_main_checkout());
+
+                let loaded = crate::infrastructure::config::load_from_path(&app.config_path)
+                    .expect("config loads");
+                assert!(loaded.hidden_base_project_paths.is_empty());
             }
 
             #[test]
@@ -13453,6 +13460,62 @@ mod tests {
 
                 // Only repo-b (index 1) should be available; repo-a is filtered out.
                 assert_eq!(picker.filtered_project_indices, vec![1]);
+            }
+
+            #[test]
+            fn create_dialog_register_as_base_shows_toast_when_no_projects_are_eligible() {
+                let mut app = fixture_app();
+                let repo_a = init_git_repo("base-empty-repo-a", "main");
+                let repo_b = init_git_repo("base-empty-repo-b", "main");
+
+                app.projects = vec![
+                    ProjectConfig {
+                        name: "repo-a".to_string(),
+                        path: repo_a.clone(),
+                        defaults: Default::default(),
+                    },
+                    ProjectConfig {
+                        name: "repo-b".to_string(),
+                        path: repo_b.clone(),
+                        defaults: Default::default(),
+                    },
+                ];
+                for (name, path) in [("repo-a-base", repo_a), ("repo-b-base", repo_b)] {
+                    app.state.workspaces.push(Workspace {
+                        name: name.to_string(),
+                        task_slug: Some(name.to_string()),
+                        path: path.clone(),
+                        project_name: Some(name.trim_end_matches("-base").to_string()),
+                        project_path: Some(path.clone()),
+                        branch: "main".to_string(),
+                        base_branch: None,
+                        last_activity_unix_secs: None,
+                        agent: AgentType::Codex,
+                        status: WorkspaceStatus::Main,
+                        is_main: true,
+                        is_orphaned: false,
+                        supported_agent: true,
+                        pull_requests: Vec::new(),
+                    });
+                }
+
+                app.open_create_dialog();
+                let dialog = app
+                    .create_dialog_mut()
+                    .expect("create dialog should be open");
+                dialog.register_as_base = true;
+
+                app.open_create_project_picker();
+
+                assert!(
+                    app.create_dialog()
+                        .and_then(|dialog| dialog.project_picker.as_ref())
+                        .is_none()
+                );
+                assert!(
+                    app.status_bar_line()
+                        .contains("all configured projects already have base tasks")
+                );
             }
 
             #[test]
@@ -14714,6 +14777,7 @@ mod tests {
                         project_name: "site".to_string(),
                         project_path: PathBuf::from("/repos/site"),
                         projects: vec![kept.clone()],
+                        hidden_base_project_paths: Vec::new(),
                         result: Ok(()),
                     }),
                 );
@@ -15286,6 +15350,7 @@ mod tests {
                         workspace_path: first_task_root,
                         requested_workspace_paths: vec![first_workspace_path.clone()],
                         deleted_task: true,
+                        removed_base_task: false,
                         result: Ok(()),
                         warnings: Vec::new(),
                     }),
@@ -15328,6 +15393,7 @@ mod tests {
                         workspace_path: deleting_path.clone(),
                         requested_workspace_paths: vec![requested_workspace_path.clone()],
                         deleted_task: true,
+                        removed_base_task: false,
                         result: Ok(()),
                         warnings: Vec::new(),
                     }),
@@ -15343,9 +15409,16 @@ mod tests {
             }
 
             #[test]
-            fn delete_base_task_completion_removes_matching_project_config() {
+            fn delete_base_task_completion_keeps_matching_project_config() {
                 let mut app = fixture_background_app(WorkspaceStatus::Idle);
                 let requested_workspace_path = PathBuf::from("/repos/grove");
+                app.projects = vec![ProjectConfig {
+                    name: "grove".to_string(),
+                    path: requested_workspace_path.clone(),
+                    defaults: Default::default(),
+                }];
+                app.save_projects_config()
+                    .expect("projects config should save");
                 app.dialogs.delete_in_flight = true;
                 app.dialogs.delete_in_flight_workspace = Some(requested_workspace_path.clone());
                 app.dialogs
@@ -15359,15 +15432,22 @@ mod tests {
                         workspace_path: requested_workspace_path.clone(),
                         requested_workspace_paths: vec![requested_workspace_path.clone()],
                         deleted_task: true,
+                        removed_base_task: true,
                         result: Ok(()),
                         warnings: Vec::new(),
                     }),
                 );
 
-                assert!(app.projects.is_empty());
+                assert_eq!(app.projects.len(), 1);
+                assert_eq!(app.projects[0].path, requested_workspace_path);
                 let loaded = crate::infrastructure::config::load_from_path(&app.config_path)
                     .expect("config loads");
-                assert!(loaded.projects.is_empty());
+                assert_eq!(loaded.projects.len(), 1);
+                assert_eq!(loaded.projects[0].path, requested_workspace_path);
+                assert_eq!(
+                    loaded.hidden_base_project_paths,
+                    vec![requested_workspace_path]
+                );
             }
 
             #[test]

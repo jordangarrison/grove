@@ -112,6 +112,7 @@ struct QueuedDeleteWorkspace {
     workspace_path: PathBuf,
     requested_workspace_paths: Vec<PathBuf>,
     deleted_task: bool,
+    removed_base_task: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -270,6 +271,7 @@ struct TelemetryState {
 struct GroveApp {
     repo_name: String,
     projects: Vec<ProjectConfig>,
+    hidden_base_project_paths: HashSet<PathBuf>,
     task_order: Vec<String>,
     task_reorder: Option<TaskReorderState>,
     state: AppState,

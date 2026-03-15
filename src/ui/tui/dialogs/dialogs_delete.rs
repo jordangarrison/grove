@@ -49,6 +49,7 @@ impl GroveApp {
         let workspace_path = queued_delete.workspace_path;
         let requested_workspace_paths = queued_delete.requested_workspace_paths;
         let deleted_task = queued_delete.deleted_task;
+        let removed_base_task = queued_delete.removed_base_task;
         self.dialogs.delete_in_flight = true;
         self.dialogs.delete_in_flight_workspace = Some(workspace_path.clone());
         self.queue_cmd(Cmd::task(move || {
@@ -61,6 +62,7 @@ impl GroveApp {
                 workspace_path,
                 requested_workspace_paths,
                 deleted_task,
+                removed_base_task,
                 result,
                 warnings,
             })
@@ -343,6 +345,7 @@ impl GroveApp {
         let kill_tmux_sessions = dialog.kill_tmux_sessions;
         let is_missing = dialog.is_missing;
 
+        let removed_base_task = dialog.is_base_task && dialog.deletes_task();
         let (workspace_name, workspace_path, requested_workspace_paths, request, deleted_task) =
             match dialog.target {
                 DeleteDialogTarget::Task => (
@@ -409,6 +412,7 @@ impl GroveApp {
                 workspace_path,
                 requested_workspace_paths,
                 deleted_task,
+                removed_base_task,
                 result,
                 warnings,
             });
@@ -421,6 +425,7 @@ impl GroveApp {
             workspace_path,
             requested_workspace_paths,
             deleted_task,
+            removed_base_task,
         });
     }
 }

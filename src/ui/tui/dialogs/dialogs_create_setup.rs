@@ -154,6 +154,15 @@ impl GroveApp {
             return;
         }
 
+        if self
+            .create_dialog()
+            .is_some_and(|dialog| dialog.register_as_base)
+            && self.filtered_create_dialog_project_indices("").is_empty()
+        {
+            self.show_info_toast("all configured projects already have base tasks");
+            return;
+        }
+
         let selected_project_index = self
             .create_dialog()
             .map(|dialog| dialog.project_index)

@@ -1,23 +1,6 @@
 use super::update_prelude::*;
 
 impl GroveApp {
-    fn remove_projects_for_deleted_task_worktrees(
-        &mut self,
-        requested_workspace_paths: &[PathBuf],
-    ) -> Result<(), String> {
-        let original_len = self.projects.len();
-        self.projects.retain(|project| {
-            !requested_workspace_paths
-                .iter()
-                .any(|path| refer_to_same_location(project.path.as_path(), path.as_path()))
-        });
-        if self.projects.len() == original_len {
-            return Ok(());
-        }
-
-        self.save_projects_config()
-    }
-
     fn summarize_merge_failure(error: &str) -> String {
         let conflict_prefix = "CONFLICT (content): Merge conflict in ";
         let conflict_files = error
@@ -49,6 +32,10 @@ impl GroveApp {
         match completion.result {
             Ok(()) => {
                 self.projects = completion.projects;
+                self.hidden_base_project_paths = completion
+                    .hidden_base_project_paths
+                    .into_iter()
+                    .collect::<HashSet<PathBuf>>();
                 self.refresh_project_dialog_filtered();
                 self.telemetry.event_log.log(
                     LogEvent::new("project_lifecycle", "project_deleted")
@@ -98,14 +85,16 @@ impl GroveApp {
         }
         match completion.result {
             Ok(()) => {
-                if completion.deleted_task
-                    && let Err(error) = self.remove_projects_for_deleted_task_worktrees(
-                        &completion.requested_workspace_paths,
-                    )
-                {
-                    self.show_error_toast(format!(
-                        "task deleted, but project cleanup failed: {error}"
-                    ));
+                if completion.removed_base_task {
+                    for workspace_path in &completion.requested_workspace_paths {
+                        self.hidden_base_project_paths
+                            .insert(workspace_path.clone());
+                    }
+                    if let Err(error) = self.save_projects_config() {
+                        self.show_error_toast(format!(
+                            "task removed, but hidden-base state save failed: {error}"
+                        ));
+                    }
                 }
                 self.telemetry.event_log.log(if completion.deleted_task {
                     LogEvent::new("task_lifecycle", "task_deleted")

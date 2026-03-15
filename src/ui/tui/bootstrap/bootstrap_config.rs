@@ -67,6 +67,7 @@ fn ensure_current_repo_project(config: &mut GroveConfig, config_path: &Path) -> 
         &config.projects,
         &config.task_order,
         &config.attention_acks,
+        &config.hidden_base_project_paths,
     )
     .err()
 }
