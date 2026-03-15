@@ -181,13 +181,31 @@ impl GroveApp {
         } else {
             add_dialog.name_input.value().trim().to_string()
         };
-        self.projects.push(ProjectConfig {
+        let project = ProjectConfig {
             name: project_name.clone(),
             path: repo_root.clone(),
             defaults: Default::default(),
-        });
+        };
+        self.projects.push(project.clone());
         if let Err(error) = self.save_projects_config() {
             self.show_error_toast(format!("project save failed: {error}"));
+            return;
+        }
+        let Some(tasks_root) = self.resolved_tasks_root() else {
+            self.show_error_toast("project manifest create failed: task root unavailable");
+            return;
+        };
+        if let Err(error) =
+            crate::application::task_lifecycle::materialize_base_task_manifest_for_project_in_root(
+                tasks_root.as_path(),
+                &project,
+                &self.state.tasks,
+            )
+        {
+            self.show_error_toast(format!(
+                "project manifest create failed: {}",
+                crate::application::task_lifecycle::task_lifecycle_error_message(&error)
+            ));
             return;
         }
 

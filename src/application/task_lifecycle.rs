@@ -175,6 +175,28 @@ pub fn create_base_task_in_root(
     create::create_base_task_in_root(tasks_root, request)
 }
 
+pub fn materialize_base_task_manifest_for_project_in_root(
+    tasks_root: &Path,
+    project: &RepositoryConfig,
+    existing_tasks: &[Task],
+) -> Result<Option<CreateTaskResult>, TaskLifecycleError> {
+    if existing_tasks.iter().any(|task| {
+        task.worktrees.iter().any(|worktree| {
+            refer_to_same_location(worktree.repository_path.as_path(), project.path.as_path())
+        })
+    }) {
+        return Ok(None);
+    }
+
+    let request = CreateBaseTaskRequest {
+        repository: project.clone(),
+        agent: AgentType::Codex,
+        base_branch: resolve_repository_base_branch(project)?,
+    };
+
+    create_base_task_in_root(tasks_root, &request).map(Some)
+}
+
 pub fn add_worktree_to_task(
     request: &AddWorktreeToTaskRequest,
     git_runner: &impl GitCommandRunner,
@@ -447,7 +469,8 @@ mod tests {
         AddWorktreeToTaskRequest, CreateBaseTaskRequest, CreateTaskRequest, DeleteTaskRequest,
         TaskBranchSource, add_worktree_to_task_in_root, create_base_task_in_root,
         create_task_in_root, delete_task_with_runner_in_manifest_root,
-        detect_repository_base_branch, repo_directory_name, task_manifest_path,
+        detect_repository_base_branch, materialize_base_task_manifest_for_project_in_root,
+        repo_directory_name, task_manifest_path,
     };
     use crate::application::workspace_lifecycle::{
         GitCommandRunner, SetupCommandContext, SetupCommandRunner, SetupScriptContext,
@@ -1318,6 +1341,69 @@ mod tests {
     }
 
     #[test]
+    fn materialize_base_task_manifest_creates_base_task_for_unrepresented_project() {
+        let temp = TestDir::new("materialize-base-task");
+        let tasks_root = temp.path.join("tasks");
+        let repo_root = temp.path.join("repos").join("materialize-base-task");
+        init_git_repo(repo_root.as_path(), "main");
+        let project = RepositoryConfig {
+            name: "materialize-base-task".to_string(),
+            path: repo_root.clone(),
+            defaults: ProjectDefaults::default(),
+        };
+
+        let result =
+            materialize_base_task_manifest_for_project_in_root(tasks_root.as_path(), &project, &[])
+                .expect("materialization should succeed");
+
+        let created = result.expect("base task should be created");
+        assert!(task_manifest_path(&created.task_root).exists());
+        assert_eq!(created.task.worktrees[0].repository_path, repo_root);
+    }
+
+    #[test]
+    fn materialize_base_task_manifest_skips_project_already_represented_by_task() {
+        let temp = TestDir::new("materialize-base-task-skip");
+        let tasks_root = temp.path.join("tasks");
+        let repo_root = temp.path.join("repos").join("materialize-base-task-skip");
+        init_git_repo(repo_root.as_path(), "main");
+        let existing_task = crate::domain::Task::try_new(
+            "existing".to_string(),
+            "existing".to_string(),
+            PathBuf::from("/tmp/.grove/tasks/existing"),
+            "main".to_string(),
+            vec![
+                crate::domain::Worktree::try_new(
+                    "materialize-base-task-skip".to_string(),
+                    repo_root.clone(),
+                    repo_root.clone(),
+                    "main".to_string(),
+                    AgentType::Codex,
+                    crate::domain::WorkspaceStatus::Main,
+                )
+                .expect("worktree should be valid")
+                .with_base_branch(Some("main".to_string())),
+            ],
+        )
+        .expect("task should be valid");
+        let project = RepositoryConfig {
+            name: "materialize-base-task-skip".to_string(),
+            path: repo_root,
+            defaults: ProjectDefaults::default(),
+        };
+
+        let result = materialize_base_task_manifest_for_project_in_root(
+            tasks_root.as_path(),
+            &project,
+            &[existing_task],
+        )
+        .expect("materialization should succeed");
+
+        assert!(result.is_none());
+        assert!(!tasks_root.join("materialize-base-task-skip").exists());
+    }
+
+    #[test]
     fn delete_created_base_task_removes_manifest_directory() {
         let temp = TestDir::new("delete-created-base-task");
         let tasks_root = temp.path.join("tasks");
@@ -1371,6 +1457,37 @@ mod tests {
         fn run(&self, _repo_root: &Path, _args: &[String]) -> Result<(), String> {
             Err("git worktree add failed".to_string())
         }
+    }
+
+    #[test]
+    fn create_task_reuses_existing_branch_instead_of_failing() {
+        let temp = TestDir::new("create-existing-branch");
+        let tasks_root = temp.path.join("tasks");
+        let repo = temp.path.join("repos").join("myapp");
+        init_git_repo(&repo, "main");
+        run_git(&repo, &["branch", "my-task"]);
+
+        let request = CreateTaskRequest {
+            task_name: "my-task".to_string(),
+            repositories: vec![repository(repo.clone())],
+            agent: AgentType::Codex,
+            branch_source: TaskBranchSource::BaseBranch,
+        };
+        let git = crate::application::workspace_lifecycle::CommandGitRunner;
+        let setup = StubSetupRunner;
+        let setup_command = StubSetupCommandRunner;
+
+        let result =
+            create_task_in_root(tasks_root.as_path(), &request, &git, &setup, &setup_command)
+                .expect("task should create even when branch already exists");
+
+        assert_eq!(result.task.worktrees.len(), 1);
+        assert!(result.task.worktrees[0].path.exists());
+        let worktree_branch = git_stdout(
+            &result.task.worktrees[0].path,
+            &["branch", "--show-current"],
+        );
+        assert_eq!(worktree_branch, "my-task");
     }
 
     #[test]

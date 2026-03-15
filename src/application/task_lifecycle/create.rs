@@ -27,14 +27,23 @@ pub(super) fn create_task_worktree(
     let base_branch = resolve_repository_base_branch(repository)?;
     let repository_dir = repo_directory_name(repository)?;
     let worktree_path = task_root.join(repository_dir);
-    let args = vec![
-        "worktree".to_string(),
-        "add".to_string(),
-        "-b".to_string(),
-        task_branch.to_string(),
-        worktree_path.to_string_lossy().to_string(),
-        base_branch.clone(),
-    ];
+    let args = if local_branch_exists(repository.path.as_path(), task_branch)? {
+        vec![
+            "worktree".to_string(),
+            "add".to_string(),
+            worktree_path.to_string_lossy().to_string(),
+            task_branch.to_string(),
+        ]
+    } else {
+        vec![
+            "worktree".to_string(),
+            "add".to_string(),
+            "-b".to_string(),
+            task_branch.to_string(),
+            worktree_path.to_string_lossy().to_string(),
+            base_branch.clone(),
+        ]
+    };
     git_runner
         .run(repository.path.as_path(), &args)
         .map_err(TaskLifecycleError::GitCommandFailed)?;

@@ -33,6 +33,7 @@ impl GroveApp {
 
     pub(super) fn new(event_log: Box<dyn EventLogger>, debug_record_start_ts: Option<u64>) -> Self {
         let (config, config_path, _config_error) = load_runtime_config();
+        let projects = config.projects;
         let dependencies = AppDependencies {
             tmux_input: Box::new(CommandTmuxInput),
             clipboard: Box::new(SystemClipboardAccess::default()),
@@ -42,12 +43,12 @@ impl GroveApp {
         };
 
         let bootstrap = tasks_root()
-            .map(|tasks_root| bootstrap_task_data_for_root(tasks_root.as_path()))
+            .map(|tasks_root| bootstrap_task_data_for_root(tasks_root.as_path(), &projects))
             .unwrap_or(TaskBootstrapData {
                 tasks: Vec::new(),
                 discovery_state: TaskDiscoveryState::Empty,
             });
-        Self::from_task_parts_with_clipboard_and_projects(bootstrap, config.projects, dependencies)
+        Self::from_task_parts_with_clipboard_and_projects(bootstrap, projects, dependencies)
     }
 
     pub(super) fn from_task_parts_with_clipboard_and_projects(

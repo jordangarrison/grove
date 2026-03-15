@@ -1,6 +1,23 @@
 use super::update_prelude::*;
 
 impl GroveApp {
+    fn remove_projects_for_deleted_task_worktrees(
+        &mut self,
+        requested_workspace_paths: &[PathBuf],
+    ) -> Result<(), String> {
+        let original_len = self.projects.len();
+        self.projects.retain(|project| {
+            !requested_workspace_paths
+                .iter()
+                .any(|path| refer_to_same_location(project.path.as_path(), path.as_path()))
+        });
+        if self.projects.len() == original_len {
+            return Ok(());
+        }
+
+        self.save_projects_config()
+    }
+
     fn summarize_merge_failure(error: &str) -> String {
         let conflict_prefix = "CONFLICT (content): Merge conflict in ";
         let conflict_files = error
@@ -81,6 +98,15 @@ impl GroveApp {
         }
         match completion.result {
             Ok(()) => {
+                if completion.deleted_task
+                    && let Err(error) = self.remove_projects_for_deleted_task_worktrees(
+                        &completion.requested_workspace_paths,
+                    )
+                {
+                    self.show_error_toast(format!(
+                        "task deleted, but project cleanup failed: {error}"
+                    ));
+                }
                 self.telemetry.event_log.log(if completion.deleted_task {
                     LogEvent::new("task_lifecycle", "task_deleted")
                         .with_data("task", Value::from(completion.workspace_name.clone()))

@@ -14611,6 +14611,57 @@ mod tests {
             }
 
             #[test]
+            fn project_add_dialog_creates_base_task_manifest_for_new_project() {
+                let mut app = fixture_app();
+                let tasks_root = unique_temp_workspace_dir("project-add-manifest-root");
+                let repo_root = init_git_repo("project-add-manifest-repo", "main");
+                let repo_name = repo_root
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .expect("repo dir name")
+                    .to_string();
+
+                app.projects = Vec::new();
+                app.state = crate::ui::state::AppState::new(Vec::new());
+                app.sync_workspace_tab_maps();
+                app.refresh_preview_summary();
+                app.task_root_override = Some(tasks_root.clone());
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char('p')).with_kind(KeyEventKind::Press)),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('a'))
+                            .with_modifiers(Modifiers::CTRL)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Paste(PasteEvent::bracketed(repo_root.display().to_string())),
+                );
+
+                app.add_project_from_dialog();
+
+                assert!(
+                    tasks_root
+                        .join(&repo_name)
+                        .join(".grove")
+                        .join("task.toml")
+                        .exists()
+                );
+                assert!(app.projects.iter().any(|project| project.path == repo_root));
+                assert!(app.state.tasks.iter().any(|task| {
+                    task.worktrees
+                        .iter()
+                        .any(|worktree| worktree.repository_path == repo_root)
+                }));
+            }
+
+            #[test]
             fn project_dialog_ctrl_x_queues_background_project_delete() {
                 let mut app = fixture_background_app(WorkspaceStatus::Idle);
                 app.projects.push(ProjectConfig {
@@ -15282,6 +15333,34 @@ mod tests {
                         .delete_requested_workspaces
                         .contains(&requested_workspace_path)
                 );
+            }
+
+            #[test]
+            fn delete_base_task_completion_removes_matching_project_config() {
+                let mut app = fixture_background_app(WorkspaceStatus::Idle);
+                let requested_workspace_path = PathBuf::from("/repos/grove");
+                app.dialogs.delete_in_flight = true;
+                app.dialogs.delete_in_flight_workspace = Some(requested_workspace_path.clone());
+                app.dialogs
+                    .delete_requested_workspaces
+                    .insert(requested_workspace_path.clone());
+
+                let _ = ftui::Model::update(
+                    &mut app,
+                    Msg::DeleteWorkspaceCompleted(DeleteWorkspaceCompletion {
+                        workspace_name: "grove".to_string(),
+                        workspace_path: requested_workspace_path.clone(),
+                        requested_workspace_paths: vec![requested_workspace_path.clone()],
+                        deleted_task: true,
+                        result: Ok(()),
+                        warnings: Vec::new(),
+                    }),
+                );
+
+                assert!(app.projects.is_empty());
+                let loaded = crate::infrastructure::config::load_from_path(&app.config_path)
+                    .expect("config loads");
+                assert!(loaded.projects.is_empty());
             }
 
             #[test]
