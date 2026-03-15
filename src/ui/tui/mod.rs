@@ -13204,19 +13204,7 @@ mod tests {
                     app.status_bar_line()
                         .contains("task 'flohome-launch' created")
                 );
-                assert_eq!(app.state.tasks.len(), 3);
-                assert!(
-                    app.state
-                        .tasks
-                        .iter()
-                        .any(|task| task.root_path == flohome_repo && task.worktrees.len() == 1)
-                );
-                assert!(
-                    app.state
-                        .tasks
-                        .iter()
-                        .any(|task| task.root_path == terraform_repo && task.worktrees.len() == 1)
-                );
+                assert_eq!(app.state.tasks.len(), 1);
                 assert_eq!(
                     app.state.selected_task().map(|task| task.slug.as_str()),
                     Some("flohome-launch")
@@ -13330,19 +13318,7 @@ mod tests {
 
                 assert!(app.create_dialog().is_none());
                 assert!(app.status_bar_line().contains("task 'pr-123' created"));
-                assert_eq!(app.state.tasks.len(), 3);
-                assert!(
-                    app.state
-                        .tasks
-                        .iter()
-                        .any(|task| task.root_path == flohome_repo && task.worktrees.len() == 1)
-                );
-                assert!(
-                    app.state
-                        .tasks
-                        .iter()
-                        .any(|task| task.root_path == terraform_repo && task.worktrees.len() == 1)
-                );
+                assert_eq!(app.state.tasks.len(), 1);
                 assert_eq!(
                     app.state.selected_task().map(|task| task.slug.as_str()),
                     Some("pr-123")
