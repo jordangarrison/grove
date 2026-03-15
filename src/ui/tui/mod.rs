@@ -13318,7 +13318,7 @@ mod tests {
 
                 assert!(app.create_dialog().is_none());
                 assert!(app.status_bar_line().contains("task 'pr-123' created"));
-                assert_eq!(app.state.tasks.len(), 1);
+                assert_eq!(app.state.tasks.len(), 2);
                 assert_eq!(
                     app.state.selected_task().map(|task| task.slug.as_str()),
                     Some("pr-123")
@@ -13341,6 +13341,13 @@ mod tests {
                         .map(|worktree| worktree.repository_name.as_str()),
                     Some("flohome")
                 );
+                assert!(app.state.tasks.iter().any(|task| {
+                    task.slug != "pr-123"
+                        && task
+                            .worktrees
+                            .iter()
+                            .any(|worktree| worktree.repository_path == terraform_repo)
+                }));
                 assert!(tasks_root.join("pr-123").join(".grove/task.toml").exists());
             }
 
