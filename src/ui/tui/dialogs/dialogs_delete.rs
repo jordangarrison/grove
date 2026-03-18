@@ -388,6 +388,7 @@ impl GroveApp {
                             vec![worktree.path.clone()],
                             QueuedDeleteRequest::Worktree(DeleteWorkspaceRequest {
                                 task_slug: Some(dialog.task.slug.clone()),
+                                task_root: Some(dialog.task.root_path.clone()),
                                 project_name: Some(worktree.repository_name.clone()),
                                 project_path: Some(worktree.repository_path.clone()),
                                 workspace_name: worktree.repository_name.clone(),

@@ -71,6 +71,7 @@ pub enum WorkspaceMarkerError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeleteWorkspaceRequest {
     pub task_slug: Option<String>,
+    pub task_root: Option<PathBuf>,
     pub project_name: Option<String>,
     pub project_path: Option<PathBuf>,
     pub workspace_name: String,
@@ -662,6 +663,7 @@ mod tests {
 
         let request = DeleteWorkspaceRequest {
             task_slug: None,
+            task_root: None,
             project_name: None,
             project_path: Some(repo_root.clone()),
             workspace_name: "feature-x".to_string(),
@@ -686,6 +688,7 @@ mod tests {
 
         let request = DeleteWorkspaceRequest {
             task_slug: None,
+            task_root: None,
             project_name: None,
             project_path: Some(repo_root.clone()),
             workspace_name: "feature-y".to_string(),
@@ -730,6 +733,7 @@ mod tests {
         std::env::set_current_dir(&repo_root).expect("should switch cwd to repo");
         let request = DeleteWorkspaceRequest {
             task_slug: None,
+            task_root: None,
             project_name: None,
             project_path: None,
             workspace_name: "feature-z".to_string(),
@@ -745,6 +749,89 @@ mod tests {
         assert_eq!(result, Ok(()));
         assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
         assert!(!workspace_path.exists(), "workspace path should be removed");
+    }
+
+    #[test]
+    fn delete_workspace_updates_task_manifest_to_remove_worktree() {
+        use crate::domain::{AgentType, Task, WorkspaceStatus, Worktree};
+        use crate::infrastructure::task_manifest::{decode_task_manifest, encode_task_manifest};
+
+        let temp = TestDir::new("delete-manifest-update");
+        let repo_root = temp.path.join("grove");
+        fs::create_dir_all(&repo_root).expect("repo dir should exist");
+        init_git_repo(&repo_root);
+
+        let task_root = temp.path.join("task-root");
+        let workspace_a_path = temp.path.join("grove-feature-a");
+        let workspace_b_path = temp.path.join("grove-feature-b");
+
+        run_git(
+            &repo_root,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "feature-a",
+                workspace_a_path.to_string_lossy().as_ref(),
+                "HEAD",
+            ],
+        );
+
+        let worktree_a = Worktree::try_new(
+            "repo-a".to_string(),
+            repo_root.clone(),
+            workspace_a_path.clone(),
+            "feature-a".to_string(),
+            AgentType::Claude,
+            WorkspaceStatus::Idle,
+        )
+        .expect("worktree should be valid");
+        let worktree_b = Worktree::try_new(
+            "repo-b".to_string(),
+            repo_root.clone(),
+            workspace_b_path.clone(),
+            "feature-b".to_string(),
+            AgentType::Claude,
+            WorkspaceStatus::Idle,
+        )
+        .expect("worktree should be valid");
+        let task = Task::try_new(
+            "test-task".to_string(),
+            "test-task".to_string(),
+            task_root.clone(),
+            "test-task".to_string(),
+            vec![worktree_a, worktree_b],
+        )
+        .expect("task should be valid");
+
+        let manifest_dir = task_root.join(".grove");
+        fs::create_dir_all(&manifest_dir).expect("manifest dir should exist");
+        let encoded = encode_task_manifest(&task).expect("should encode");
+        fs::write(manifest_dir.join("task.toml"), &encoded).expect("should write manifest");
+
+        let request = DeleteWorkspaceRequest {
+            task_slug: Some("test-task".to_string()),
+            task_root: Some(task_root.clone()),
+            project_name: Some("repo-a".to_string()),
+            project_path: Some(repo_root.clone()),
+            workspace_name: "repo-a".to_string(),
+            branch: "feature-a".to_string(),
+            workspace_path: workspace_a_path.clone(),
+            is_missing: false,
+            delete_local_branch: false,
+            kill_tmux_sessions: false,
+        };
+
+        let (result, warnings) = delete_workspace(request);
+        assert_eq!(result, Ok(()));
+        assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
+
+        let updated_raw = fs::read_to_string(manifest_dir.join("task.toml"))
+            .expect("manifest should still exist");
+        let updated_task =
+            decode_task_manifest(&updated_raw).expect("updated manifest should decode");
+        assert_eq!(updated_task.worktrees.len(), 1);
+        assert_eq!(updated_task.worktrees[0].repository_name, "repo-b");
     }
 
     #[test]
