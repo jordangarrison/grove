@@ -6,6 +6,7 @@
 .grove/
 .grove/debug-snapshot.json
 .superpowers/
+docs/superpowers/
 .sidecar/
 .lefthook-local.yml
 *.local.*

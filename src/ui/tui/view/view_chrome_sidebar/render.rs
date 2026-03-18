@@ -28,8 +28,20 @@ impl GroveApp {
                 )]),
                 FtLine::raw(""),
                 FtLine::from_spans(vec![FtSpan::styled(
-                    "Press 'p' to add a project",
+                    "Press Ctrl+K for command palette",
                     Style::new().fg(theme.text).bold(),
+                )]),
+                FtLine::from_spans(vec![FtSpan::styled(
+                    "Type help",
+                    Style::new().fg(theme.text),
+                )]),
+                FtLine::from_spans(vec![FtSpan::styled(
+                    "Press p to add a project",
+                    Style::new().fg(theme.text),
+                )]),
+                FtLine::from_spans(vec![FtSpan::styled(
+                    "Press n to create a task",
+                    Style::new().fg(theme.text),
                 )]),
             ]))
             .render(inner, frame);

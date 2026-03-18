@@ -511,7 +511,15 @@ impl GroveApp {
                 self.shell_session_status_summary(workspace)
                     .unwrap_or_else(|| format!("Preparing session for {}...", workspace.name))
             })
-            .unwrap_or_else(|| "No workspace selected".to_string())
+            .unwrap_or_else(|| {
+                [
+                    "Press Ctrl+K for command palette.",
+                    "Type help.",
+                    "Press p to add a project.",
+                    "Press n to create a task.",
+                ]
+                .join("\n")
+            })
     }
 
     fn workspace_home_splash(&self, workspace: &Workspace, _has_running_tabs: bool) -> String {

@@ -2282,6 +2282,29 @@ mod tests {
     }
 
     #[test]
+    fn sidebar_empty_state_promotes_command_palette_help() {
+        let mut app = fixture_app();
+        app.projects.clear();
+
+        let layout = app.panes.test_rects(160, 24);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 160, 24, |frame| {
+            let combined = (layout.sidebar.y..layout.sidebar.bottom())
+                .map(|row| row_text(frame, row, x_start, x_end))
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            assert!(combined.contains("Ctrl+K"));
+            assert!(combined.contains("command palette"));
+            assert!(combined.contains("Type help"));
+            assert!(combined.contains("Press p to add a project"));
+            assert!(combined.contains("Press n to create a task"));
+        });
+    }
+
+    #[test]
     fn sidebar_shows_repo_name_for_single_repo_task() {
         let app = fixture_app();
         let layout = app.panes.test_rects(160, 24);
@@ -9823,6 +9846,37 @@ mod tests {
 
                 assert!(content.contains("discovery failed"));
                 assert!(content.contains("discovery error"));
+            }
+
+            #[test]
+            fn empty_preview_summary_promotes_command_palette_help() {
+                let config_path = unique_config_path("empty-preview-summary");
+                let mut app = GroveApp::from_task_state(
+                    "grove".to_string(),
+                    crate::ui::state::AppState::new(Vec::new()),
+                    DiscoveryState::Empty,
+                    Vec::new(),
+                    AppDependencies {
+                        tmux_input: Box::new(RecordingTmuxInput {
+                            commands: Rc::new(RefCell::new(Vec::new())),
+                            captures: Rc::new(RefCell::new(Vec::new())),
+                            cursor_captures: Rc::new(RefCell::new(Vec::new())),
+                            calls: Rc::new(RefCell::new(Vec::new())),
+                        }),
+                        clipboard: test_clipboard(),
+                        config_path,
+                        event_log: Box::new(NullEventLogger),
+                        debug_record_start_ts: None,
+                    },
+                );
+
+                app.refresh_preview_summary();
+                let content = app.preview.lines.join("\n");
+
+                assert!(content.contains("Press Ctrl+K for command palette"));
+                assert!(content.contains("Type help"));
+                assert!(content.contains("Press p to add a project"));
+                assert!(content.contains("Press n to create a task"));
             }
 
             #[test]
