@@ -193,6 +193,8 @@ impl GroveApp {
                         .is_some_and(|workspace| workspace.is_main)
             }
             UiCommand::RefreshWorkspaces => !self.dialogs.refresh_in_flight,
+            UiCommand::FocusAttentionInbox => !self.attention_items.is_empty(),
+            UiCommand::AcknowledgeAttention => self.selected_attention_item().is_some(),
             UiCommand::FocusPreview | UiCommand::OpenCommandPalette => false,
         }
     }

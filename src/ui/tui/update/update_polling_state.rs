@@ -1,18 +1,31 @@
 use super::update_prelude::*;
 
 impl GroveApp {
+    const STALLED_IDLE_POLLS_TO_ATTENTION: u8 = 6;
+    const ATTENTION_PROMOTION_POLLS: u8 = 2;
+    const ATTENTION_REMOVAL_POLLS: u8 = 2;
+
+    fn workspace_has_running_agent_tab(&self, workspace_path: &Path) -> bool {
+        self.workspace_tabs.get(workspace_path).is_some_and(|tabs| {
+            tabs.tabs.iter().any(|tab| {
+                tab.kind == WorkspaceTabKind::Agent
+                    && tab.state == WorkspaceTabRuntimeState::Running
+            })
+        })
+    }
+
     fn current_attention_marker_for_workspace_path(&self, workspace_path: &Path) -> Option<String> {
+        #[cfg(test)]
+        if let Some(marker) = self.attention_marker_overrides.get(workspace_path) {
+            return marker.clone();
+        }
+
         let workspace = self
             .state
             .workspaces
             .iter()
             .find(|workspace| workspace.path == workspace_path)?;
-        let has_running_agent_tab = self.workspace_tabs.get(workspace_path).is_some_and(|tabs| {
-            tabs.tabs.iter().any(|tab| {
-                tab.kind == WorkspaceTabKind::Agent
-                    && tab.state == WorkspaceTabRuntimeState::Running
-            })
-        });
+        let has_running_agent_tab = self.workspace_has_running_agent_tab(workspace_path);
         if !workspace.supported_agent || !has_running_agent_tab {
             return None;
         }
@@ -20,20 +33,131 @@ impl GroveApp {
         latest_assistant_attention_marker(workspace.agent, workspace.path.as_path())
     }
 
+    fn permission_wall_prompt(prompt: &str) -> bool {
+        let lower = prompt.to_ascii_lowercase();
+        ["approve", "allow", "confirm", "do you want"]
+            .iter()
+            .any(|pattern| lower.contains(pattern))
+    }
+
+    fn attention_item_for_workspace(
+        &self,
+        workspace: &Workspace,
+        now_ms: u64,
+    ) -> Option<AttentionItem> {
+        if workspace.is_orphaned && !workspace.is_main {
+            return Some(AttentionItem {
+                fingerprint: format!("session-ended:{}", workspace.path.display()),
+                reason: AttentionReason::SessionEnded,
+                summary: AttentionReason::SessionEnded.summary().to_string(),
+                workspace_path: workspace.path.clone(),
+                task_slug: workspace.task_slug.clone().unwrap_or_default(),
+                first_seen_at_ms: now_ms,
+                last_seen_at_ms: now_ms,
+            });
+        }
+
+        if workspace.status == WorkspaceStatus::Waiting
+            && let Some(marker) =
+                self.current_attention_marker_for_workspace_path(workspace.path.as_path())
+        {
+            let waiting_prompt = self
+                .polling
+                .workspace_waiting_prompts
+                .get(workspace.path.as_path())
+                .cloned();
+            let reason = waiting_prompt
+                .as_deref()
+                .filter(|prompt| Self::permission_wall_prompt(prompt))
+                .map(|_| AttentionReason::PermissionWall)
+                .unwrap_or(AttentionReason::BlockedOnQuestion);
+            return Some(AttentionItem {
+                fingerprint: format!("{}:{marker}", reason.summary()),
+                reason,
+                summary: reason.summary().to_string(),
+                workspace_path: workspace.path.clone(),
+                task_slug: workspace.task_slug.clone().unwrap_or_default(),
+                first_seen_at_ms: now_ms,
+                last_seen_at_ms: now_ms,
+            });
+        }
+
+        if !workspace.supported_agent
+            || !self.workspace_has_running_agent_tab(workspace.path.as_path())
+        {
+            return None;
+        }
+
+        if workspace.status == WorkspaceStatus::Done {
+            return Some(AttentionItem {
+                fingerprint: format!("finished:{}", workspace.path.display()),
+                reason: AttentionReason::Finished,
+                summary: AttentionReason::Finished.summary().to_string(),
+                workspace_path: workspace.path.clone(),
+                task_slug: workspace.task_slug.clone().unwrap_or_default(),
+                first_seen_at_ms: now_ms,
+                last_seen_at_ms: now_ms,
+            });
+        }
+
+        let idle_polls = self
+            .polling
+            .workspace_idle_polls_since_output
+            .get(workspace.path.as_path())
+            .copied()
+            .unwrap_or(0);
+        if workspace.status == WorkspaceStatus::Idle
+            && idle_polls >= Self::STALLED_IDLE_POLLS_TO_ATTENTION
+        {
+            return Some(AttentionItem {
+                fingerprint: format!("stalled:{}", workspace.path.display()),
+                reason: AttentionReason::Stalled,
+                summary: AttentionReason::Stalled.summary().to_string(),
+                workspace_path: workspace.path.clone(),
+                task_slug: workspace.task_slug.clone().unwrap_or_default(),
+                first_seen_at_ms: now_ms,
+                last_seen_at_ms: now_ms,
+            });
+        }
+
+        None
+    }
+
+    fn current_attention_fingerprint_for_workspace_path(
+        &self,
+        workspace_path: &Path,
+    ) -> Option<String> {
+        let workspace = self
+            .state
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.path == workspace_path)?;
+        let item = self.attention_item_for_workspace(workspace, now_millis())?;
+        Some(item.fingerprint)
+    }
+
     fn acknowledge_workspace_attention_for_path(&mut self, workspace_path: &Path) -> bool {
-        let Some(marker) = self.current_attention_marker_for_workspace_path(workspace_path) else {
+        let fingerprint = self
+            .current_attention_fingerprint_for_workspace_path(workspace_path)
+            .or_else(|| {
+                self.attention_items
+                    .iter()
+                    .find(|item| item.workspace_path == workspace_path)
+                    .map(|item| item.fingerprint.clone())
+            });
+        let Some(fingerprint) = fingerprint else {
             return false;
         };
         if self
             .workspace_attention_ack_markers
             .get(workspace_path)
-            .is_some_and(|saved| saved == &marker)
+            .is_some_and(|saved| saved == &fingerprint)
         {
             return false;
         }
 
         self.workspace_attention_ack_markers
-            .insert(workspace_path.to_path_buf(), marker);
+            .insert(workspace_path.to_path_buf(), fingerprint);
         true
     }
 
@@ -71,29 +195,127 @@ impl GroveApp {
         paths
     }
 
-    fn refresh_workspace_attention_for_path(&mut self, workspace_path: &Path) {
-        let Some(marker) = self.current_attention_marker_for_workspace_path(workspace_path) else {
-            self.workspace_attention.remove(workspace_path);
-            return;
-        };
+    fn refresh_attention_items(&mut self) {
+        let now_ms = now_millis();
+        let previous_items = self
+            .attention_items
+            .iter()
+            .cloned()
+            .map(|item| (item.workspace_path.clone(), item))
+            .collect::<HashMap<PathBuf, AttentionItem>>();
+        let previous_observations = std::mem::take(&mut self.attention_observations);
+        let mut next_observations = HashMap::new();
+        let mut next_items = Vec::new();
+        self.workspace_attention.clear();
 
-        let acknowledged = self
-            .workspace_attention_ack_markers
-            .get(workspace_path)
-            .is_some_and(|saved| saved == &marker);
-        if acknowledged {
-            self.workspace_attention.remove(workspace_path);
-            return;
+        for workspace in &self.state.workspaces {
+            let workspace_path = workspace.path.clone();
+            let previous_visible = previous_items.get(workspace_path.as_path());
+            let previous_observation = previous_observations.get(workspace_path.as_path());
+            let candidate = self.attention_item_for_workspace(workspace, now_ms);
+
+            let visible_item = if let Some(candidate) = candidate {
+                if self
+                    .workspace_attention_ack_markers
+                    .get(workspace_path.as_path())
+                    .is_some_and(|saved| saved == &candidate.fingerprint)
+                {
+                    None
+                } else {
+                    let observation = match previous_observation {
+                        Some(previous) if previous.item.fingerprint == candidate.fingerprint => {
+                            AttentionObservation {
+                                item: AttentionItem {
+                                    first_seen_at_ms: previous.item.first_seen_at_ms,
+                                    ..candidate
+                                },
+                                seen_polls: previous.seen_polls.saturating_add(1),
+                                missing_polls: 0,
+                            }
+                        }
+                        _ => AttentionObservation {
+                            item: candidate,
+                            seen_polls: 1,
+                            missing_polls: 0,
+                        },
+                    };
+
+                    let visible = if let Some(previous) = previous_visible {
+                        if previous.fingerprint == observation.item.fingerprint {
+                            Some(AttentionItem {
+                                first_seen_at_ms: previous.first_seen_at_ms,
+                                ..observation.item.clone()
+                            })
+                        } else if observation.seen_polls >= Self::ATTENTION_PROMOTION_POLLS {
+                            Some(observation.item.clone())
+                        } else {
+                            Some(previous.clone())
+                        }
+                    } else if observation.seen_polls >= Self::ATTENTION_PROMOTION_POLLS {
+                        Some(observation.item.clone())
+                    } else {
+                        None
+                    };
+
+                    next_observations.insert(workspace_path.clone(), observation);
+                    visible
+                }
+            } else if let Some(previous) = previous_visible {
+                let missing_polls = previous_observation
+                    .map_or(1, |observation| observation.missing_polls.saturating_add(1));
+                if missing_polls < Self::ATTENTION_REMOVAL_POLLS {
+                    next_observations.insert(
+                        workspace_path.clone(),
+                        AttentionObservation {
+                            item: previous.clone(),
+                            seen_polls: 0,
+                            missing_polls,
+                        },
+                    );
+                    Some(previous.clone())
+                } else {
+                    self.workspace_attention_ack_markers
+                        .remove(workspace_path.as_path());
+                    None
+                }
+            } else {
+                self.workspace_attention_ack_markers
+                    .remove(workspace_path.as_path());
+                None
+            };
+
+            if let Some(item) = visible_item {
+                self.workspace_attention
+                    .insert(workspace_path, WorkspaceAttention::NeedsAttention);
+                next_items.push(item);
+            }
         }
 
-        self.workspace_attention.insert(
-            workspace_path.to_path_buf(),
-            WorkspaceAttention::NeedsAttention,
-        );
+        next_items.sort_by(|left, right| {
+            left.reason
+                .rank()
+                .cmp(&right.reason.rank())
+                .then_with(|| left.first_seen_at_ms.cmp(&right.first_seen_at_ms))
+                .then_with(|| left.workspace_path.cmp(&right.workspace_path))
+        });
+        self.attention_observations = next_observations;
+        self.attention_items = next_items;
+        if self
+            .selected_attention_item
+            .is_some_and(|index| index >= self.attention_items.len())
+        {
+            self.selected_attention_item = None;
+        }
+        self.maybe_focus_attention_inbox_on_startup();
     }
 
     pub(super) fn workspace_attention(&self, workspace_path: &Path) -> Option<WorkspaceAttention> {
         self.workspace_attention.get(workspace_path).copied()
+    }
+
+    pub(super) fn selected_attention_item(&self) -> Option<&AttentionItem> {
+        self.selected_attention_item
+            .and_then(|index| self.attention_items.get(index))
     }
 
     pub(super) fn clear_attention_for_workspace_path(&mut self, workspace_path: &Path) {
@@ -103,17 +325,14 @@ impl GroveApp {
         {
             self.session.last_tmux_error = Some(format!("attention ack persist failed: {error}"));
         }
+        self.attention_observations.remove(workspace_path);
+        self.attention_items
+            .retain(|item| item.workspace_path != workspace_path);
+        self.refresh_attention_items();
     }
 
     pub(super) fn acknowledge_selected_workspace_attention_for_preview_focus(&mut self) {
-        if self.state.mode != UiMode::Preview || self.state.focus != PaneFocus::Preview {
-            return;
-        }
-
-        let Some(workspace_path) = self.selected_workspace_path() else {
-            return;
-        };
-        self.clear_attention_for_workspace_path(workspace_path.as_path());
+        let _ = self;
     }
 
     pub(super) fn track_workspace_status_transition(
@@ -124,7 +343,14 @@ impl GroveApp {
         _previous_orphaned: bool,
         _next_orphaned: bool,
     ) {
-        self.refresh_workspace_attention_for_path(workspace_path);
+        self.refresh_attention_items();
+        if self
+            .selected_attention_item
+            .is_some_and(|index| index >= self.attention_items.len())
+        {
+            self.selected_attention_item = None;
+        }
+        let _ = workspace_path;
     }
 
     pub(super) fn reconcile_workspace_attention_tracking(&mut self) {
@@ -143,9 +369,11 @@ impl GroveApp {
             .retain(|path, _| valid_paths.contains(path));
         self.workspace_attention_ack_markers
             .retain(|path, _| valid_paths.contains(path));
-        for path in current_workspace_paths {
-            self.refresh_workspace_attention_for_path(path.as_path());
-        }
+        self.attention_observations
+            .retain(|path, _| valid_paths.contains(path));
+        self.attention_items
+            .retain(|item| valid_paths.contains(item.workspace_path.as_path()));
+        self.refresh_attention_items();
     }
 
     fn next_poll_interval(&self) -> Duration {
@@ -185,16 +413,71 @@ impl GroveApp {
         self.polling.agent_idle_polls_since_output = 0;
     }
 
+    pub(super) fn record_workspace_poll_state(
+        &mut self,
+        workspace_path: &Path,
+        status: WorkspaceStatus,
+        cleaned_output: &str,
+        changed: bool,
+    ) {
+        if status == WorkspaceStatus::Waiting {
+            if let Some(prompt) = detect_waiting_prompt(cleaned_output) {
+                self.polling
+                    .workspace_waiting_prompts
+                    .insert(workspace_path.to_path_buf(), prompt);
+            } else {
+                self.polling
+                    .workspace_waiting_prompts
+                    .remove(workspace_path);
+            }
+        } else {
+            self.polling
+                .workspace_waiting_prompts
+                .remove(workspace_path);
+        }
+
+        if changed {
+            self.polling
+                .workspace_idle_polls_since_output
+                .remove(workspace_path);
+            return;
+        }
+
+        if status == WorkspaceStatus::Idle {
+            let idle_polls = self
+                .polling
+                .workspace_idle_polls_since_output
+                .entry(workspace_path.to_path_buf())
+                .or_insert(0);
+            *idle_polls = idle_polls.saturating_add(1);
+            return;
+        }
+
+        self.polling
+            .workspace_idle_polls_since_output
+            .remove(workspace_path);
+    }
+
     pub(super) fn clear_status_tracking_for_workspace_path(&mut self, workspace_path: &Path) {
         self.polling.workspace_status_digests.remove(workspace_path);
         self.polling
             .workspace_output_changing
             .remove(workspace_path);
+        self.polling
+            .workspace_waiting_prompts
+            .remove(workspace_path);
+        self.polling
+            .workspace_idle_polls_since_output
+            .remove(workspace_path);
+        self.attention_observations.remove(workspace_path);
     }
 
     pub(super) fn clear_status_tracking(&mut self) {
         self.polling.workspace_status_digests.clear();
         self.polling.workspace_output_changing.clear();
+        self.polling.workspace_waiting_prompts.clear();
+        self.polling.workspace_idle_polls_since_output.clear();
+        self.attention_observations.clear();
     }
 
     pub(super) fn capture_changed_cleaned_for_workspace(

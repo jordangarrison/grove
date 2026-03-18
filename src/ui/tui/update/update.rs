@@ -16,6 +16,7 @@ impl GroveApp {
         let cmd = match msg {
             Msg::Tick => self.handle_tick_msg(),
             Msg::Key(key_event) => {
+                self.clear_startup_attention_focus_pending();
                 let (quit, key_cmd) = self.handle_key(key_event);
                 if quit {
                     Cmd::Quit
@@ -29,10 +30,12 @@ impl GroveApp {
                 }
             }
             Msg::Mouse(mouse_event) => {
+                self.clear_startup_attention_focus_pending();
                 self.handle_mouse_event(mouse_event);
                 self.schedule_next_tick()
             }
             Msg::Paste(paste_event) => {
+                self.clear_startup_attention_focus_pending();
                 let paste_cmd = self.handle_paste_event(paste_event);
                 let tick_cmd = self.schedule_next_tick();
                 if matches!(paste_cmd, Cmd::None) {

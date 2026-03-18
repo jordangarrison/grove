@@ -219,22 +219,22 @@ mod tests {
     };
     use self::support::logging::{RecordedEvents, RecordingEventLogger};
     use super::{
-        AppDependencies, ClipboardAccess, CommandTmuxInput, CreateDialogField, CreateDialogTab,
-        CreateWorkspaceCompletion, CreateWorkspaceRequest, CreateWorkspaceResult, CursorCapture,
-        DeleteDialogField, DeleteProjectCompletion, DeleteWorkspaceCompletion, EditDialogField,
-        GroveApp, HIT_ID_CREATE_DIALOG_TAB, HIT_ID_HEADER, HIT_ID_PREVIEW,
-        HIT_ID_PROJECT_ADD_RESULTS_LIST, HIT_ID_PROJECT_DIALOG_LIST, HIT_ID_STATUS,
-        HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW, HelpHintContext,
-        LaunchDialogField, LaunchDialogState, LaunchDialogTarget, LazygitLaunchCompletion,
-        LivePreviewCapture, MergeDialogField, MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS,
-        PendingResizeVerification, PreviewPollCompletion, PreviewTab, ProjectAddDialogField,
-        ProjectDefaultsDialogField, PullUpstreamDialogField, RefreshWorkspacesCompletion,
-        SettingsDialogField, StartAgentCompletion, StartAgentConfigField, StartAgentConfigState,
-        StopAgentCompletion, StopDialogField, TextSelectionPoint, TmuxInput, UiCommand,
-        UpdateFromBaseDialogField, WorkspaceAttention, WorkspaceShellLaunchCompletion,
-        WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind, WorkspaceTabRuntimeState,
-        decode_create_dialog_tab_hit_data, decode_workspace_pr_hit_data, parse_cursor_metadata,
-        ui_theme, ui_theme_for, usize_to_u64,
+        AppDependencies, AttentionItem, AttentionReason, ClipboardAccess, CommandTmuxInput,
+        CreateDialogField, CreateDialogTab, CreateWorkspaceCompletion, CreateWorkspaceRequest,
+        CreateWorkspaceResult, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
+        DeleteWorkspaceCompletion, EditDialogField, GroveApp, HIT_ID_CREATE_DIALOG_TAB,
+        HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_PROJECT_ADD_RESULTS_LIST, HIT_ID_PROJECT_DIALOG_LIST,
+        HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW,
+        HelpHintContext, LaunchDialogField, LaunchDialogState, LaunchDialogTarget,
+        LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, MergeWorkspaceCompletion,
+        Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion, PreviewTab,
+        ProjectAddDialogField, ProjectDefaultsDialogField, PullUpstreamDialogField,
+        RefreshWorkspacesCompletion, SettingsDialogField, StartAgentCompletion,
+        StartAgentConfigField, StartAgentConfigState, StopAgentCompletion, StopDialogField,
+        TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WorkspaceAttention,
+        WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind,
+        WorkspaceTabRuntimeState, decode_create_dialog_tab_hit_data, decode_workspace_pr_hit_data,
+        parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
     };
     use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
     use crate::application::interactive::InteractiveState;
@@ -247,7 +247,7 @@ mod tests {
     use crate::infrastructure::adapters::DiscoveryState;
     use crate::infrastructure::config::{ProjectConfig, ProjectDefaults, ThemeName};
     use crate::infrastructure::event_log::{Event as LoggedEvent, NullEventLogger};
-    use crate::ui::state::{PaneFocus, UiMode};
+    use crate::ui::state::{Action, PaneFocus, UiMode, reduce};
     use ftui::core::event::{
         Event, KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
         PasteEvent,
@@ -610,6 +610,22 @@ mod tests {
 
     fn feature_shell_session() -> String {
         format!("{}-shell", feature_workspace_session())
+    }
+
+    fn fixture_attention_item(
+        workspace_path: PathBuf,
+        task_slug: &str,
+        reason: AttentionReason,
+    ) -> AttentionItem {
+        AttentionItem {
+            fingerprint: format!("{}:{}", reason.summary(), workspace_path.display()),
+            reason,
+            summary: reason.summary().to_string(),
+            workspace_path,
+            task_slug: task_slug.to_string(),
+            first_seen_at_ms: 0,
+            last_seen_at_ms: 0,
+        }
     }
 
     fn feature_agent_tab_session(ordinal: usize) -> String {
@@ -1577,7 +1593,7 @@ mod tests {
         }
 
         #[test]
-        fn sidebar_workspace_index_uses_pane_rect() {
+        fn sidebar_selection_uses_pane_rect() {
             let app = fixture_app();
             let (sidebar_rect, _, _) = app.effective_workspace_rects();
             if sidebar_rect.is_empty() {
@@ -1592,8 +1608,7 @@ mod tests {
             // Point above sidebar should return None
             let above = sidebar_rect.y.saturating_sub(1);
             assert!(
-                app.sidebar_workspace_index_at_point(inner.x, above)
-                    .is_none(),
+                app.sidebar_selection_at_point(inner.x, above).is_none(),
                 "point above sidebar should not match"
             );
         }
@@ -3096,6 +3111,232 @@ mod tests {
     }
 
     #[test]
+    fn sidebar_renders_attention_inbox_above_task_tree() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        select_workspace(&mut app, 1);
+        app.attention_items = vec![fixture_attention_item(
+            feature_workspace_path(),
+            "feature-a",
+            AttentionReason::BlockedOnQuestion,
+        )];
+        app.selected_attention_item = Some(0);
+        app.workspace_attention
+            .insert(feature_workspace_path(), WorkspaceAttention::NeedsAttention);
+
+        let layout = app.panes.test_rects(120, 24);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 120, 24, |frame| {
+            let rows = (layout.sidebar.y..layout.sidebar.bottom())
+                .map(|row| row_text(frame, row, x_start, x_end))
+                .collect::<Vec<String>>();
+            assert!(
+                rows.iter().any(|row| row.contains("Needs You [1]")),
+                "attention inbox header should render, got: {rows:?}"
+            );
+            assert!(
+                rows.iter()
+                    .any(|row| row.contains("blocked on question") && row.contains("feature")),
+                "attention item row should render above tasks, got: {rows:?}"
+            );
+        });
+    }
+
+    #[test]
+    fn sidebar_selection_moves_from_attention_row_into_workspace_rows() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        select_workspace(&mut app, 1);
+        app.attention_items = vec![fixture_attention_item(
+            feature_workspace_path(),
+            "feature-a",
+            AttentionReason::BlockedOnQuestion,
+        )];
+        app.selected_attention_item = Some(0);
+
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('j'))));
+
+        assert!(app.selected_attention_item.is_none());
+        assert_eq!(app.state.selected_index, 0);
+    }
+
+    #[test]
+    fn acknowledge_key_clears_selected_attention_item() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        select_workspace(&mut app, 1);
+        app.attention_items = vec![fixture_attention_item(
+            feature_workspace_path(),
+            "feature-a",
+            AttentionReason::BlockedOnQuestion,
+        )];
+        app.selected_attention_item = Some(0);
+        app.workspace_attention
+            .insert(feature_workspace_path(), WorkspaceAttention::NeedsAttention);
+
+        let cmd = ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('a'))));
+
+        assert!(app.selected_attention_item.is_none());
+        assert!(app.attention_items.is_empty());
+        assert!(
+            !app.workspace_attention
+                .contains_key(&feature_workspace_path())
+        );
+        assert!(!matches!(cmd, Cmd::Quit));
+    }
+
+    #[test]
+    fn acknowledge_key_clears_selected_attention_item_while_interactive() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        select_workspace(&mut app, 1);
+        app.attention_items = vec![fixture_attention_item(
+            feature_workspace_path(),
+            "feature-a",
+            AttentionReason::BlockedOnQuestion,
+        )];
+        app.selected_attention_item = Some(0);
+        app.workspace_attention
+            .insert(feature_workspace_path(), WorkspaceAttention::NeedsAttention);
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            "grove-ws-feature-a".to_string(),
+            Instant::now(),
+            24,
+            80,
+        ));
+
+        let cmd = ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('a'))));
+
+        assert!(app.selected_attention_item.is_none());
+        assert!(app.attention_items.is_empty());
+        assert!(
+            !app.workspace_attention
+                .contains_key(&feature_workspace_path())
+        );
+        assert!(app.launch_dialog().is_none());
+        assert!(!matches!(cmd, Cmd::Quit));
+    }
+
+    #[test]
+    fn focus_attention_inbox_command_selects_first_attention_item() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        reduce(&mut app.state, Action::EnterPreviewMode);
+        app.state.focus = PaneFocus::Preview;
+        app.attention_items = vec![fixture_attention_item(
+            feature_workspace_path(),
+            "feature-a",
+            AttentionReason::BlockedOnQuestion,
+        )];
+
+        app.execute_ui_command(UiCommand::FocusAttentionInbox);
+
+        assert_eq!(app.selected_attention_item, Some(0));
+        assert_eq!(app.state.selected_index, 1);
+        assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+    }
+
+    #[test]
+    fn focus_attention_inbox_key_selects_first_attention_item() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        reduce(&mut app.state, Action::EnterPreviewMode);
+        app.state.focus = PaneFocus::Preview;
+        app.attention_items = vec![fixture_attention_item(
+            feature_workspace_path(),
+            "feature-a",
+            AttentionReason::BlockedOnQuestion,
+        )];
+
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Char('i'))));
+
+        assert_eq!(app.selected_attention_item, Some(0));
+        assert_eq!(app.state.selected_index, 1);
+        assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+    }
+
+    #[test]
+    fn focus_attention_inbox_command_exits_interactive_mode() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        reduce(&mut app.state, Action::EnterPreviewMode);
+        app.state.focus = PaneFocus::Preview;
+        app.attention_items = vec![fixture_attention_item(
+            feature_workspace_path(),
+            "feature-a",
+            AttentionReason::BlockedOnQuestion,
+        )];
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            "grove-ws-feature-a".to_string(),
+            Instant::now(),
+            24,
+            80,
+        ));
+
+        app.execute_ui_command(UiCommand::FocusAttentionInbox);
+
+        assert!(app.session.interactive.is_none());
+        assert_eq!(app.selected_attention_item, Some(0));
+        assert_eq!(app.state.selected_index, 1);
+        assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+    }
+
+    #[test]
+    fn startup_helper_selects_first_attention_item_when_inbox_exists() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        app.attention_items = vec![fixture_attention_item(
+            feature_workspace_path(),
+            "feature-a",
+            AttentionReason::BlockedOnQuestion,
+        )];
+
+        app.maybe_focus_attention_inbox_on_startup();
+
+        assert_eq!(app.selected_attention_item, Some(0));
+        assert_eq!(app.state.selected_index, 1);
+        assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+    }
+
+    #[test]
+    fn enter_on_attention_row_focuses_running_agent_tab() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        select_workspace(&mut app, 1);
+        let session_name = feature_agent_tab_session(1);
+        insert_running_agent_tab(&mut app, 1, session_name.as_str(), "Codex 1");
+        focus_home_preview_tab(&mut app);
+        app.state.mode = UiMode::List;
+        app.state.focus = PaneFocus::WorkspaceList;
+        app.attention_items = vec![fixture_attention_item(
+            feature_workspace_path(),
+            "feature-a",
+            AttentionReason::BlockedOnQuestion,
+        )];
+        app.selected_attention_item = Some(0);
+
+        ftui::Model::update(&mut app, Msg::Key(key_press(KeyCode::Enter)));
+
+        assert!(app.selected_attention_item.is_none());
+        assert_eq!(app.state.mode, UiMode::Preview);
+        assert_eq!(app.state.focus, PaneFocus::Preview);
+        assert_eq!(app.preview_tab, PreviewTab::Agent);
+        assert_eq!(
+            app.selected_active_tab().map(|tab| tab.kind),
+            Some(WorkspaceTabKind::Agent)
+        );
+        assert_eq!(
+            app.selected_active_tab()
+                .and_then(|tab| tab.session_name.as_deref()),
+            Some(session_name.as_str())
+        );
+    }
+
+    #[test]
     fn waiting_workspace_row_shows_waiting_only_and_suppresses_details() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -3131,6 +3372,159 @@ mod tests {
                 "waiting workspace should suppress PR metadata, got: {metadata_row_text}"
             );
         });
+    }
+
+    #[test]
+    fn finished_attention_requires_two_polls_before_entering_inbox() {
+        let mut app = fixture_app();
+        let workspace_path = feature_workspace_path();
+        insert_running_agent_tab(
+            &mut app,
+            1,
+            feature_agent_tab_session(1).as_str(),
+            "Codex 1",
+        );
+        app.state.workspaces[1].status = WorkspaceStatus::Done;
+
+        app.track_workspace_status_transition(
+            workspace_path.as_path(),
+            WorkspaceStatus::Active,
+            WorkspaceStatus::Done,
+            false,
+            false,
+        );
+        assert!(app.attention_items.is_empty());
+
+        app.track_workspace_status_transition(
+            workspace_path.as_path(),
+            WorkspaceStatus::Done,
+            WorkspaceStatus::Done,
+            false,
+            false,
+        );
+        assert_eq!(app.attention_items.len(), 1);
+        assert_eq!(
+            app.attention_items.first().map(|item| item.reason),
+            Some(AttentionReason::Finished)
+        );
+    }
+
+    #[test]
+    fn startup_selects_attention_inbox_when_first_item_becomes_visible() {
+        let mut app = fixture_app();
+        let workspace_path = feature_workspace_path();
+        insert_running_agent_tab(
+            &mut app,
+            1,
+            feature_agent_tab_session(1).as_str(),
+            "Codex 1",
+        );
+        app.state.workspaces[1].status = WorkspaceStatus::Done;
+
+        app.track_workspace_status_transition(
+            workspace_path.as_path(),
+            WorkspaceStatus::Active,
+            WorkspaceStatus::Done,
+            false,
+            false,
+        );
+        assert!(app.selected_attention_item.is_none());
+
+        app.track_workspace_status_transition(
+            workspace_path.as_path(),
+            WorkspaceStatus::Done,
+            WorkspaceStatus::Done,
+            false,
+            false,
+        );
+
+        assert_eq!(app.selected_attention_item, Some(0));
+        assert_eq!(app.state.selected_index, 1);
+        assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+    }
+
+    #[test]
+    fn visible_attention_item_requires_two_absent_polls_before_leaving_inbox() {
+        let mut app = fixture_app();
+        app.clear_startup_attention_focus_pending();
+        let workspace_path = feature_workspace_path();
+        insert_running_agent_tab(
+            &mut app,
+            1,
+            feature_agent_tab_session(1).as_str(),
+            "Codex 1",
+        );
+        app.state.workspaces[1].status = WorkspaceStatus::Done;
+        app.track_workspace_status_transition(
+            workspace_path.as_path(),
+            WorkspaceStatus::Active,
+            WorkspaceStatus::Done,
+            false,
+            false,
+        );
+        app.track_workspace_status_transition(
+            workspace_path.as_path(),
+            WorkspaceStatus::Done,
+            WorkspaceStatus::Done,
+            false,
+            false,
+        );
+        assert_eq!(app.attention_items.len(), 1);
+
+        app.state.workspaces[1].status = WorkspaceStatus::Active;
+        app.track_workspace_status_transition(
+            workspace_path.as_path(),
+            WorkspaceStatus::Done,
+            WorkspaceStatus::Active,
+            false,
+            false,
+        );
+        assert_eq!(app.attention_items.len(), 1);
+
+        app.track_workspace_status_transition(
+            workspace_path.as_path(),
+            WorkspaceStatus::Active,
+            WorkspaceStatus::Active,
+            false,
+            false,
+        );
+        assert!(app.attention_items.is_empty());
+    }
+
+    #[test]
+    fn active_workspace_with_stale_attention_marker_does_not_enter_inbox() {
+        let mut app = fixture_app();
+        let workspace_path = feature_workspace_path();
+        insert_running_agent_tab(
+            &mut app,
+            1,
+            feature_agent_tab_session(1).as_str(),
+            "Codex 1",
+        );
+        app.state.workspaces[1].status = WorkspaceStatus::Active;
+        app.attention_marker_overrides
+            .insert(workspace_path.clone(), Some("stale-marker".to_string()));
+
+        app.track_workspace_status_transition(
+            workspace_path.as_path(),
+            WorkspaceStatus::Active,
+            WorkspaceStatus::Active,
+            false,
+            false,
+        );
+        app.track_workspace_status_transition(
+            workspace_path.as_path(),
+            WorkspaceStatus::Active,
+            WorkspaceStatus::Active,
+            false,
+            false,
+        );
+
+        assert!(app.attention_items.is_empty());
+        assert!(
+            !app.workspace_attention
+                .contains_key(workspace_path.as_path())
+        );
     }
 
     #[test]
@@ -5005,6 +5399,43 @@ mod tests {
     }
 
     #[test]
+    fn command_palette_exposes_attention_inbox_actions() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        app.attention_items = vec![fixture_attention_item(
+            feature_workspace_path(),
+            "feature-a",
+            AttentionReason::BlockedOnQuestion,
+        )];
+
+        let list_ids: Vec<String> = app
+            .build_command_palette_actions()
+            .into_iter()
+            .map(|action| action.id)
+            .collect();
+        let focus_id = UiCommand::FocusAttentionInbox
+            .palette_spec()
+            .map(|spec| spec.id)
+            .expect("focus attention inbox should be palette discoverable");
+        let acknowledge_id = UiCommand::AcknowledgeAttention
+            .palette_spec()
+            .map(|spec| spec.id)
+            .expect("acknowledge attention should be palette discoverable");
+
+        assert!(list_ids.iter().any(|id| id == focus_id));
+        assert!(!list_ids.iter().any(|id| id == acknowledge_id));
+
+        app.selected_attention_item = Some(0);
+        let selected_ids: Vec<String> = app
+            .build_command_palette_actions()
+            .into_iter()
+            .map(|action| action.id)
+            .collect();
+        assert!(selected_ids.iter().any(|id| id == focus_id));
+        assert!(selected_ids.iter().any(|id| id == acknowledge_id));
+    }
+
+    #[test]
     fn command_palette_switches_a_between_add_worktree_and_new_agent_by_pane() {
         let mut app = fixture_app();
         select_workspace(&mut app, 1);
@@ -5277,6 +5708,14 @@ mod tests {
             "missing parent agent entry: {rendered}"
         );
         assert!(
+            rendered.contains("a acknowledge attention item"),
+            "missing attention acknowledge entry: {rendered}"
+        );
+        assert!(
+            rendered.contains("i focus needs you inbox"),
+            "missing inbox focus entry: {rendered}"
+        );
+        assert!(
             rendered.contains("ctrl+x/del remove"),
             "missing project modal remove entry: {rendered}"
         );
@@ -5289,9 +5728,9 @@ mod tests {
                 .iter()
                 .filter(|command| command.meta().palette.is_some())
                 .count(),
-            40
+            42
         );
-        assert_eq!(UiCommand::help_hints_for(HelpHintContext::Global).len(), 13);
+        assert_eq!(UiCommand::help_hints_for(HelpHintContext::Global).len(), 14);
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::Workspace).len(),
             16
@@ -9385,7 +9824,7 @@ mod tests {
             }
 
             #[test]
-            fn mouse_click_preview_tab_clears_attention_when_it_focuses_preview() {
+            fn mouse_click_preview_tab_does_not_clear_attention_when_it_focuses_preview() {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
                 select_workspace(&mut app, 1);
                 app.workspace_attention.insert(
@@ -9414,7 +9853,7 @@ mod tests {
                 assert_eq!(app.state.mode, UiMode::Preview);
                 assert_eq!(app.state.focus, PaneFocus::Preview);
                 assert!(
-                    !app.workspace_attention
+                    app.workspace_attention
                         .contains_key(&feature_workspace_path())
                 );
             }
@@ -12800,7 +13239,7 @@ mod tests {
             }
 
             #[test]
-            fn focus_preview_command_clears_attention() {
+            fn focus_preview_command_does_not_clear_attention() {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
                 select_workspace(&mut app, 1);
                 app.workspace_attention.insert(
@@ -12813,13 +13252,13 @@ mod tests {
                 assert_eq!(app.state.mode, UiMode::Preview);
                 assert_eq!(app.state.focus, PaneFocus::Preview);
                 assert!(
-                    !app.workspace_attention
+                    app.workspace_attention
                         .contains_key(&feature_workspace_path())
                 );
             }
 
             #[test]
-            fn toggle_focus_to_preview_clears_attention() {
+            fn toggle_focus_to_preview_does_not_clear_attention() {
                 let mut app = fixture_background_app(WorkspaceStatus::Active);
                 select_workspace(&mut app, 1);
                 app.workspace_attention.insert(
@@ -12832,7 +13271,7 @@ mod tests {
                 assert_eq!(app.state.mode, UiMode::Preview);
                 assert_eq!(app.state.focus, PaneFocus::Preview);
                 assert!(
-                    !app.workspace_attention
+                    app.workspace_attention
                         .contains_key(&feature_workspace_path())
                 );
             }

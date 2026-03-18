@@ -9,6 +9,12 @@ impl GroveApp {
             )
     }
 
+    fn attention_ack_key_pressed(&self, key_event: &KeyEvent) -> bool {
+        self.selected_attention_item.is_some()
+            && key_event.modifiers.is_empty()
+            && matches!(key_event.code, KeyCode::Char('a'))
+    }
+
     fn remap_command_palette_nav_key(key_event: KeyEvent) -> KeyEvent {
         if key_event.modifiers != Modifiers::CTRL {
             return key_event;
@@ -182,6 +188,13 @@ impl GroveApp {
     }
 
     pub(super) fn enter_preview_or_interactive(&mut self) {
+        if self.selected_attention_item.is_some() {
+            reduce(&mut self.state, Action::EnterPreviewMode);
+            self.focus_selected_workspace_attention_tab();
+            self.selected_attention_item = None;
+            self.poll_preview();
+            return;
+        }
         if !self.enter_interactive(Instant::now()) {
             reduce(&mut self.state, Action::EnterPreviewMode);
             self.acknowledge_selected_workspace_attention_for_preview_focus();
@@ -262,6 +275,10 @@ impl GroveApp {
     }
 
     fn handle_non_interactive_key(&mut self, key_event: KeyEvent) -> bool {
+        if self.attention_ack_key_pressed(&key_event) {
+            self.acknowledge_selected_attention_item();
+            return false;
+        }
         let Some(command) = self.non_interactive_command_for_key(&key_event) else {
             return false;
         };
@@ -396,6 +413,11 @@ impl GroveApp {
             return (self.execute_ui_command(command), Cmd::None);
         }
 
+        if self.attention_ack_key_pressed(&key_event) {
+            self.acknowledge_selected_attention_item();
+            return (false, Cmd::None);
+        }
+
         if self.session.interactive.is_some() {
             return (false, self.handle_interactive_key(key_event));
         }
@@ -448,10 +470,46 @@ impl GroveApp {
     }
 
     pub(super) fn move_selection(&mut self, action: Action) {
-        let before = self.state.selected_index;
-        reduce(&mut self.state, action);
-        if self.state.selected_index != before {
-            self.handle_workspace_selection_changed();
+        let row_map = self.sidebar_selectable_row_map();
+        if row_map.is_empty() {
+            return;
+        }
+
+        let current_target = self
+            .selected_attention_item
+            .map(SidebarSelectable::Attention)
+            .unwrap_or(SidebarSelectable::Workspace(self.state.selected_index));
+        let Some(current_line) = row_map
+            .iter()
+            .position(|entry| entry.is_some_and(|target| target == current_target))
+        else {
+            return;
+        };
+
+        let direction: isize = match action {
+            Action::MoveSelectionUp => -1,
+            Action::MoveSelectionDown => 1,
+            _ => return,
+        };
+        let Some(mut candidate_line) = isize::try_from(current_line).ok() else {
+            return;
+        };
+        loop {
+            candidate_line = candidate_line.saturating_add(direction);
+            if candidate_line < 0 {
+                return;
+            }
+            let Some(candidate_index) = usize::try_from(candidate_line).ok() else {
+                return;
+            };
+            let Some(entry) = row_map.get(candidate_index) else {
+                return;
+            };
+            let Some(target) = entry else {
+                continue;
+            };
+            self.select_sidebar_target(*target);
+            return;
         }
     }
 

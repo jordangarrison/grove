@@ -70,6 +70,7 @@ use crate::application::agent_runtime::{
     execute_restart_workspace_in_pane_with_result, execute_shell_launch_request_for_mode,
     execute_stop_task_with_result_for_mode, execute_stop_workspace_with_result_for_mode,
     execute_task_launch_request_with_result_for_mode, latest_assistant_attention_marker,
+    status::detect_waiting_prompt,
     launch_request_for_workspace, shell_launch_request_for_workspace,
 };
 use crate::application::workspace_lifecycle::{
@@ -84,7 +85,7 @@ use crate::infrastructure::adapters::DiscoveryState;
 use crate::infrastructure::config::{
     AgentEnvDefaults, GroveConfig, ProjectConfig, ThemeName, WorkspaceAttentionAckConfig,
 };
-use crate::infrastructure::event_log::{Event as LogEvent, EventLogger};
+use crate::infrastructure::event_log::{Event as LogEvent, EventLogger, now_millis};
 use crate::infrastructure::paths::refer_to_same_location;
 use crate::ui::mouse::{clamp_sidebar_ratio, ratio_from_drag};
 use crate::ui::state::{Action, AppState, PaneFocus, UiMode, reduce};
@@ -130,6 +131,61 @@ enum SessionKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WorkspaceAttention {
     NeedsAttention,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum AttentionReason {
+    BlockedOnQuestion,
+    PermissionWall,
+    SessionEnded,
+    Finished,
+    Stalled,
+}
+
+impl AttentionReason {
+    const fn rank(self) -> u8 {
+        match self {
+            Self::BlockedOnQuestion => 0,
+            Self::PermissionWall => 1,
+            Self::SessionEnded => 2,
+            Self::Finished => 3,
+            Self::Stalled => 4,
+        }
+    }
+
+    const fn summary(self) -> &'static str {
+        match self {
+            Self::BlockedOnQuestion => "blocked on question",
+            Self::PermissionWall => "permission wall",
+            Self::SessionEnded => "session ended unexpectedly",
+            Self::Finished => "finished, awaiting review",
+            Self::Stalled => "stalled, no output",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AttentionItem {
+    fingerprint: String,
+    reason: AttentionReason,
+    summary: String,
+    workspace_path: PathBuf,
+    task_slug: String,
+    first_seen_at_ms: u64,
+    last_seen_at_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AttentionObservation {
+    item: AttentionItem,
+    seen_polls: u8,
+    missing_polls: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SidebarSelectable {
+    Attention(usize),
+    Workspace(usize),
 }
 
 #[derive(Debug, Default)]
@@ -225,6 +281,8 @@ struct PollingState {
     agent_idle_polls_since_output: u8,
     workspace_status_digests: HashMap<PathBuf, OutputDigest>,
     workspace_output_changing: HashMap<PathBuf, bool>,
+    workspace_waiting_prompts: HashMap<PathBuf, String>,
+    workspace_idle_polls_since_output: HashMap<PathBuf, u8>,
     next_tick_due_at: Option<Instant>,
     next_tick_interval_ms: Option<u64>,
     next_poll_due_at: Option<Instant>,
@@ -290,6 +348,12 @@ struct GroveApp {
     polling: PollingState,
     workspace_attention: HashMap<PathBuf, WorkspaceAttention>,
     workspace_attention_ack_markers: HashMap<PathBuf, String>,
+    attention_observations: HashMap<PathBuf, AttentionObservation>,
+    attention_items: Vec<AttentionItem>,
+    selected_attention_item: Option<usize>,
+    startup_attention_focus_pending: bool,
+    #[cfg(test)]
+    attention_marker_overrides: HashMap<PathBuf, Option<String>>,
     viewport_width: u16,
     viewport_height: u16,
     sidebar_width_pct: u16,

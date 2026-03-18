@@ -1,6 +1,6 @@
 use super::*;
 
-static COMMAND_META: [UiCommandMeta; 43] = [
+static COMMAND_META: [UiCommandMeta; 45] = [
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
             id: "palette:toggle_focus",
@@ -1074,6 +1074,37 @@ static COMMAND_META: [UiCommandMeta; 43] = [
     },
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
+            id: "palette:focus_attention_inbox",
+            title: "Focus Needs You Inbox",
+            description: "Select the highest-priority attention item in the sidebar",
+            tags: &["attention", "inbox", "needs you", "focus", "sidebar"],
+            category: "Navigation",
+        }),
+        help_hints: &[HelpHintSpec {
+            context: HelpHintContext::Global,
+            label: "i focus needs you inbox",
+            key: "i",
+            action: "focus needs you inbox",
+        }],
+        keybindings: &[KeybindingSpec {
+            scope: KeybindingScope::NonInteractive,
+            code: KeyCodeMatch::Char('i'),
+            modifiers: KeyModifiersMatch::None,
+        }],
+    },
+    UiCommandMeta {
+        palette: Some(PaletteCommandSpec {
+            id: "palette:acknowledge_attention",
+            title: "Acknowledge Attention Item",
+            description: "Acknowledge the selected inbox item and clear it",
+            tags: &["attention", "acknowledge", "clear", "needs you", "sidebar"],
+            category: "Attention",
+        }),
+        help_hints: &[],
+        keybindings: &[],
+    },
+    UiCommandMeta {
+        palette: Some(PaletteCommandSpec {
             id: "palette:cleanup_sessions",
             title: "Cleanup Sessions",
             description: "Review and clean orphaned Grove tmux sessions",
@@ -1186,10 +1217,12 @@ impl UiCommand {
             UiCommand::OpenSettings => &COMMAND_META[36],
             UiCommand::ToggleMouseCapture => &COMMAND_META[37],
             UiCommand::ToggleUnsafe => &COMMAND_META[38],
-            UiCommand::CleanupSessions => &COMMAND_META[39],
-            UiCommand::OpenHelp => &COMMAND_META[40],
-            UiCommand::OpenCommandPalette => &COMMAND_META[41],
-            UiCommand::Quit => &COMMAND_META[42],
+            UiCommand::FocusAttentionInbox => &COMMAND_META[39],
+            UiCommand::AcknowledgeAttention => &COMMAND_META[40],
+            UiCommand::CleanupSessions => &COMMAND_META[41],
+            UiCommand::OpenHelp => &COMMAND_META[42],
+            UiCommand::OpenCommandPalette => &COMMAND_META[43],
+            UiCommand::Quit => &COMMAND_META[44],
         }
     }
 }

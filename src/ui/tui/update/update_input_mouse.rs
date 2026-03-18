@@ -181,14 +181,14 @@ impl GroveApp {
         self.apply_divider_resize_transition(&transition);
     }
 
-    pub(super) fn sidebar_workspace_index_at_point(&self, x: u16, y: u16) -> Option<usize> {
+    pub(super) fn sidebar_selection_at_point(&self, x: u16, y: u16) -> Option<SidebarSelectable> {
         let (sidebar_rect, _, _) = self.effective_workspace_rects();
         let sidebar_inner = Block::new().borders(Borders::ALL).inner(sidebar_rect);
         if y < sidebar_inner.y || y >= sidebar_inner.bottom() {
             return None;
         }
 
-        let row_map = self.sidebar_workspace_row_map();
+        let row_map = self.sidebar_selectable_row_map();
         if row_map.is_empty() {
             return None;
         }
@@ -209,21 +209,48 @@ impl GroveApp {
         row_map.get(row_index).copied().flatten()
     }
 
+    pub(super) fn select_sidebar_target(&mut self, target: SidebarSelectable) {
+        match target {
+            SidebarSelectable::Attention(item_index) => {
+                let Some(workspace_path) = self
+                    .attention_items
+                    .get(item_index)
+                    .map(|item| item.workspace_path.clone())
+                else {
+                    return;
+                };
+                self.selected_attention_item = Some(item_index);
+                if let Some(workspace_index) = self
+                    .state
+                    .workspaces
+                    .iter()
+                    .position(|workspace| workspace.path == workspace_path)
+                {
+                    let changed = self.state.select_index(workspace_index);
+                    if changed {
+                        self.handle_workspace_selection_changed();
+                    }
+                }
+            }
+            SidebarSelectable::Workspace(index) => {
+                self.selected_attention_item = None;
+                self.select_workspace_by_index(index);
+            }
+        }
+    }
+
     pub(super) fn select_workspace_by_mouse(&mut self, x: u16, y: u16) {
-        let Some(row) = self.sidebar_workspace_index_at_point(x, y) else {
+        let Some(target) = self.sidebar_selection_at_point(x, y) else {
             return;
         };
-
-        if row != self.state.selected_index {
-            self.state.select_index(row);
-            self.handle_workspace_selection_changed();
-        }
+        self.select_sidebar_target(target);
     }
 
     pub(super) fn select_workspace_by_index(&mut self, index: usize) {
         if index >= self.state.workspaces.len() {
             return;
         }
+        self.selected_attention_item = None;
         if index == self.state.selected_index {
             return;
         }

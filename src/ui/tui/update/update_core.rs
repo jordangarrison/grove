@@ -48,6 +48,7 @@ impl GroveApp {
     }
 
     pub(super) fn init_model(&mut self) -> Cmd<Msg> {
+        self.maybe_focus_attention_inbox_on_startup();
         self.poll_preview();
         let next_tick_cmd = self.schedule_next_tick();
         let init_cmd = Cmd::batch(vec![

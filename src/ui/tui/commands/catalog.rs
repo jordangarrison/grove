@@ -41,6 +41,8 @@ pub(super) enum UiCommand {
     OpenSettings,
     ToggleMouseCapture,
     ToggleUnsafe,
+    FocusAttentionInbox,
+    AcknowledgeAttention,
     CleanupSessions,
     OpenHelp,
     OpenCommandPalette,
@@ -184,7 +186,7 @@ fn control_character_for(character: char) -> Option<char> {
 }
 
 impl UiCommand {
-    pub(super) const ALL: [UiCommand; 43] = [
+    pub(super) const ALL: [UiCommand; 45] = [
         UiCommand::ToggleFocus,
         UiCommand::ToggleSidebar,
         UiCommand::OpenPreview,
@@ -224,6 +226,8 @@ impl UiCommand {
         UiCommand::OpenSettings,
         UiCommand::ToggleMouseCapture,
         UiCommand::ToggleUnsafe,
+        UiCommand::FocusAttentionInbox,
+        UiCommand::AcknowledgeAttention,
         UiCommand::CleanupSessions,
         UiCommand::OpenHelp,
         UiCommand::OpenCommandPalette,

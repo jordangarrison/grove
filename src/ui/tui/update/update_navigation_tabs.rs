@@ -410,6 +410,34 @@ impl GroveApp {
             .unwrap_or(PreviewTab::Home)
     }
 
+    pub(super) fn focus_selected_workspace_attention_tab(&mut self) {
+        let Some(tabs) = self.selected_workspace_tabs_state_mut() else {
+            return;
+        };
+        let target_tab_id = tabs
+            .active_tab()
+            .filter(|tab| Self::tab_is_running_agent(tab))
+            .map(|tab| tab.id)
+            .or_else(|| {
+                tabs.tabs
+                    .iter()
+                    .rev()
+                    .find(|tab| Self::tab_is_running_agent(tab))
+                    .map(|tab| tab.id)
+            })
+            .or_else(|| {
+                tabs.tabs
+                    .iter()
+                    .rev()
+                    .find(|tab| tab.kind == WorkspaceTabKind::Agent)
+                    .map(|tab| tab.id)
+            });
+        if let Some(tab_id) = target_tab_id {
+            tabs.active_tab_id = tab_id;
+        }
+        self.sync_preview_tab_from_active_workspace_tab();
+    }
+
     pub(super) fn sync_preview_tab_from_active_workspace_tab(&mut self) {
         self.preview_tab = self.selected_active_tab_kind();
     }

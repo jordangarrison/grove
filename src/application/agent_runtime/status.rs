@@ -5,8 +5,8 @@ use crate::domain::{AgentType, WorkspaceStatus};
 
 use super::agents;
 use super::{
-    DONE_PATTERNS, SESSION_ACTIVITY_THRESHOLD, STATUS_TAIL_LINES, SessionActivity,
-    WAITING_PATTERNS, WAITING_TAIL_LINES,
+    SESSION_ACTIVITY_THRESHOLD, STATUS_TAIL_LINES, SessionActivity, WAITING_PATTERNS,
+    WAITING_TAIL_LINES,
 };
 
 pub(crate) fn detect_status_with_session_override(
@@ -110,10 +110,7 @@ pub(crate) fn detect_status(
         return WorkspaceStatus::Done;
     }
 
-    if DONE_PATTERNS
-        .iter()
-        .any(|pattern| tail_lower.contains(pattern))
-    {
+    if lines[start..].iter().any(|line| is_done_line(line)) {
         return WorkspaceStatus::Done;
     }
 
@@ -268,6 +265,17 @@ fn is_error_line(line: &str) -> bool {
         || normalized.starts_with("exception:")
         || normalized.starts_with("traceback")
         || normalized.contains("exited with code 1")
+}
+
+fn is_done_line(line: &str) -> bool {
+    let normalized = normalize_status_line(line);
+    matches!(
+        normalized.as_str(),
+        "done" | "done." | "finished" | "finished."
+    ) || normalized.starts_with("task completed")
+        || normalized.starts_with("all done")
+        || normalized.starts_with("goodbye")
+        || normalized.starts_with("exited with code 0")
 }
 
 #[cfg(test)]
@@ -681,6 +689,30 @@ mod tests {
         assert_eq!(
             detect_status(&output, SessionActivity::Active, false, true, true),
             WorkspaceStatus::Done
+        );
+    }
+
+    #[test]
+    fn status_resolution_does_not_treat_inline_finished_text_as_done() {
+        assert_eq!(
+            detect_status(
+                "Based on the planning summary, the risky migration is not finished yet.\nContinuing implementation now.\n",
+                SessionActivity::Active,
+                false,
+                true,
+                true
+            ),
+            WorkspaceStatus::Active
+        );
+        assert_eq!(
+            detect_status(
+                "build finished successfully, now running the next step\n",
+                SessionActivity::Active,
+                false,
+                true,
+                true
+            ),
+            WorkspaceStatus::Active
         );
     }
 

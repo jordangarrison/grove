@@ -82,13 +82,6 @@ const RESTART_RESUME_RETRY_DELAY: Duration = Duration::from_millis(0);
 #[cfg(not(test))]
 const RESTART_RESUME_RETRY_DELAY: Duration = Duration::from_millis(120);
 const OPENCODE_UNSAFE_PERMISSION_JSON: &str = r#"{"*":"allow"}"#;
-const DONE_PATTERNS: [&str; 5] = [
-    "task completed",
-    "all done",
-    "finished",
-    "exited with code 0",
-    "goodbye",
-];
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SessionActivity {
     Idle,

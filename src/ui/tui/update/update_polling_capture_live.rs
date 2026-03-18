@@ -229,6 +229,12 @@ impl GroveApp {
                     status_detect_ms = Self::duration_millis(
                         Instant::now().saturating_duration_since(status_detect_started_at),
                     );
+                    self.record_workspace_poll_state(
+                        workspace_path.as_path(),
+                        resolved_status,
+                        cleaned_output.as_str(),
+                        changed_cleaned,
+                    );
                     let workspace = &mut self.state.workspaces[index];
                     workspace.status = resolved_status;
                     workspace.is_orphaned = false;

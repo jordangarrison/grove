@@ -78,22 +78,22 @@ impl GroveApp {
             HelpCatalogEntry::new(
                 HelpSection::Global,
                 "Core",
-                Self::join_help_labels(&global, &[0, 1, 11]),
+                Self::join_help_labels(&global, &[0, 1, 12]),
             ),
             HelpCatalogEntry::new(
                 HelpSection::Global,
                 "Focus",
-                Self::join_help_labels(&global, &[2, 6, 10]),
+                Self::join_help_labels(&global, &[2, 3, 10, 11]),
             ),
             HelpCatalogEntry::new(
                 HelpSection::Global,
                 "Layout",
-                Self::join_help_labels(&global, &[3, 4, 5]),
+                Self::join_help_labels(&global, &[5, 6, 7]),
             ),
             HelpCatalogEntry::new(
                 HelpSection::Global,
                 "Workspace nav",
-                Self::join_help_labels(&global, &[7, 8, 9]),
+                Self::join_help_labels(&global, &[4, 8, 9, 13]),
             ),
             HelpCatalogEntry::new(
                 HelpSection::Workspace,
@@ -118,6 +118,11 @@ impl GroveApp {
 
     fn synthetic_help_catalog_entries(&self) -> Vec<HelpCatalogEntry> {
         vec![
+            HelpCatalogEntry::new(
+                HelpSection::List,
+                "Attention row",
+                "i focus needs you inbox, a acknowledge attention item",
+            ),
             HelpCatalogEntry::new(
                 HelpSection::Interactive,
                 "Input",

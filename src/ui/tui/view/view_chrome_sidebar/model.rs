@@ -14,6 +14,12 @@ struct SidebarPrHit {
 #[derive(Debug, Clone)]
 enum SidebarLineKind {
     Project,
+    AttentionHeader,
+    AttentionItem {
+        item_index: usize,
+        border_style: Style,
+        row_style: Style,
+    },
     Workspace {
         workspace_index: usize,
         border_style: Style,
@@ -38,6 +44,31 @@ impl SidebarListLine {
         }
     }
 
+    fn attention_header(segments: Vec<SidebarSegment>) -> Self {
+        Self {
+            leading_segments: segments,
+            trailing_segments: Vec::new(),
+            kind: SidebarLineKind::AttentionHeader,
+        }
+    }
+
+    fn attention_item(
+        leading_segments: Vec<SidebarSegment>,
+        item_index: usize,
+        border_style: Style,
+        row_style: Style,
+    ) -> Self {
+        Self {
+            leading_segments,
+            trailing_segments: Vec::new(),
+            kind: SidebarLineKind::AttentionItem {
+                item_index,
+                border_style,
+                row_style,
+            },
+        }
+    }
+
     fn workspace(
         leading_segments: Vec<SidebarSegment>,
         trailing_segments: Vec<SidebarSegment>,
@@ -58,15 +89,17 @@ impl SidebarListLine {
         }
     }
 
-    fn workspace_index(&self) -> Option<usize> {
+    fn selectable(&self) -> Option<SidebarSelectable> {
         match self.kind {
-            SidebarLineKind::Project => None,
+            SidebarLineKind::Project | SidebarLineKind::AttentionHeader => None,
+            SidebarLineKind::AttentionItem { item_index, .. } => {
+                Some(SidebarSelectable::Attention(item_index))
+            }
             SidebarLineKind::Workspace {
                 workspace_index, ..
-            } => Some(workspace_index),
+            } => Some(SidebarSelectable::Workspace(workspace_index)),
         }
     }
-
 }
 
 impl RenderItem for SidebarListLine {
@@ -76,8 +109,44 @@ impl RenderItem for SidebarListLine {
         }
 
         match &self.kind {
-            SidebarLineKind::Project => {
+            SidebarLineKind::Project | SidebarLineKind::AttentionHeader => {
                 render_sidebar_segments(self.leading_segments.as_slice(), area, frame);
+            }
+            SidebarLineKind::AttentionItem {
+                border_style,
+                row_style,
+                ..
+            } => {
+                let fill = " ".repeat(usize::from(area.width));
+                Paragraph::new(fill).style(*row_style).render(area, frame);
+                let left_border_area = Rect::new(area.x, area.y, 1, 1);
+                render_sidebar_segments(
+                    &[SidebarSegment {
+                        text: "│".to_string(),
+                        style: *border_style,
+                    }],
+                    left_border_area,
+                    frame,
+                );
+                let right_border_x = area.right().saturating_sub(1);
+                let right_border_area = Rect::new(right_border_x, area.y, 1, 1);
+                render_sidebar_segments(
+                    &[SidebarSegment {
+                        text: "│".to_string(),
+                        style: *border_style,
+                    }],
+                    right_border_area,
+                    frame,
+                );
+                let content_x = area.x.saturating_add(2);
+                let content_width = area.width.saturating_sub(4);
+                if content_width > 0 {
+                    render_sidebar_segments(
+                        self.leading_segments.as_slice(),
+                        Rect::new(content_x, area.y, content_width, 1),
+                        frame,
+                    );
+                }
             }
             SidebarLineKind::Workspace {
                 workspace_index,

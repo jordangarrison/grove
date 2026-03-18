@@ -19,6 +19,83 @@ impl GroveApp {
         }
     }
 
+    fn selected_sidebar_target(&self) -> SidebarSelectable {
+        self.selected_attention_item
+            .map(SidebarSelectable::Attention)
+            .unwrap_or(SidebarSelectable::Workspace(self.state.selected_index))
+    }
+
+    fn attention_row_label(&self, item: &AttentionItem) -> String {
+        let workspace_label = self
+            .state
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.path == item.workspace_path)
+            .map(Self::workspace_display_name)
+            .unwrap_or_else(|| item.task_slug.clone());
+        let age_secs_u64 = item.first_seen_at_ms / 1000;
+        let age_secs = i64::try_from(age_secs_u64).unwrap_or(i64::MAX);
+        let age_label = self.relative_age_label(Some(age_secs));
+        format!("! {} · {} · {}", item.summary, workspace_label, age_label)
+    }
+
+    fn push_attention_sidebar_lines(
+        &self,
+        lines: &mut Vec<SidebarListLine>,
+        selected_line: &mut Option<usize>,
+        theme: UiTheme,
+    ) {
+        if self.attention_items.is_empty() {
+            return;
+        }
+
+        lines.push(SidebarListLine::attention_header(vec![SidebarSegment {
+            text: format!("Needs You [{}]", self.attention_items.len()),
+            style: Style::new().fg(theme.yellow).bold(),
+        }]));
+        for (item_index, item) in self.attention_items.iter().enumerate() {
+            let is_selected = self.selected_sidebar_target() == SidebarSelectable::Attention(item_index);
+            if is_selected && selected_line.is_none() {
+                *selected_line = Some(lines.len());
+            }
+            let row_background = if is_selected {
+                if self.state.focus == PaneFocus::WorkspaceList && !self.modal_open() {
+                    Some(theme.surface1)
+                } else {
+                    Some(theme.surface0)
+                }
+            } else {
+                None
+            };
+            let mut border_style = if is_selected {
+                Style::new().fg(theme.yellow).bold()
+            } else {
+                Style::new().fg(theme.surface1)
+            };
+            if let Some(background) = row_background {
+                border_style = border_style.bg(background);
+            }
+            let row_style = row_background.map_or_else(Style::new, |background| Style::new().bg(background));
+            let mut label_style = Style::new().fg(theme.text);
+            if let Some(background) = row_background {
+                label_style = label_style.bg(background);
+            }
+            if is_selected {
+                label_style = label_style.bold();
+            }
+            lines.push(SidebarListLine::attention_item(
+                vec![SidebarSegment {
+                    text: format!("  {}", self.attention_row_label(item)),
+                    style: label_style,
+                }],
+                item_index,
+                border_style,
+                row_style,
+            ));
+        }
+        lines.push(SidebarListLine::project(Vec::new()));
+    }
+
     fn push_workspace_sidebar_lines(
         &self,
         lines: &mut Vec<SidebarListLine>,
@@ -30,7 +107,7 @@ impl GroveApp {
             return;
         };
 
-        let is_selected = workspace_index == self.state.selected_index;
+        let is_selected = self.selected_sidebar_target() == SidebarSelectable::Workspace(workspace_index);
         if is_selected && selected_line.is_none() {
             *selected_line = Some(lines.len());
         }
@@ -197,6 +274,7 @@ impl GroveApp {
         let mut lines = Vec::new();
         let mut selected_line = None;
         let mut workspace_index = 0usize;
+        self.push_attention_sidebar_lines(&mut lines, &mut selected_line, theme);
 
         for (task_index, task) in self.state.tasks.iter().enumerate() {
             if task_index > 0 && !lines.is_empty() {
@@ -239,11 +317,8 @@ impl GroveApp {
         (lines, selected_line)
     }
 
-    pub(super) fn sidebar_workspace_row_map(&self) -> Vec<Option<usize>> {
+    pub(super) fn sidebar_selectable_row_map(&self) -> Vec<Option<SidebarSelectable>> {
         let (lines, _) = self.build_sidebar_lines(self.active_ui_theme());
-        lines
-            .iter()
-            .map(SidebarListLine::workspace_index)
-            .collect::<Vec<Option<usize>>>()
+        lines.iter().map(SidebarListLine::selectable).collect()
     }
 }

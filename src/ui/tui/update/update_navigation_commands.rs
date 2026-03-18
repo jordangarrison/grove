@@ -3,6 +3,55 @@ use super::update_prelude::*;
 impl GroveApp {
     const SIDEBAR_KEYBOARD_RESIZE_STEP_PCT: i16 = 2;
 
+    pub(super) fn maybe_focus_attention_inbox_on_startup(&mut self) {
+        if !self.startup_attention_focus_pending || self.attention_items.is_empty() {
+            return;
+        }
+        self.focus_attention_inbox();
+        self.startup_attention_focus_pending = false;
+    }
+
+    fn focus_attention_inbox(&mut self) {
+        let Some(workspace_path) = self
+            .attention_items
+            .first()
+            .map(|item| item.workspace_path.clone())
+        else {
+            return;
+        };
+
+        if self.session.interactive.is_some() {
+            self.exit_interactive_to_list();
+        } else {
+            reduce(&mut self.state, Action::EnterListMode);
+        }
+        if let Some(workspace_index) = self
+            .state
+            .workspaces
+            .iter()
+            .position(|workspace| workspace.path == workspace_path)
+        {
+            let changed = self.state.select_index(workspace_index);
+            if changed {
+                self.handle_workspace_selection_changed();
+            }
+        }
+        self.selected_attention_item = Some(0);
+    }
+
+    pub(super) fn acknowledge_selected_attention_item(&mut self) {
+        let Some(item) = self.selected_attention_item() else {
+            return;
+        };
+        let workspace_path = item.workspace_path.clone();
+        self.clear_attention_for_workspace_path(workspace_path.as_path());
+        self.selected_attention_item = None;
+    }
+
+    pub(super) fn clear_startup_attention_focus_pending(&mut self) {
+        self.startup_attention_focus_pending = false;
+    }
+
     fn preview_page_scroll_delta(&self) -> i32 {
         let viewport_height = self
             .preview_output_dimensions()
@@ -204,6 +253,12 @@ impl GroveApp {
             }
             UiCommand::ToggleUnsafe => {
                 self.launch_skip_permissions = !self.launch_skip_permissions;
+            }
+            UiCommand::FocusAttentionInbox => {
+                self.focus_attention_inbox();
+            }
+            UiCommand::AcknowledgeAttention => {
+                self.acknowledge_selected_attention_item();
             }
             UiCommand::CleanupSessions => {
                 self.open_session_cleanup_dialog();
