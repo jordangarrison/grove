@@ -2418,12 +2418,21 @@ mod tests {
         let x_end = layout.sidebar.right().saturating_sub(1);
 
         with_rendered_frame(&app, 80, 16, |frame| {
+            let Some(attention_header_row) =
+                find_row_containing(frame, "Needs You [0]", x_start, x_end)
+            else {
+                panic!("empty attention header should be visible");
+            };
             let Some(project_row) = find_row_containing(frame, "▾ grove", x_start, x_end) else {
                 panic!("first project header should be visible");
             };
             assert_eq!(
-                project_row, sidebar_inner.y,
-                "first project header should remain at top of sidebar"
+                attention_header_row, sidebar_inner.y,
+                "empty attention header should remain at top of sidebar"
+            );
+            assert!(
+                project_row > attention_header_row,
+                "first project header should remain visible below empty attention section"
             );
         });
     }
@@ -6742,8 +6751,13 @@ mod tests {
         let app = fixture_app();
         let layout = app.panes.test_rects(80, 24);
         let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
 
         with_rendered_frame(&app, 80, 24, |frame| {
+            let Some(first_workspace_row) = find_workspace_row(frame, 0, x_start, x_end) else {
+                panic!("main workspace row should be rendered");
+            };
             assert_eq!(
                 frame
                     .hit_test(layout.header.x, layout.header.y)
@@ -6770,13 +6784,13 @@ mod tests {
             );
             assert_eq!(
                 frame
-                    .hit_test(sidebar_inner.x, sidebar_inner.y.saturating_add(1))
+                    .hit_test(sidebar_inner.x, first_workspace_row)
                     .map(|hit| hit.0),
                 Some(HitId::new(HIT_ID_WORKSPACE_ROW))
             );
             assert_eq!(
                 frame
-                    .hit_test(sidebar_inner.x, sidebar_inner.y.saturating_add(1))
+                    .hit_test(sidebar_inner.x, first_workspace_row)
                     .map(|hit| hit.2),
                 Some(0)
             );
@@ -9703,7 +9717,8 @@ mod tests {
 
                 let layout = app.panes.test_rects(100, 40);
                 let sidebar_inner = Block::new().borders(Borders::ALL).inner(layout.sidebar);
-                let first_row_y = sidebar_inner.y.saturating_add(1);
+                let x_start = layout.sidebar.x.saturating_add(1);
+                let x_end = layout.sidebar.right().saturating_sub(1);
 
                 ftui::Model::update(
                     &mut app,
@@ -9712,12 +9727,19 @@ mod tests {
                         height: 40,
                     },
                 );
+                let mut target_y = sidebar_inner.y;
+                with_rendered_frame(&app, 100, 40, |frame| {
+                    let Some(row_y) = find_workspace_row(frame, 0, x_start, x_end) else {
+                        panic!("main workspace row should be rendered");
+                    };
+                    target_y = row_y;
+                });
                 ftui::Model::update(
                     &mut app,
                     Msg::Mouse(MouseEvent::new(
                         MouseEventKind::Down(MouseButton::Left),
                         sidebar_inner.x.saturating_add(1),
-                        first_row_y,
+                        target_y,
                     )),
                 );
 
