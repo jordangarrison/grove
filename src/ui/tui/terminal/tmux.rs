@@ -94,7 +94,7 @@ impl CommandTmuxInput {
             .args([
                 "list-sessions",
                 "-F",
-                "#{session_name}\t#{@grove_workspace_path}\t#{@grove_tab_kind}\t#{@grove_tab_title}\t#{@grove_tab_agent}\t#{@grove_tab_id}",
+                "#{session_name}\t#{@grove_workspace_path}\t#{@grove_tab_kind}\t#{@grove_tab_title}\t#{@grove_tab_agent}\t#{@grove_tab_id}\t#{@grove_tab_order}",
             ])
             .output()?;
 

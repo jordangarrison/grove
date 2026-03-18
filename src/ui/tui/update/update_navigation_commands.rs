@@ -92,6 +92,13 @@ impl GroveApp {
         self.poll_preview();
     }
 
+    fn reorder_preview_tab(&mut self, direction: i8) {
+        if self.move_selected_workspace_tab_by(direction) {
+            self.clear_preview_selection();
+            self.poll_preview();
+        }
+    }
+
     fn toggle_mouse_capture(&mut self) {
         self.mouse_capture_enabled = !self.mouse_capture_enabled;
         let _ = self.divider_resize.force_cancel();
@@ -181,6 +188,12 @@ impl GroveApp {
                 if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
                     self.cycle_preview_tab(1);
                 }
+            }
+            UiCommand::MoveTabLeft => {
+                self.reorder_preview_tab(-1);
+            }
+            UiCommand::MoveTabRight => {
+                self.reorder_preview_tab(1);
             }
             UiCommand::ResizeSidebarNarrower => {
                 self.resize_sidebar_by_keyboard(-Self::SIDEBAR_KEYBOARD_RESIZE_STEP_PCT);

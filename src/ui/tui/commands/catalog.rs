@@ -17,6 +17,8 @@ pub(super) enum UiCommand {
     ScrollBottom,
     PreviousTab,
     NextTab,
+    MoveTabLeft,
+    MoveTabRight,
     ResizeSidebarNarrower,
     ResizeSidebarWider,
     NewWorkspace,
@@ -186,7 +188,7 @@ fn control_character_for(character: char) -> Option<char> {
 }
 
 impl UiCommand {
-    pub(super) const ALL: [UiCommand; 45] = [
+    pub(super) const ALL: [UiCommand; 47] = [
         UiCommand::ToggleFocus,
         UiCommand::ToggleSidebar,
         UiCommand::OpenPreview,
@@ -202,6 +204,8 @@ impl UiCommand {
         UiCommand::ScrollBottom,
         UiCommand::PreviousTab,
         UiCommand::NextTab,
+        UiCommand::MoveTabLeft,
+        UiCommand::MoveTabRight,
         UiCommand::ResizeSidebarNarrower,
         UiCommand::ResizeSidebarWider,
         UiCommand::NewWorkspace,

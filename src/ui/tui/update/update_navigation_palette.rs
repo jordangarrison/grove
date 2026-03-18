@@ -124,6 +124,13 @@ impl GroveApp {
             UiCommand::PreviousTab | UiCommand::NextTab => {
                 self.state.selected_workspace().is_some()
             }
+            UiCommand::MoveTabLeft | UiCommand::MoveTabRight => {
+                self.state.focus == PaneFocus::Preview
+                    && self.state.mode == UiMode::Preview
+                    && self
+                        .selected_active_tab()
+                        .is_some_and(|tab| tab.kind != WorkspaceTabKind::Home)
+            }
             UiCommand::AddWorktree => {
                 self.state.focus == PaneFocus::WorkspaceList
                     && self

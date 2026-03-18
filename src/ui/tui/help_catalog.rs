@@ -133,7 +133,7 @@ impl GroveApp {
             HelpCatalogEntry::new(
                 HelpSection::Interactive,
                 "Reserved",
-                "Ctrl+K palette, Ctrl+\\ exit, Alt+J/K browse, Alt+[/] tabs, Alt+Left/Right or Alt+H/L resize (Alt+B/F fallback), Alt+C copy, Alt+V paste",
+                "Ctrl+K palette, Ctrl+\\ exit, Alt+J/K browse, Alt+[/] tabs, {/} reorder tabs, Alt+Left/Right or Alt+H/L resize (Alt+B/F fallback), Alt+C copy, Alt+V paste",
             ),
             HelpCatalogEntry::new(
                 HelpSection::Modals,

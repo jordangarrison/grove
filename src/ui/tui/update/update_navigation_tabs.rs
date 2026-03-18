@@ -5,6 +5,7 @@ const TMUX_TAB_METADATA_KIND_KEY: &str = "@grove_tab_kind";
 const TMUX_TAB_METADATA_TITLE_KEY: &str = "@grove_tab_title";
 const TMUX_TAB_METADATA_AGENT_KEY: &str = "@grove_tab_agent";
 const TMUX_TAB_METADATA_ID_KEY: &str = "@grove_tab_id";
+const TMUX_TAB_METADATA_ORDER_KEY: &str = "@grove_tab_order";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RestoredTmuxTabMetadata {
@@ -14,6 +15,7 @@ struct RestoredTmuxTabMetadata {
     title: String,
     agent_type: Option<AgentType>,
     tab_id: u64,
+    display_order: u64,
 }
 
 impl GroveApp {
@@ -192,6 +194,7 @@ impl GroveApp {
 
             let restored_tab = WorkspaceTab {
                 id: metadata.tab_id,
+                display_order: metadata.display_order,
                 kind: metadata.kind,
                 title: metadata.title,
                 session_name: Some(metadata.session_name.clone()),
@@ -471,6 +474,40 @@ impl GroveApp {
         self.sync_preview_tab_from_active_workspace_tab();
     }
 
+    fn write_workspace_tab_tmux_metadata(&mut self, workspace_path: &Path) {
+        let tabs = self
+            .workspace_tabs
+            .get(workspace_path)
+            .map(|state| {
+                state
+                    .tabs
+                    .iter()
+                    .filter(|tab| tab.kind != WorkspaceTabKind::Home)
+                    .cloned()
+                    .collect::<Vec<WorkspaceTab>>()
+            })
+            .unwrap_or_default();
+        for tab in tabs {
+            self.write_tab_tmux_metadata(workspace_path, &tab);
+        }
+    }
+
+    pub(super) fn move_selected_workspace_tab_by(&mut self, direction: i8) -> bool {
+        let Some(workspace_path) = self.selected_workspace_path() else {
+            return false;
+        };
+        let moved = self
+            .workspace_tabs
+            .get_mut(workspace_path.as_path())
+            .is_some_and(|tabs| tabs.move_active_tab_by(direction));
+        if !moved {
+            return false;
+        }
+        self.sync_preview_tab_from_active_workspace_tab();
+        self.write_workspace_tab_tmux_metadata(workspace_path.as_path());
+        true
+    }
+
     pub(super) fn select_tab_by_id_for_selected_workspace(&mut self, tab_id: u64) -> bool {
         let Some(tabs) = self.selected_workspace_tabs_state_mut() else {
             return false;
@@ -532,6 +569,7 @@ impl GroveApp {
                 };
                 tabs.insert_tab_adjacent(WorkspaceTab {
                     id: 0,
+                    display_order: 0,
                     kind,
                     title,
                     session_name,
@@ -565,8 +603,8 @@ impl GroveApp {
 
     fn parse_tmux_tab_metadata_row(row: &str) -> Result<RestoredTmuxTabMetadata, String> {
         let segments = row.split('\t').collect::<Vec<&str>>();
-        if segments.len() != 6 {
-            return Err("expected six tab metadata fields".to_string());
+        if segments.len() != 6 && segments.len() != 7 {
+            return Err("expected six or seven tab metadata fields".to_string());
         }
 
         let session_name =
@@ -597,6 +635,16 @@ impl GroveApp {
         if tab_id == 0 {
             return Err("invalid tab id".to_string());
         }
+        let display_order = if segments.len() == 7 {
+            match trimmed_nonempty(segments[6]) {
+                Some(order) => order
+                    .parse::<u64>()
+                    .map_err(|_| "invalid tab order".to_string())?,
+                None => tab_id,
+            }
+        } else {
+            tab_id
+        };
 
         Ok(RestoredTmuxTabMetadata {
             session_name,
@@ -605,6 +653,7 @@ impl GroveApp {
             title,
             agent_type,
             tab_id,
+            display_order,
         })
     }
 
@@ -614,7 +663,7 @@ impl GroveApp {
     /// sessions that lost their metadata variables.
     fn has_no_grove_metadata(row: &str) -> bool {
         let segments: Vec<&str> = row.split('\t').collect();
-        segments.len() == 6
+        (segments.len() == 6 || segments.len() == 7)
             && trimmed_nonempty(segments[0]).is_some()
             && segments[1..].iter().all(|s| s.trim().is_empty())
     }
@@ -624,7 +673,7 @@ impl GroveApp {
         row: &str,
     ) -> Option<RestoredTmuxTabMetadata> {
         let segments = row.split('\t').collect::<Vec<&str>>();
-        if segments.len() != 6 {
+        if segments.len() != 6 && segments.len() != 7 {
             return None;
         }
 
@@ -661,6 +710,7 @@ impl GroveApp {
             title: "Git".to_string(),
             agent_type: None,
             tab_id,
+            display_order: tab_id,
         })
     }
 
@@ -676,6 +726,7 @@ impl GroveApp {
             .map(|agent| agent.marker().to_string())
             .unwrap_or_default();
         let tab_id_value = tab.id.to_string();
+        let tab_order_value = tab.display_order.to_string();
         let commands = vec![
             vec![
                 "tmux".to_string(),
@@ -716,6 +767,14 @@ impl GroveApp {
                 session_name.to_string(),
                 TMUX_TAB_METADATA_ID_KEY.to_string(),
                 tab_id_value,
+            ],
+            vec![
+                "tmux".to_string(),
+                "set-option".to_string(),
+                "-t".to_string(),
+                session_name.to_string(),
+                TMUX_TAB_METADATA_ORDER_KEY.to_string(),
+                tab_order_value,
             ],
         ];
 
@@ -804,6 +863,7 @@ impl GroveApp {
         };
         let tab_id = tabs.insert_tab_adjacent(WorkspaceTab {
             id: 0,
+            display_order: 0,
             kind: WorkspaceTabKind::Shell,
             title: format!("Shell {ordinal}"),
             session_name: Some(session_name.clone()),
@@ -910,6 +970,7 @@ impl GroveApp {
             .unwrap_or_else(|| format!("{} {ordinal}", agent.label()));
         let tab_id = tabs.insert_tab_adjacent(WorkspaceTab {
             id: 0,
+            display_order: 0,
             kind: WorkspaceTabKind::Agent,
             title: tab_title,
             session_name: Some(session_name.clone()),

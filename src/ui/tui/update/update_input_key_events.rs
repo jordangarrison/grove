@@ -242,6 +242,12 @@ impl GroveApp {
             | UiCommand::PageDown
             | UiCommand::ScrollBottom => in_preview_scroll,
             UiCommand::PreviousTab | UiCommand::NextTab => in_preview_focus,
+            UiCommand::MoveTabLeft | UiCommand::MoveTabRight => {
+                in_preview_focus
+                    && self
+                        .selected_active_tab()
+                        .is_some_and(|tab| tab.kind != WorkspaceTabKind::Home)
+            }
             UiCommand::AddWorktree | UiCommand::DeleteWorkspace | UiCommand::DeleteWorktree => {
                 self.state.focus == PaneFocus::WorkspaceList
             }

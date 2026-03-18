@@ -815,6 +815,7 @@ mod tests {
             } else {
                 tabs.insert_tab_adjacent(WorkspaceTab {
                     id: 0,
+                    display_order: 0,
                     kind: WorkspaceTabKind::Agent,
                     title: format!("{} 1", workspace.agent.label()),
                     session_name: Some(session_name.clone()),
@@ -869,6 +870,7 @@ mod tests {
         };
         tabs.insert_tab_adjacent(WorkspaceTab {
             id: 0,
+            display_order: 0,
             kind: WorkspaceTabKind::Agent,
             title: title.to_string(),
             session_name: Some(session_name.to_string()),
@@ -892,6 +894,7 @@ mod tests {
         };
         tabs.insert_tab_adjacent(WorkspaceTab {
             id: 0,
+            display_order: 0,
             kind: WorkspaceTabKind::Shell,
             title: title.to_string(),
             session_name: Some(session_name.to_string()),
@@ -930,6 +933,7 @@ mod tests {
                 crate::application::agent_runtime::session_name_for_workspace_ref(&workspace);
             let tab_id = tabs.insert_tab_adjacent(WorkspaceTab {
                 id: 0,
+                display_order: 0,
                 kind: WorkspaceTabKind::Agent,
                 title: format!("{} 1", workspace.agent.label()),
                 session_name: Some(session_name.clone()),
@@ -1874,6 +1878,50 @@ mod tests {
     }
 
     #[test]
+    fn startup_restores_workspace_tabs_from_tmux_metadata_when_order_is_blank() {
+        let rows = format!(
+            "{}-agent-1\t{}\tagent\tCodex 1\tcodex\t9\t\n{}-shell-1\t{}\tshell\tShell 1\t\t10\t\n{}-git\t{}\tgit\tGit\t\t11\t\n",
+            feature_workspace_session(),
+            feature_workspace_path().display(),
+            feature_workspace_session(),
+            feature_workspace_path().display(),
+            feature_workspace_session(),
+            feature_workspace_path().display(),
+        );
+        let app = GroveApp::from_task_state(
+            "grove".to_string(),
+            crate::ui::state::AppState::new(fixture_tasks(WorkspaceStatus::Idle)),
+            DiscoveryState::Ready,
+            fixture_projects(),
+            AppDependencies {
+                tmux_input: Box::new(RestoreMetadataTmuxInput { rows }),
+                clipboard: test_clipboard(),
+                config_path: unique_config_path("restore-tabs-blank-order"),
+                event_log: Box::new(NullEventLogger),
+                debug_record_start_ts: None,
+            },
+        );
+
+        let workspace_path = feature_workspace_path();
+        let tabs = app
+            .workspace_tabs
+            .get(workspace_path.as_path())
+            .expect("feature workspace tabs should exist");
+        assert_eq!(
+            tabs.tabs
+                .iter()
+                .map(|tab| tab.kind)
+                .collect::<Vec<WorkspaceTabKind>>(),
+            vec![
+                WorkspaceTabKind::Home,
+                WorkspaceTabKind::Agent,
+                WorkspaceTabKind::Shell,
+                WorkspaceTabKind::Git,
+            ],
+        );
+    }
+
+    #[test]
     fn startup_ignores_malformed_tmux_tab_metadata_rows() {
         let rows = format!(
             "invalid-row\n{}-home\t{}\thome\tHome\t\t7\n{}-agent-1\t/repos/unknown\tagent\tCodex 1\tcodex\t8\n{}-agent-1\t{}\tagent\tCodex 1\tcodex\t9\n",
@@ -2021,6 +2069,49 @@ mod tests {
     }
 
     #[test]
+    fn restore_preserves_tmux_tab_order() {
+        let rows = format!(
+            "{}-shell-1\t{}\tshell\tShell 1\t\t9\t3\n{}-git\t{}\tgit\tGit\t\t7\t1\n{}-agent-1\t{}\tagent\tClaude 1\tclaude\t8\t2\n",
+            feature_workspace_session(),
+            feature_workspace_path().display(),
+            feature_workspace_session(),
+            feature_workspace_path().display(),
+            feature_workspace_session(),
+            feature_workspace_path().display(),
+        );
+        let mut app = GroveApp::from_task_state(
+            "grove".to_string(),
+            crate::ui::state::AppState::new(fixture_tasks(WorkspaceStatus::Idle)),
+            DiscoveryState::Ready,
+            fixture_projects(),
+            AppDependencies {
+                tmux_input: Box::new(RestoreMetadataTmuxInput { rows }),
+                clipboard: test_clipboard(),
+                config_path: unique_config_path("restore-tab-order"),
+                event_log: Box::new(NullEventLogger),
+                debug_record_start_ts: None,
+            },
+        );
+
+        app.rebuild_workspace_tabs_from_tmux_metadata();
+
+        let kinds = app
+            .workspace_tabs
+            .get(feature_workspace_path().as_path())
+            .map(|tabs| tabs.tabs.iter().map(|tab| tab.kind).collect::<Vec<_>>())
+            .expect("workspace tabs should exist");
+        assert_eq!(
+            kinds,
+            vec![
+                WorkspaceTabKind::Home,
+                WorkspaceTabKind::Git,
+                WorkspaceTabKind::Agent,
+                WorkspaceTabKind::Shell,
+            ]
+        );
+    }
+
+    #[test]
     fn restore_shows_no_warning_toast_when_all_sessions_restored() {
         let rows = format!(
             "{}-agent-1\t{}\tagent\tCodex 1\tcodex\t9\n",
@@ -2150,6 +2241,7 @@ mod tests {
             .map(|tabs| {
                 let _ = tabs.insert_tab_adjacent(WorkspaceTab {
                     id: 0,
+                    display_order: 0,
                     kind: WorkspaceTabKind::Agent,
                     title: "Codex 3".to_string(),
                     session_name: Some(numbered_session.clone()),
@@ -5518,6 +5610,30 @@ mod tests {
     }
 
     #[test]
+    fn command_palette_exposes_move_tab_actions_when_preview_tab_selected() {
+        let mut app = fixture_app();
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.open_new_shell_tab();
+
+        let list_ids: Vec<String> = app
+            .build_command_palette_actions()
+            .into_iter()
+            .map(|action| action.id)
+            .collect();
+        let move_left_id = UiCommand::MoveTabLeft
+            .palette_spec()
+            .map(|spec| spec.id)
+            .expect("move tab left command should be palette discoverable");
+        let move_right_id = UiCommand::MoveTabRight
+            .palette_spec()
+            .map(|spec| spec.id)
+            .expect("move tab right command should be palette discoverable");
+        assert!(list_ids.iter().any(|id| id == move_left_id));
+        assert!(list_ids.iter().any(|id| id == move_right_id));
+    }
+
+    #[test]
     fn command_palette_lists_start_parent_agent_on_task_home() {
         let mut app = fixture_task_app();
         focus_home_preview_tab(&mut app);
@@ -5751,6 +5867,14 @@ mod tests {
             "missing inbox focus entry: {rendered}"
         );
         assert!(
+            rendered.contains("{ move tab left"),
+            "missing move tab left entry: {rendered}"
+        );
+        assert!(
+            rendered.contains("} move tab right"),
+            "missing move tab right entry: {rendered}"
+        );
+        assert!(
             rendered.contains("ctrl+x/del remove"),
             "missing project modal remove entry: {rendered}"
         );
@@ -5763,7 +5887,7 @@ mod tests {
                 .iter()
                 .filter(|command| command.meta().palette.is_some())
                 .count(),
-            42
+            44
         );
         assert_eq!(UiCommand::help_hints_for(HelpHintContext::Global).len(), 14);
         assert_eq!(
@@ -5773,15 +5897,15 @@ mod tests {
         assert_eq!(UiCommand::help_hints_for(HelpHintContext::List).len(), 2);
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::PreviewAgent).len(),
-            11
+            13
         );
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::PreviewShell).len(),
-            11
+            13
         );
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::PreviewGit).len(),
-            8
+            10
         );
     }
 
@@ -11618,6 +11742,141 @@ mod tests {
             }
 
             #[test]
+            fn preview_tab_reorder_left_moves_active_tab_and_rewrites_tmux_metadata() {
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+                select_workspace(&mut app, 1);
+                focus_agent_preview_tab(&mut app);
+                app.open_new_shell_tab();
+                app.open_or_focus_git_tab();
+                let active_tab_title = app
+                    .selected_active_tab()
+                    .map(|tab| tab.title.clone())
+                    .expect("active tab should exist");
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('{'))
+                            .with_modifiers(Modifiers::SHIFT)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+
+                let kinds = app
+                    .selected_workspace_tabs_state()
+                    .map(|tabs| tabs.tabs.iter().map(|tab| tab.kind).collect::<Vec<_>>())
+                    .expect("workspace tabs should exist");
+                assert_eq!(
+                    kinds,
+                    vec![
+                        WorkspaceTabKind::Home,
+                        WorkspaceTabKind::Agent,
+                        WorkspaceTabKind::Git,
+                        WorkspaceTabKind::Shell,
+                    ]
+                );
+                assert_eq!(
+                    app.selected_active_tab().map(|tab| tab.title.as_str()),
+                    Some(active_tab_title.as_str())
+                );
+                assert!(
+                    commands.borrow().iter().any(|command| {
+                        command
+                            == &vec![
+                                "tmux".to_string(),
+                                "set-option".to_string(),
+                                "-t".to_string(),
+                                format!("{}-git", feature_workspace_session()),
+                                "@grove_tab_order".to_string(),
+                                "2".to_string(),
+                            ]
+                    }),
+                    "expected git tab order metadata write"
+                );
+            }
+
+            #[test]
+            fn preview_tab_reorder_right_moves_active_tab() {
+                let mut app = fixture_app();
+                select_workspace(&mut app, 1);
+                focus_agent_preview_tab(&mut app);
+                app.open_new_shell_tab();
+                app.open_or_focus_git_tab();
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('{'))
+                            .with_modifiers(Modifiers::SHIFT)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('}'))
+                            .with_modifiers(Modifiers::SHIFT)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+
+                let kinds = app
+                    .selected_workspace_tabs_state()
+                    .map(|tabs| tabs.tabs.iter().map(|tab| tab.kind).collect::<Vec<_>>())
+                    .expect("workspace tabs should exist");
+                assert_eq!(
+                    kinds,
+                    vec![
+                        WorkspaceTabKind::Home,
+                        WorkspaceTabKind::Agent,
+                        WorkspaceTabKind::Shell,
+                        WorkspaceTabKind::Git,
+                    ]
+                );
+                assert_eq!(
+                    app.selected_active_tab().map(|tab| tab.kind),
+                    Some(WorkspaceTabKind::Git)
+                );
+            }
+
+            #[test]
+            fn preview_tab_reorder_is_disabled_outside_preview_focus() {
+                let mut app = fixture_app();
+                select_workspace(&mut app, 1);
+                focus_agent_preview_tab(&mut app);
+                app.open_new_shell_tab();
+                app.open_or_focus_git_tab();
+                app.state.mode = UiMode::List;
+                app.state.focus = PaneFocus::WorkspaceList;
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('{'))
+                            .with_modifiers(Modifiers::SHIFT)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+
+                let kinds = app
+                    .selected_workspace_tabs_state()
+                    .map(|tabs| tabs.tabs.iter().map(|tab| tab.kind).collect::<Vec<_>>())
+                    .expect("workspace tabs should exist");
+                assert_eq!(
+                    kinds,
+                    vec![
+                        WorkspaceTabKind::Home,
+                        WorkspaceTabKind::Agent,
+                        WorkspaceTabKind::Shell,
+                        WorkspaceTabKind::Git,
+                    ]
+                );
+                assert_eq!(app.state.mode, UiMode::List);
+                assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+            }
+
+            #[test]
             fn alt_arrows_hl_bf_and_alt_with_extra_modifier_resize_sidebar_globally() {
                 let mut app = fixture_app();
                 app.sidebar_width_pct = 33;
@@ -12902,6 +13161,7 @@ mod tests {
                     .map(|tabs| {
                         tabs.insert_tab_adjacent(WorkspaceTab {
                             id: 0,
+                            display_order: 0,
                             kind: WorkspaceTabKind::Agent,
                             title: "Codex 2".to_string(),
                             session_name: Some(session_name.clone()),
@@ -12956,6 +13216,7 @@ mod tests {
                     .map(|tabs| {
                         let stale_tab_id = tabs.insert_tab_adjacent(WorkspaceTab {
                             id: 0,
+                            display_order: 0,
                             kind: WorkspaceTabKind::Agent,
                             title: "Codex 2".to_string(),
                             session_name: Some(stale_session.clone()),
@@ -12964,6 +13225,7 @@ mod tests {
                         });
                         let active_tab_id = tabs.insert_tab_adjacent(WorkspaceTab {
                             id: 0,
+                            display_order: 0,
                             kind: WorkspaceTabKind::Agent,
                             title: "Codex 3".to_string(),
                             session_name: Some(active_session.clone()),

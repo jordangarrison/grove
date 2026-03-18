@@ -567,6 +567,7 @@ pub(super) enum WorkspaceTabRuntimeState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct WorkspaceTab {
     pub(super) id: u64,
+    pub(super) display_order: u64,
     pub(super) kind: WorkspaceTabKind,
     pub(super) title: String,
     pub(super) session_name: Option<String>,
@@ -578,6 +579,7 @@ impl WorkspaceTab {
     pub(super) fn home(id: u64) -> Self {
         Self {
             id,
+            display_order: 0,
             kind: WorkspaceTabKind::Home,
             title: WorkspaceTabKind::Home.label().to_string(),
             session_name: None,
@@ -601,6 +603,25 @@ impl Default for WorkspaceTabsState {
 }
 
 impl WorkspaceTabsState {
+    fn normalize_display_order(&mut self) {
+        if let Some(home_index) = self
+            .tabs
+            .iter()
+            .position(|tab| tab.kind == WorkspaceTabKind::Home)
+            && home_index != 0
+        {
+            let home = self.tabs.remove(home_index);
+            self.tabs.insert(0, home);
+        }
+
+        for (index, tab) in self.tabs.iter_mut().enumerate() {
+            let Some(display_order) = u64::try_from(index).ok() else {
+                continue;
+            };
+            tab.display_order = display_order;
+        }
+    }
+
     pub(super) fn new() -> Self {
         let home = WorkspaceTab::home(1);
         Self {
@@ -658,6 +679,7 @@ impl WorkspaceTabsState {
                 .map_or(self.tabs.len(), |index| index.saturating_add(1))
         };
         self.tabs.insert(insert_at, tab);
+        self.normalize_display_order();
         self.active_tab_id = tab_id;
         tab_id
     }
@@ -683,8 +705,14 @@ impl WorkspaceTabsState {
 
         self.next_seq = self.next_seq.max(tab.id.saturating_add(1));
         self.tabs.push(tab);
-        self.tabs
-            .sort_by_key(|entry| (entry.kind != WorkspaceTabKind::Home, entry.id));
+        self.tabs.sort_by_key(|entry| {
+            (
+                entry.kind != WorkspaceTabKind::Home,
+                entry.display_order,
+                entry.id,
+            )
+        });
+        self.normalize_display_order();
         true
     }
 
@@ -714,6 +742,7 @@ impl WorkspaceTabsState {
             return None;
         }
         let removed = self.tabs.remove(index);
+        self.normalize_display_order();
         if self.active_tab_id == tab_id {
             let fallback_index = index
                 .saturating_sub(1)
@@ -739,12 +768,14 @@ impl WorkspaceTabsState {
             {
                 self.active_tab_id = home.id;
             }
+            self.normalize_display_order();
             return;
         }
         let home = WorkspaceTab::home(self.next_seq);
         self.next_seq = self.next_seq.saturating_add(1);
         self.tabs.insert(0, home.clone());
         self.active_tab_id = home.id;
+        self.normalize_display_order();
     }
 
     pub(super) fn set_home_title(&mut self, title: &str) {
@@ -755,6 +786,46 @@ impl WorkspaceTabsState {
         {
             home.title = title.to_string();
         }
+    }
+
+    pub(super) fn move_active_tab_by(&mut self, direction: i8) -> bool {
+        if direction == 0 {
+            return false;
+        }
+        let Some(active_index) = self.active_index() else {
+            return false;
+        };
+        let Some(active_tab) = self.tabs.get(active_index) else {
+            return false;
+        };
+        if active_tab.kind == WorkspaceTabKind::Home {
+            return false;
+        }
+
+        let target_index = if direction.is_negative() {
+            if active_index <= 1 {
+                return false;
+            }
+            active_index.saturating_sub(1)
+        } else {
+            let next_index = active_index.saturating_add(1);
+            if next_index >= self.tabs.len() {
+                return false;
+            }
+            next_index
+        };
+
+        if self
+            .tabs
+            .get(target_index)
+            .is_some_and(|tab| tab.kind == WorkspaceTabKind::Home)
+        {
+            return false;
+        }
+
+        self.tabs.swap(active_index, target_index);
+        self.normalize_display_order();
+        true
     }
 }
 
@@ -823,6 +894,7 @@ mod tests {
     fn agent_tab(session_name: &str) -> WorkspaceTab {
         WorkspaceTab {
             id: 0,
+            display_order: 0,
             kind: WorkspaceTabKind::Agent,
             title: String::new(),
             session_name: Some(session_name.to_string()),
@@ -834,12 +906,29 @@ mod tests {
     fn shell_tab(session_name: &str) -> WorkspaceTab {
         WorkspaceTab {
             id: 0,
+            display_order: 0,
             kind: WorkspaceTabKind::Shell,
             title: String::new(),
             session_name: Some(session_name.to_string()),
             agent_type: None,
             state: WorkspaceTabRuntimeState::Running,
         }
+    }
+
+    fn git_tab(session_name: &str) -> WorkspaceTab {
+        WorkspaceTab {
+            id: 0,
+            display_order: 0,
+            kind: WorkspaceTabKind::Git,
+            title: String::new(),
+            session_name: Some(session_name.to_string()),
+            agent_type: None,
+            state: WorkspaceTabRuntimeState::Running,
+        }
+    }
+
+    fn tab_kinds(tabs: &WorkspaceTabsState) -> Vec<WorkspaceTabKind> {
+        tabs.tabs.iter().map(|tab| tab.kind).collect()
     }
 
     #[test]
@@ -888,6 +977,7 @@ mod tests {
         let mut tabs = WorkspaceTabsState::new();
         let tab1 = WorkspaceTab {
             id: 10,
+            display_order: 1,
             kind: WorkspaceTabKind::Agent,
             title: "Agent 1".to_string(),
             session_name: Some("ws-agent-1".to_string()),
@@ -898,6 +988,7 @@ mod tests {
 
         let tab2 = WorkspaceTab {
             id: 20,
+            display_order: 2,
             kind: WorkspaceTabKind::Agent,
             title: "Agent 2".to_string(),
             session_name: Some("ws-agent-1".to_string()),
@@ -905,5 +996,114 @@ mod tests {
             state: WorkspaceTabRuntimeState::Running,
         };
         assert!(!tabs.insert_restored_tab(tab2));
+    }
+
+    #[test]
+    fn move_active_tab_left_swaps_with_left_neighbor_and_keeps_active_tab() {
+        let mut tabs = WorkspaceTabsState::new();
+        let first_agent_id = tabs.insert_tab_adjacent(agent_tab("ws-agent-1"));
+        let shell_id = tabs.insert_tab_adjacent(shell_tab("ws-shell-1"));
+        let git_id = tabs.insert_tab_adjacent(git_tab("ws-git"));
+
+        assert_eq!(
+            tab_kinds(&tabs),
+            vec![
+                WorkspaceTabKind::Home,
+                WorkspaceTabKind::Agent,
+                WorkspaceTabKind::Shell,
+                WorkspaceTabKind::Git,
+            ]
+        );
+        assert_eq!(tabs.active_tab_id, git_id);
+
+        assert!(tabs.move_active_tab_by(-1));
+        assert_eq!(
+            tab_kinds(&tabs),
+            vec![
+                WorkspaceTabKind::Home,
+                WorkspaceTabKind::Agent,
+                WorkspaceTabKind::Git,
+                WorkspaceTabKind::Shell,
+            ]
+        );
+        assert_eq!(tabs.active_tab_id, git_id);
+        assert_eq!(
+            tabs.active_tab().map(|tab| tab.kind),
+            Some(WorkspaceTabKind::Git)
+        );
+        assert_ne!(tabs.active_tab_id, first_agent_id);
+        assert_ne!(tabs.active_tab_id, shell_id);
+    }
+
+    #[test]
+    fn move_active_tab_right_swaps_with_right_neighbor_and_keeps_active_tab() {
+        let mut tabs = WorkspaceTabsState::new();
+        let _first_agent_id = tabs.insert_tab_adjacent(agent_tab("ws-agent-1"));
+        let shell_id = tabs.insert_tab_adjacent(shell_tab("ws-shell-1"));
+        let _git_id = tabs.insert_tab_adjacent(git_tab("ws-git"));
+        assert!(tabs.set_active(shell_id));
+
+        assert!(tabs.move_active_tab_by(1));
+        assert_eq!(
+            tab_kinds(&tabs),
+            vec![
+                WorkspaceTabKind::Home,
+                WorkspaceTabKind::Agent,
+                WorkspaceTabKind::Git,
+                WorkspaceTabKind::Shell,
+            ]
+        );
+        assert_eq!(tabs.active_tab_id, shell_id);
+        assert_eq!(
+            tabs.active_tab().map(|tab| tab.kind),
+            Some(WorkspaceTabKind::Shell)
+        );
+    }
+
+    #[test]
+    fn move_active_tab_left_is_noop_at_first_movable_slot() {
+        let mut tabs = WorkspaceTabsState::new();
+        let agent_id = tabs.insert_tab_adjacent(agent_tab("ws-agent-1"));
+
+        assert_eq!(
+            tab_kinds(&tabs),
+            vec![WorkspaceTabKind::Home, WorkspaceTabKind::Agent]
+        );
+        assert!(!tabs.move_active_tab_by(-1));
+        assert_eq!(
+            tab_kinds(&tabs),
+            vec![WorkspaceTabKind::Home, WorkspaceTabKind::Agent]
+        );
+        assert_eq!(tabs.active_tab_id, agent_id);
+    }
+
+    #[test]
+    fn move_active_tab_right_is_noop_at_last_slot() {
+        let mut tabs = WorkspaceTabsState::new();
+        let _agent_id = tabs.insert_tab_adjacent(agent_tab("ws-agent-1"));
+        let shell_id = tabs.insert_tab_adjacent(shell_tab("ws-shell-1"));
+
+        assert!(!tabs.move_active_tab_by(1));
+        assert_eq!(
+            tab_kinds(&tabs),
+            vec![
+                WorkspaceTabKind::Home,
+                WorkspaceTabKind::Agent,
+                WorkspaceTabKind::Shell,
+            ]
+        );
+        assert_eq!(tabs.active_tab_id, shell_id);
+    }
+
+    #[test]
+    fn move_active_tab_by_rejects_home_tab() {
+        let mut tabs = WorkspaceTabsState::new();
+
+        assert!(!tabs.move_active_tab_by(-1));
+        assert_eq!(tab_kinds(&tabs), vec![WorkspaceTabKind::Home]);
+        assert_eq!(
+            tabs.active_tab().map(|tab| tab.kind),
+            Some(WorkspaceTabKind::Home)
+        );
     }
 }
