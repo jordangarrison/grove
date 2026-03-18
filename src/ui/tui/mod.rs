@@ -3145,6 +3145,32 @@ mod tests {
     }
 
     #[test]
+    fn sidebar_renders_empty_attention_inbox_placeholder_above_task_tree() {
+        let (mut app, _commands, _captures, _cursor_captures) =
+            fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+        select_workspace(&mut app, 1);
+
+        let layout = app.panes.test_rects(120, 24);
+        let x_start = layout.sidebar.x.saturating_add(1);
+        let x_end = layout.sidebar.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 120, 24, |frame| {
+            let rows = (layout.sidebar.y..layout.sidebar.bottom())
+                .map(|row| row_text(frame, row, x_start, x_end))
+                .collect::<Vec<String>>();
+            assert!(
+                rows.iter().any(|row| row.contains("Needs You [0]")),
+                "empty attention inbox header should render, got: {rows:?}"
+            );
+            assert!(
+                rows.iter()
+                    .any(|row| row.contains("nothing needs your attention")),
+                "empty attention inbox placeholder should render, got: {rows:?}"
+            );
+        });
+    }
+
+    #[test]
     fn sidebar_selection_moves_from_attention_row_into_workspace_rows() {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());

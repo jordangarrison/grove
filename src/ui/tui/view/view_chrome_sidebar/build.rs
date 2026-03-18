@@ -45,14 +45,22 @@ impl GroveApp {
         selected_line: &mut Option<usize>,
         theme: UiTheme,
     ) {
-        if self.attention_items.is_empty() {
-            return;
-        }
-
         lines.push(SidebarListLine::attention_header(vec![SidebarSegment {
             text: format!("Needs You [{}]", self.attention_items.len()),
             style: Style::new().fg(theme.yellow).bold(),
         }]));
+        if self.attention_items.is_empty() {
+            lines.push(SidebarListLine::attention_placeholder(
+                vec![SidebarSegment {
+                    text: "  nothing needs your attention".to_string(),
+                    style: Style::new().fg(theme.overlay0),
+                }],
+                Style::new().fg(theme.surface1),
+                Style::new(),
+            ));
+            lines.push(SidebarListLine::project(Vec::new()));
+            return;
+        }
         for (item_index, item) in self.attention_items.iter().enumerate() {
             let is_selected = self.selected_sidebar_target() == SidebarSelectable::Attention(item_index);
             if is_selected && selected_line.is_none() {

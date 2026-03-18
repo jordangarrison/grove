@@ -15,6 +15,10 @@ struct SidebarPrHit {
 enum SidebarLineKind {
     Project,
     AttentionHeader,
+    AttentionPlaceholder {
+        border_style: Style,
+        row_style: Style,
+    },
     AttentionItem {
         item_index: usize,
         border_style: Style,
@@ -69,6 +73,21 @@ impl SidebarListLine {
         }
     }
 
+    fn attention_placeholder(
+        leading_segments: Vec<SidebarSegment>,
+        border_style: Style,
+        row_style: Style,
+    ) -> Self {
+        Self {
+            leading_segments,
+            trailing_segments: Vec::new(),
+            kind: SidebarLineKind::AttentionPlaceholder {
+                border_style,
+                row_style,
+            },
+        }
+    }
+
     fn workspace(
         leading_segments: Vec<SidebarSegment>,
         trailing_segments: Vec<SidebarSegment>,
@@ -91,7 +110,9 @@ impl SidebarListLine {
 
     fn selectable(&self) -> Option<SidebarSelectable> {
         match self.kind {
-            SidebarLineKind::Project | SidebarLineKind::AttentionHeader => None,
+            SidebarLineKind::Project
+            | SidebarLineKind::AttentionHeader
+            | SidebarLineKind::AttentionPlaceholder { .. } => None,
             SidebarLineKind::AttentionItem { item_index, .. } => {
                 Some(SidebarSelectable::Attention(item_index))
             }
@@ -112,7 +133,11 @@ impl RenderItem for SidebarListLine {
             SidebarLineKind::Project | SidebarLineKind::AttentionHeader => {
                 render_sidebar_segments(self.leading_segments.as_slice(), area, frame);
             }
-            SidebarLineKind::AttentionItem {
+            SidebarLineKind::AttentionPlaceholder {
+                border_style,
+                row_style,
+            }
+            | SidebarLineKind::AttentionItem {
                 border_style,
                 row_style,
                 ..
