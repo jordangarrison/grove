@@ -15,6 +15,7 @@ impl GroveApp {
             "rename_tab" => "Rename",
             "project" => "Project",
             "settings" => "Settings",
+            "performance" => "Performance",
             _ => "Dialog",
         }
     }
@@ -35,6 +36,9 @@ impl GroveApp {
         }
 
         if let Some(dialog_kind) = self.active_dialog_kind() {
+            if dialog_kind == "performance" {
+                return "Performance".to_string();
+            }
             return format!("Dialog: {}", Self::footer_dialog_state_label(dialog_kind));
         }
 

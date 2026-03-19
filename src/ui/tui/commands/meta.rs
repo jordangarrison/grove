@@ -1,6 +1,6 @@
 use super::*;
 
-static COMMAND_META: [UiCommandMeta; 47] = [
+static COMMAND_META: [UiCommandMeta; 48] = [
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
             id: "palette:toggle_focus",
@@ -1241,6 +1241,22 @@ static COMMAND_META: [UiCommandMeta; 47] = [
             modifiers: KeyModifiersMatch::None,
         }],
     },
+    UiCommandMeta {
+        palette: Some(PaletteCommandSpec {
+            id: "palette:open_performance",
+            title: "Performance",
+            description: "Inspect Grove runtime stats and polling behavior",
+            tags: &["performance", "perf", "profile", "profiling", "stats"],
+            category: "System",
+        }),
+        help_hints: &[HelpHintSpec {
+            context: HelpHintContext::Global,
+            label: "Palette performance",
+            key: "Palette",
+            action: "performance",
+        }],
+        keybindings: &[],
+    },
 ];
 
 impl UiCommand {
@@ -1293,6 +1309,7 @@ impl UiCommand {
             UiCommand::OpenHelp => &COMMAND_META[44],
             UiCommand::OpenCommandPalette => &COMMAND_META[45],
             UiCommand::Quit => &COMMAND_META[46],
+            UiCommand::OpenPerformance => &COMMAND_META[47],
         }
     }
 }

@@ -96,6 +96,11 @@ impl GroveApp {
                 Self::join_help_labels(&global, &[4, 8, 9, 13]),
             ),
             HelpCatalogEntry::new(
+                HelpSection::Global,
+                "System",
+                Self::join_help_labels(&global, &[14]),
+            ),
+            HelpCatalogEntry::new(
                 HelpSection::Workspace,
                 "Task/worktree",
                 workspace.join(", "),

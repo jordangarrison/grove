@@ -700,6 +700,9 @@ pub(super) struct SettingsDialogState {
     pub(super) theme: ThemeName,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(super) struct PerformanceDialogState;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SettingsDialogField {
     Theme,

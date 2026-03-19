@@ -18,6 +18,7 @@ impl GroveApp {
         let _ = self
             .notifications
             .tick(Duration::from_millis(TOAST_TICK_INTERVAL_MS));
+        self.refresh_process_metrics(now);
         if !self.tick_is_due(now) {
             self.telemetry.event_log.log(
                 LogEvent::new("tick", "skipped")

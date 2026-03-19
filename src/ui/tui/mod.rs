@@ -33,6 +33,8 @@ mod dialogs_edit;
 mod dialogs_launch;
 #[path = "dialogs/dialogs_merge.rs"]
 mod dialogs_merge;
+#[path = "dialogs/dialogs_performance.rs"]
+mod dialogs_performance;
 #[path = "dialogs/dialogs_projects_crud.rs"]
 mod dialogs_projects_crud;
 #[path = "dialogs/dialogs_projects_defaults.rs"]
@@ -72,6 +74,7 @@ pub use runner::{run_with_debug_record, run_with_event_log};
 mod replay;
 pub use replay::{ReplayOptions, emit_replay_fixture, replay_debug_record};
 mod panes;
+mod performance;
 #[path = "tasks.rs"]
 mod tasks;
 #[path = "update/update.rs"]
@@ -144,6 +147,8 @@ mod view_overlays_create;
 mod view_overlays_edit;
 #[path = "view/view_overlays_help.rs"]
 mod view_overlays_help;
+#[path = "view/view_overlays_performance.rs"]
+mod view_overlays_performance;
 #[path = "view/view_overlays_projects.rs"]
 mod view_overlays_projects;
 #[path = "view/view_overlays_pull_upstream.rs"]
@@ -6061,6 +6066,10 @@ mod tests {
             rendered.contains("ctrl+x/del remove"),
             "missing project modal remove entry: {rendered}"
         );
+        assert!(
+            rendered.contains("palette performance"),
+            "missing performance entry: {rendered}"
+        );
     }
 
     #[test]
@@ -6070,9 +6079,9 @@ mod tests {
                 .iter()
                 .filter(|command| command.meta().palette.is_some())
                 .count(),
-            44
+            45
         );
-        assert_eq!(UiCommand::help_hints_for(HelpHintContext::Global).len(), 14);
+        assert_eq!(UiCommand::help_hints_for(HelpHintContext::Global).len(), 15);
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::Workspace).len(),
             16
@@ -6546,6 +6555,97 @@ mod tests {
                 !status_text.trim().is_empty(),
                 "status row should remain visible with palette open, got: {status_text}"
             );
+        });
+    }
+
+    #[test]
+    fn command_palette_lists_performance_action() {
+        let app = fixture_app();
+        let ids = app
+            .build_command_palette_actions()
+            .into_iter()
+            .map(|action| action.id)
+            .collect::<Vec<String>>();
+
+        assert!(ids.iter().any(|id| id == "palette:open_performance"));
+    }
+
+    #[test]
+    fn execute_performance_palette_action_opens_dialog() {
+        let mut app = fixture_app();
+
+        app.execute_command_palette_action("palette:open_performance");
+        assert_eq!(app.active_dialog_kind(), Some("performance"));
+    }
+
+    #[test]
+    fn performance_dialog_uses_named_footer_state() {
+        let mut app = fixture_app();
+        app.execute_command_palette_action("palette:open_performance");
+
+        with_rendered_frame(&app, 120, 24, |frame| {
+            let status_row = frame.height().saturating_sub(1);
+            let status_text = row_text(frame, status_row, 0, frame.width());
+            assert!(
+                status_text.contains("[Performance]"),
+                "status row should identify the performance modal: {status_text}"
+            );
+        });
+    }
+
+    #[test]
+    fn rendered_frames_update_performance_snapshot() {
+        let app = fixture_app();
+
+        with_rendered_frame(&app, 100, 30, |_frame| {});
+        with_rendered_frame(&app, 100, 30, |_frame| {});
+
+        assert!(app.frame_timing_summary().is_some());
+    }
+
+    #[test]
+    fn performance_dialog_renders_summary_sections() {
+        let mut app = fixture_app();
+        app.execute_command_palette_action("palette:open_performance");
+
+        with_rendered_frame(&app, 120, 40, |frame| {
+            let text = (0..frame.height())
+                .map(|row| row_text(frame, row, 0, frame.width()))
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            assert!(text.contains("Performance"));
+            assert!(text.contains("CPU"));
+            assert!(text.contains("Memory"));
+            assert!(text.contains("Scheduler"));
+            assert!(text.contains("Sessions"));
+        });
+    }
+
+    #[test]
+    fn performance_dialog_shows_selected_session_exclusion_reason() {
+        let mut app = fixture_app();
+        select_workspace(&mut app, 1);
+        let session_name = crate::application::agent_runtime::session_name_for_workspace_ref(
+            app.state
+                .selected_workspace()
+                .expect("selected workspace should exist"),
+        );
+        app.polling.last_live_preview_session = Some(session_name);
+        app.execute_command_palette_action("palette:open_performance");
+
+        with_rendered_frame(&app, 140, 40, |frame| {
+            let text = (0..frame.height())
+                .map(|row| row_text(frame, row, 0, frame.width()))
+                .collect::<Vec<String>>()
+                .join("\n")
+                .to_lowercase();
+
+            assert!(
+                text.contains("excluded"),
+                "missing exclusion reason: {text}"
+            );
+            assert!(text.contains("selected"), "missing selected reason: {text}");
         });
     }
 

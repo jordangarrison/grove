@@ -292,6 +292,9 @@ impl GroveApp {
             UiCommand::Quit => {
                 self.open_quit_dialog();
             }
+            UiCommand::OpenPerformance => {
+                self.open_performance_dialog();
+            }
         }
 
         false

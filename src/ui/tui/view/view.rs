@@ -15,6 +15,7 @@ use super::{DIVIDER_WIDTH, GroveApp};
 impl GroveApp {
     pub(super) fn render_model(&self, frame: &mut Frame) {
         let view_started_at = Instant::now();
+        self.record_frame_timing(view_started_at);
         frame.set_cursor(None);
         frame.set_cursor_visible(false);
         frame.enable_hit_testing();
@@ -92,6 +93,7 @@ impl GroveApp {
         self.render_update_from_base_dialog_overlay(frame, area);
         self.render_pull_upstream_dialog_overlay(frame, area);
         self.render_settings_dialog_overlay(frame, area);
+        self.render_performance_dialog_overlay(frame, area);
         self.render_project_dialog_overlay(frame, area);
         self.render_keybind_help_overlay(frame, area);
         self.render_command_palette_overlay(frame, area);

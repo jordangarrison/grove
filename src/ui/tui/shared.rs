@@ -60,6 +60,7 @@ pub(super) const HIT_ID_RENAME_TAB_DIALOG: u32 = 23;
 pub(super) const HIT_ID_PROJECT_DIALOG_LIST: u32 = 24;
 pub(super) const HIT_ID_PROJECT_ADD_RESULTS_LIST: u32 = 25;
 pub(super) const HIT_ID_PULL_UPSTREAM_DIALOG: u32 = 26;
+pub(super) const HIT_ID_PERFORMANCE_DIALOG: u32 = 27;
 pub(super) const MAX_PENDING_INPUT_TRACES: usize = 256;
 pub(super) const INTERACTIVE_KEYSTROKE_DEBOUNCE_MS: u64 = 20;
 pub(super) const FAST_ANIMATION_INTERVAL_MS: u64 = 100;

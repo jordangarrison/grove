@@ -88,7 +88,8 @@ impl GroveApp {
                 | HIT_ID_CONFIRM_DIALOG
                 | HIT_ID_SESSION_CLEANUP_DIALOG
                 | HIT_ID_RENAME_TAB_DIALOG
-                | HIT_ID_KEYBIND_HELP_DIALOG => HitRegion::Outside,
+                | HIT_ID_KEYBIND_HELP_DIALOG
+                | HIT_ID_PERFORMANCE_DIALOG => HitRegion::Outside,
                 _ => HitRegion::Outside,
             };
             let row_data = if id.id() == HIT_ID_WORKSPACE_ROW || id.id() == HIT_ID_WORKSPACE_PR_LINK

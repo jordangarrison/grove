@@ -87,8 +87,10 @@ use crate::infrastructure::config::{
 };
 use crate::infrastructure::event_log::{Event as LogEvent, EventLogger, now_millis};
 use crate::infrastructure::paths::refer_to_same_location;
+use crate::infrastructure::process_metrics::{ProcessMetricsSampler, ProcessMetricsSnapshot};
 use crate::ui::mouse::{clamp_sidebar_ratio, ratio_from_drag};
 use crate::ui::state::{Action, AppState, PaneFocus, UiMode, reduce};
+use performance::FrameTimingWindow;
 
 #[cfg(test)]
 use bootstrap_config::AppDependencies;
@@ -255,6 +257,7 @@ enum ActiveDialog {
     RenameTab(RenameTabDialogState),
     Project(Box<ProjectDialogState>),
     Settings(SettingsDialogState),
+    Performance(PerformanceDialogState),
 }
 
 struct SessionState {
@@ -285,6 +288,8 @@ struct PollingState {
     workspace_idle_polls_since_output: HashMap<PathBuf, u8>,
     next_tick_due_at: Option<Instant>,
     next_tick_interval_ms: Option<u64>,
+    next_tick_source: Option<String>,
+    next_tick_trigger: Option<String>,
     next_poll_due_at: Option<Instant>,
     last_workspace_status_poll_at: Option<Instant>,
     preview_poll_in_flight: bool,
@@ -293,6 +298,14 @@ struct PollingState {
     interactive_poll_due_at: Option<Instant>,
     activity_animation: AnimationClock,
     poll_generation: u64,
+}
+
+struct PerformanceState {
+    frame_timing: RefCell<FrameTimingWindow>,
+    last_frame_started_at: RefCell<Option<Instant>>,
+    process_sampler: RefCell<ProcessMetricsSampler>,
+    process_metrics: RefCell<ProcessMetricsSnapshot>,
+    last_process_refresh_at: RefCell<Option<Instant>>,
 }
 
 struct DialogState {
@@ -368,6 +381,7 @@ struct GroveApp {
     preview_selection: TextSelectionState,
     copied_text: Option<String>,
     telemetry: TelemetryState,
+    performance: PerformanceState,
     last_hit_grid: RefCell<Option<HitGrid>>,
     preview_scroll: RefCell<Virtualized<()>>,
     sidebar_list_state: RefCell<VirtualizedListState>,

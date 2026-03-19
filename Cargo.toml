@@ -14,6 +14,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 toml = "0.9.8"
 rusqlite = { version = "0.32.1", features = ["bundled"] }
+sysinfo = "0.33.1"
 
 [dev-dependencies]
 proptest = "1.6.0"

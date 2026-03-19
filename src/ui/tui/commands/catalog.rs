@@ -49,6 +49,7 @@ pub(super) enum UiCommand {
     OpenHelp,
     OpenCommandPalette,
     Quit,
+    OpenPerformance,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -188,7 +189,7 @@ fn control_character_for(character: char) -> Option<char> {
 }
 
 impl UiCommand {
-    pub(super) const ALL: [UiCommand; 47] = [
+    pub(super) const ALL: [UiCommand; 48] = [
         UiCommand::ToggleFocus,
         UiCommand::ToggleSidebar,
         UiCommand::OpenPreview,
@@ -236,6 +237,7 @@ impl UiCommand {
         UiCommand::OpenHelp,
         UiCommand::OpenCommandPalette,
         UiCommand::Quit,
+        UiCommand::OpenPerformance,
     ];
 
     pub(super) fn all() -> &'static [UiCommand] {

@@ -656,6 +656,8 @@ impl GroveApp {
         let interval_ms = Self::duration_millis(interval);
         self.polling.next_tick_due_at = Some(due_at);
         self.polling.next_tick_interval_ms = Some(interval_ms);
+        self.polling.next_tick_source = Some(source.to_string());
+        self.polling.next_tick_trigger = Some(trigger.to_string());
         self.telemetry.event_log.log(
             LogEvent::new("tick", "scheduled")
                 .with_data("source", Value::from(source))

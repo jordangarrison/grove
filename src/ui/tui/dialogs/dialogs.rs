@@ -388,6 +388,7 @@ impl GroveApp {
             Some(ActiveDialog::RenameTab(_)) => Some("rename_tab"),
             Some(ActiveDialog::Project(_)) => Some("project"),
             Some(ActiveDialog::Settings(_)) => Some("settings"),
+            Some(ActiveDialog::Performance(_)) => Some("performance"),
             None => None,
         }
     }
@@ -491,6 +492,16 @@ impl GroveApp {
         Settings,
         SettingsDialogState
     );
+    pub(super) fn performance_dialog(&self) -> Option<&PerformanceDialogState> {
+        match self.dialogs.active_dialog.as_ref() {
+            Some(ActiveDialog::Performance(dialog)) => Some(dialog),
+            _ => None,
+        }
+    }
+
+    pub(super) fn set_performance_dialog(&mut self, dialog: PerformanceDialogState) {
+        self.dialogs.active_dialog = Some(ActiveDialog::Performance(dialog));
+    }
 
     pub(super) fn allows_text_input_modifiers(modifiers: Modifiers) -> bool {
         modifiers.is_empty() || modifiers == Modifiers::SHIFT

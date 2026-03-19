@@ -105,6 +105,7 @@ impl GroveApp {
             | UiCommand::OpenProjects
             | UiCommand::ReorderTasks
             | UiCommand::OpenSettings
+            | UiCommand::OpenPerformance
             | UiCommand::ToggleMouseCapture
             | UiCommand::ToggleUnsafe
             | UiCommand::CleanupSessions
