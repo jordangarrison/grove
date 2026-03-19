@@ -3,7 +3,7 @@ use super::update_prelude::*;
 impl GroveApp {
     const STALLED_IDLE_POLLS_TO_ATTENTION: u8 = 6;
     const ATTENTION_PROMOTION_POLLS: u8 = 2;
-    const ATTENTION_REMOVAL_POLLS: u8 = 2;
+    const ATTENTION_REMOVAL_POLLS: u8 = 3;
 
     fn workspace_has_running_agent_tab(&self, workspace_path: &Path) -> bool {
         self.workspace_tabs.get(workspace_path).is_some_and(|tabs| {

@@ -3739,7 +3739,7 @@ mod tests {
     }
 
     #[test]
-    fn visible_attention_item_requires_two_absent_polls_before_leaving_inbox() {
+    fn visible_attention_item_requires_three_absent_polls_before_leaving_inbox() {
         let mut app = fixture_app();
         app.clear_startup_attention_focus_pending();
         let workspace_path = feature_workspace_path();
@@ -3770,6 +3770,15 @@ mod tests {
         app.track_workspace_status_transition(
             workspace_path.as_path(),
             WorkspaceStatus::Done,
+            WorkspaceStatus::Active,
+            false,
+            false,
+        );
+        assert_eq!(app.attention_items.len(), 1);
+
+        app.track_workspace_status_transition(
+            workspace_path.as_path(),
+            WorkspaceStatus::Active,
             WorkspaceStatus::Active,
             false,
             false,
