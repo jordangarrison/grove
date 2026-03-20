@@ -1,6 +1,6 @@
 use super::*;
 
-static COMMAND_META: [UiCommandMeta; 48] = [
+static COMMAND_META: [UiCommandMeta; 49] = [
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
             id: "palette:toggle_focus",
@@ -386,6 +386,12 @@ static COMMAND_META: [UiCommandMeta; 48] = [
                 key: "[",
                 action: "prev tab",
             },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewDiff,
+                label: "[ prev tab",
+                key: "[",
+                action: "prev tab",
+            },
         ],
         keybindings: &[
             KeybindingSpec {
@@ -435,6 +441,12 @@ static COMMAND_META: [UiCommandMeta; 48] = [
                 key: "]",
                 action: "next tab",
             },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewDiff,
+                label: "] next tab",
+                key: "]",
+                action: "next tab",
+            },
         ],
         keybindings: &[
             KeybindingSpec {
@@ -476,6 +488,12 @@ static COMMAND_META: [UiCommandMeta; 48] = [
                 key: "{",
                 action: "move tab left",
             },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewDiff,
+                label: "{ move tab left",
+                key: "{",
+                action: "move tab left",
+            },
         ],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -506,6 +524,12 @@ static COMMAND_META: [UiCommandMeta; 48] = [
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewGit,
+                label: "} move tab right",
+                key: "}",
+                action: "move tab right",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewDiff,
                 label: "} move tab right",
                 key: "}",
                 action: "move tab right",
@@ -709,6 +733,12 @@ static COMMAND_META: [UiCommandMeta; 48] = [
                 key: "a",
                 action: "new agent tab",
             },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewDiff,
+                label: "a new agent tab",
+                key: "a",
+                action: "new agent tab",
+            },
         ],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -769,6 +799,12 @@ static COMMAND_META: [UiCommandMeta; 48] = [
                 key: "s",
                 action: "new shell tab",
             },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewDiff,
+                label: "s new shell tab",
+                key: "s",
+                action: "new shell tab",
+            },
         ],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
@@ -809,10 +845,62 @@ static COMMAND_META: [UiCommandMeta; 48] = [
                 key: "g",
                 action: "git tab",
             },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewDiff,
+                label: "g git tab",
+                key: "g",
+                action: "git tab",
+            },
         ],
         keybindings: &[KeybindingSpec {
             scope: KeybindingScope::NonInteractive,
             code: KeyCodeMatch::Char('g'),
+            modifiers: KeyModifiersMatch::Any,
+        }],
+    },
+    UiCommandMeta {
+        palette: Some(PaletteCommandSpec {
+            id: "palette:open_diff_tab",
+            title: "Open Diff Tab",
+            description: "Show live git diff for the selected workspace (d)",
+            tags: &["diff", "git", "changes", "tab", "workspace", "d"],
+            category: "Workspace",
+        }),
+        help_hints: &[
+            HelpHintSpec {
+                context: HelpHintContext::Workspace,
+                label: "d diff tab",
+                key: "d",
+                action: "diff tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewAgent,
+                label: "d diff tab",
+                key: "d",
+                action: "diff tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewShell,
+                label: "d diff tab",
+                key: "d",
+                action: "diff tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewGit,
+                label: "d diff tab",
+                key: "d",
+                action: "diff tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewDiff,
+                label: "d diff tab",
+                key: "d",
+                action: "diff tab",
+            },
+        ],
+        keybindings: &[KeybindingSpec {
+            scope: KeybindingScope::NonInteractive,
+            code: KeyCodeMatch::Char('d'),
             modifiers: KeyModifiersMatch::Any,
         }],
     },
@@ -845,6 +933,12 @@ static COMMAND_META: [UiCommandMeta; 48] = [
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewGit,
+                label: ", rename tab",
+                key: ",",
+                action: "rename tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewDiff,
                 label: ", rename tab",
                 key: ",",
                 action: "rename tab",
@@ -884,6 +978,12 @@ static COMMAND_META: [UiCommandMeta; 48] = [
             },
             HelpHintSpec {
                 context: HelpHintContext::PreviewGit,
+                label: "x close tab",
+                key: "x",
+                action: "close tab",
+            },
+            HelpHintSpec {
+                context: HelpHintContext::PreviewDiff,
                 label: "x close tab",
                 key: "x",
                 action: "close tab",
@@ -1288,28 +1388,29 @@ impl UiCommand {
             UiCommand::StartParentAgent => &COMMAND_META[23],
             UiCommand::OpenShellTab => &COMMAND_META[24],
             UiCommand::OpenGitTab => &COMMAND_META[25],
-            UiCommand::RenameActiveTab => &COMMAND_META[26],
-            UiCommand::StopAgent => &COMMAND_META[27],
-            UiCommand::RestartAgent => &COMMAND_META[28],
-            UiCommand::DeleteWorkspace => &COMMAND_META[29],
-            UiCommand::DeleteWorktree => &COMMAND_META[30],
-            UiCommand::MergeWorkspace => &COMMAND_META[31],
-            UiCommand::UpdateFromBase => &COMMAND_META[32],
-            UiCommand::PullUpstream => &COMMAND_META[33],
-            UiCommand::RefreshWorkspaces => &COMMAND_META[34],
-            UiCommand::OpenProjects => &COMMAND_META[35],
-            UiCommand::ReorderTasks => &COMMAND_META[36],
-            UiCommand::DeleteProject => &COMMAND_META[37],
-            UiCommand::OpenSettings => &COMMAND_META[38],
-            UiCommand::ToggleMouseCapture => &COMMAND_META[39],
-            UiCommand::ToggleUnsafe => &COMMAND_META[40],
-            UiCommand::FocusAttentionInbox => &COMMAND_META[41],
-            UiCommand::AcknowledgeAttention => &COMMAND_META[42],
-            UiCommand::CleanupSessions => &COMMAND_META[43],
-            UiCommand::OpenHelp => &COMMAND_META[44],
-            UiCommand::OpenCommandPalette => &COMMAND_META[45],
-            UiCommand::Quit => &COMMAND_META[46],
-            UiCommand::OpenPerformance => &COMMAND_META[47],
+            UiCommand::OpenDiffTab => &COMMAND_META[26],
+            UiCommand::RenameActiveTab => &COMMAND_META[27],
+            UiCommand::StopAgent => &COMMAND_META[28],
+            UiCommand::RestartAgent => &COMMAND_META[29],
+            UiCommand::DeleteWorkspace => &COMMAND_META[30],
+            UiCommand::DeleteWorktree => &COMMAND_META[31],
+            UiCommand::MergeWorkspace => &COMMAND_META[32],
+            UiCommand::UpdateFromBase => &COMMAND_META[33],
+            UiCommand::PullUpstream => &COMMAND_META[34],
+            UiCommand::RefreshWorkspaces => &COMMAND_META[35],
+            UiCommand::OpenProjects => &COMMAND_META[36],
+            UiCommand::ReorderTasks => &COMMAND_META[37],
+            UiCommand::DeleteProject => &COMMAND_META[38],
+            UiCommand::OpenSettings => &COMMAND_META[39],
+            UiCommand::ToggleMouseCapture => &COMMAND_META[40],
+            UiCommand::ToggleUnsafe => &COMMAND_META[41],
+            UiCommand::FocusAttentionInbox => &COMMAND_META[42],
+            UiCommand::AcknowledgeAttention => &COMMAND_META[43],
+            UiCommand::CleanupSessions => &COMMAND_META[44],
+            UiCommand::OpenHelp => &COMMAND_META[45],
+            UiCommand::OpenCommandPalette => &COMMAND_META[46],
+            UiCommand::Quit => &COMMAND_META[47],
+            UiCommand::OpenPerformance => &COMMAND_META[48],
         }
     }
 }

@@ -836,6 +836,25 @@ impl GroveApp {
         self.poll_preview();
     }
 
+    pub(super) fn open_or_focus_diff_tab(&mut self) {
+        let Some((_, tab_id)) = self.ensure_selected_workspace_tab_kind(WorkspaceTabKind::Diff)
+        else {
+            self.show_info_toast("no workspace selected");
+            return;
+        };
+        let _ = self.select_tab_by_id_for_selected_workspace(tab_id);
+        if let Some(tab) = self.selected_active_tab_mut() {
+            tab.state = WorkspaceTabRuntimeState::Running;
+        }
+        if let Some(workspace_path) = self.selected_workspace_path()
+            && let Some(tab) = self.selected_active_tab().cloned()
+        {
+            self.write_tab_tmux_metadata(workspace_path.as_path(), &tab);
+        }
+        self.poll_preview();
+        self.poll_diff_for_selected_workspace();
+    }
+
     fn set_tab_state_by_id(
         &mut self,
         workspace_path: &Path,

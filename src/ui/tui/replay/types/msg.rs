@@ -60,6 +60,11 @@ enum ReplayMsg {
     InteractiveSendCompleted {
         completion: ReplayInteractiveSendCompletion,
     },
+    DiffCaptureCompleted {
+        workspace_path: String,
+        capture_ms: u64,
+        result: Result<String, String>,
+    },
     Noop,
 }
 
@@ -197,6 +202,7 @@ impl ReplayMsg {
             Self::StopAgentCompleted { .. } => "stop_agent_completed",
             Self::RestartAgentCompleted { .. } => "restart_agent_completed",
             Self::InteractiveSendCompleted { .. } => "interactive_send_completed",
+            Self::DiffCaptureCompleted { .. } => "diff_capture_completed",
             Self::Noop => "noop",
         }
     }
@@ -266,6 +272,11 @@ impl ReplayMsg {
             Msg::InteractiveSendCompleted(completion) => Self::InteractiveSendCompleted {
                 completion: ReplayInteractiveSendCompletion::from_completion(completion),
             },
+            Msg::DiffCaptureCompleted(completion) => Self::DiffCaptureCompleted {
+                workspace_path: completion.workspace_path.to_string_lossy().to_string(),
+                capture_ms: completion.capture_ms,
+                result: completion.result.clone(),
+            },
             Msg::Noop => Self::Noop,
         }
     }
@@ -323,6 +334,15 @@ impl ReplayMsg {
             Self::InteractiveSendCompleted { completion } => {
                 Msg::InteractiveSendCompleted(completion.to_completion())
             }
+            Self::DiffCaptureCompleted {
+                workspace_path,
+                capture_ms,
+                result,
+            } => Msg::DiffCaptureCompleted(DiffCaptureCompletion {
+                workspace_path: PathBuf::from(workspace_path),
+                capture_ms: *capture_ms,
+                result: result.clone(),
+            }),
             Self::Noop => Msg::Noop,
         }
     }

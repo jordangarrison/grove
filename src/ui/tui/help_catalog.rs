@@ -73,6 +73,7 @@ impl GroveApp {
         let preview_agent = self.command_help_labels(HelpHintContext::PreviewAgent);
         let preview_shell = self.command_help_labels(HelpHintContext::PreviewShell);
         let preview_git = self.command_help_labels(HelpHintContext::PreviewGit);
+        let preview_diff = self.command_help_labels(HelpHintContext::PreviewDiff);
 
         let mut entries = vec![
             HelpCatalogEntry::new(
@@ -123,6 +124,7 @@ impl GroveApp {
             HelpCatalogEntry::new(HelpSection::Preview, "Agent tab", preview_agent.join(", ")),
             HelpCatalogEntry::new(HelpSection::Preview, "Shell tab", preview_shell.join(", ")),
             HelpCatalogEntry::new(HelpSection::Preview, "Git tab", preview_git.join(", ")),
+            HelpCatalogEntry::new(HelpSection::Preview, "Diff tab", preview_diff.join(", ")),
         ];
         entries.extend(self.synthetic_help_catalog_entries());
         entries

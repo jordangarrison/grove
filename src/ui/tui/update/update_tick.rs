@@ -63,6 +63,7 @@ impl GroveApp {
                 self.polling.interactive_poll_due_at = None;
             }
             self.poll_preview();
+            self.maybe_poll_diff();
         }
 
         let pending_after = self.pending_input_depth();

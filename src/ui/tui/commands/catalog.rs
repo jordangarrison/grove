@@ -28,6 +28,7 @@ pub(super) enum UiCommand {
     StartParentAgent,
     OpenShellTab,
     OpenGitTab,
+    OpenDiffTab,
     RenameActiveTab,
     StopAgent,
     RestartAgent,
@@ -77,6 +78,7 @@ pub(super) enum HelpHintContext {
     PreviewAgent,
     PreviewShell,
     PreviewGit,
+    PreviewDiff,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,7 +191,7 @@ fn control_character_for(character: char) -> Option<char> {
 }
 
 impl UiCommand {
-    pub(super) const ALL: [UiCommand; 48] = [
+    pub(super) const ALL: [UiCommand; 49] = [
         UiCommand::ToggleFocus,
         UiCommand::ToggleSidebar,
         UiCommand::OpenPreview,
@@ -216,6 +218,7 @@ impl UiCommand {
         UiCommand::StartParentAgent,
         UiCommand::OpenShellTab,
         UiCommand::OpenGitTab,
+        UiCommand::OpenDiffTab,
         UiCommand::RenameActiveTab,
         UiCommand::StopAgent,
         UiCommand::RestartAgent,

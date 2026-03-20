@@ -112,6 +112,10 @@ impl GroveApp {
             Msg::InteractiveSendCompleted(completion) => {
                 self.handle_interactive_send_completed(completion)
             }
+            Msg::DiffCaptureCompleted(completion) => {
+                self.handle_diff_capture_completed(completion);
+                Cmd::None
+            }
             Msg::Noop => Cmd::None,
         };
         self.sync_preview_stream_target();

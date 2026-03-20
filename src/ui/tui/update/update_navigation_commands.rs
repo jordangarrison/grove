@@ -229,6 +229,9 @@ impl GroveApp {
             UiCommand::OpenGitTab => {
                 self.open_or_focus_git_tab();
             }
+            UiCommand::OpenDiffTab => {
+                self.open_or_focus_diff_tab();
+            }
             UiCommand::RenameActiveTab => {
                 self.open_rename_tab_dialog();
             }

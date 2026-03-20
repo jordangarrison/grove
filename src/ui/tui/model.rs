@@ -300,6 +300,7 @@ struct PollingState {
     interactive_poll_due_at: Option<Instant>,
     activity_animation: AnimationClock,
     poll_generation: u64,
+    last_diff_poll_at: Option<Instant>,
     preview_stream: PreviewStreamState,
 }
 

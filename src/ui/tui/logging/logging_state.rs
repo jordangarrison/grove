@@ -85,6 +85,7 @@ impl GroveApp {
             Msg::StopAgentCompleted(_) => "stop_agent_completed",
             Msg::RestartAgentCompleted(_) => "restart_agent_completed",
             Msg::InteractiveSendCompleted(_) => "interactive_send_completed",
+            Msg::DiffCaptureCompleted(_) => "diff_capture_completed",
             Msg::Noop => "noop",
         }
     }

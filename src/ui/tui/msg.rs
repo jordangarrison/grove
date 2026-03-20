@@ -27,6 +27,7 @@ pub(super) enum Msg {
     StopAgentCompleted(StopAgentCompletion),
     RestartAgentCompleted(RestartAgentCompletion),
     InteractiveSendCompleted(InteractiveSendCompletion),
+    DiffCaptureCompleted(DiffCaptureCompletion),
     Noop,
 }
 
@@ -203,6 +204,13 @@ pub(super) struct RestartAgentCompletion {
     pub(super) workspace_path: PathBuf,
     pub(super) session_name: String,
     pub(super) result: Result<(), String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct DiffCaptureCompletion {
+    pub(super) workspace_path: PathBuf,
+    pub(super) capture_ms: u64,
+    pub(super) result: Result<String, String>,
 }
 
 impl From<SessionExecutionResult> for StartAgentCompletion {

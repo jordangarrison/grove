@@ -113,6 +113,8 @@ mod update_navigation_preview;
 mod update_navigation_tabs;
 #[path = "update/update_polling_capture_cursor.rs"]
 mod update_polling_capture_cursor;
+#[path = "update/update_polling_capture_diff.rs"]
+mod update_polling_capture_diff;
 #[path = "update/update_polling_capture_dispatch.rs"]
 mod update_polling_capture_dispatch;
 #[path = "update/update_polling_capture_live.rs"]
@@ -5962,6 +5964,7 @@ mod tests {
             HelpHintContext::PreviewAgent,
             HelpHintContext::PreviewShell,
             HelpHintContext::PreviewGit,
+            HelpHintContext::PreviewDiff,
         ];
 
         for context in contexts {
@@ -5989,6 +5992,7 @@ mod tests {
             HelpHintContext::PreviewAgent,
             HelpHintContext::PreviewShell,
             HelpHintContext::PreviewGit,
+            HelpHintContext::PreviewDiff,
         ];
 
         for context in contexts {
@@ -6096,24 +6100,28 @@ mod tests {
                 .iter()
                 .filter(|command| command.meta().palette.is_some())
                 .count(),
-            45
+            46
         );
         assert_eq!(UiCommand::help_hints_for(HelpHintContext::Global).len(), 15);
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::Workspace).len(),
-            16
+            17
         );
         assert_eq!(UiCommand::help_hints_for(HelpHintContext::List).len(), 2);
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::PreviewAgent).len(),
-            13
+            14
         );
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::PreviewShell).len(),
-            13
+            14
         );
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::PreviewGit).len(),
+            11
+        );
+        assert_eq!(
+            UiCommand::help_hints_for(HelpHintContext::PreviewDiff).len(),
             10
         );
     }
@@ -6127,6 +6135,7 @@ mod tests {
             HelpHintContext::PreviewAgent,
             HelpHintContext::PreviewShell,
             HelpHintContext::PreviewGit,
+            HelpHintContext::PreviewDiff,
         ];
         for command in UiCommand::all() {
             if command.keybindings().is_empty() {
@@ -6425,7 +6434,7 @@ mod tests {
         let mut app = fixture_app();
         app.dialogs.keybind_help_open = true;
 
-        with_rendered_frame(&app, 160, 28, |frame| {
+        with_rendered_frame(&app, 160, 32, |frame| {
             let has_shift_tab = (0..frame.height())
                 .any(|row| row_text(frame, row, 0, frame.width()).contains("Shift+Tab"));
             let has_shift_enter = (0..frame.height())

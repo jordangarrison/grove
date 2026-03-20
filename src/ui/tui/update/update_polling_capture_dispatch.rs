@@ -75,6 +75,9 @@ impl GroveApp {
     }
 
     pub(super) fn poll_preview(&mut self) {
+        if self.preview_tab != PreviewTab::Diff {
+            self.polling.last_diff_poll_at = None;
+        }
         self.sync_preview_stream_target();
         if !self.tmux_input.supports_background_poll() {
             self.poll_preview_sync();

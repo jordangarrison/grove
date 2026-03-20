@@ -251,6 +251,7 @@ impl GroveApp {
             UiCommand::AddWorktree | UiCommand::DeleteWorkspace | UiCommand::DeleteWorktree => {
                 self.state.focus == PaneFocus::WorkspaceList
             }
+            UiCommand::OpenDiffTab => in_preview_focus,
             UiCommand::RenameActiveTab
             | UiCommand::StopAgent
             | UiCommand::RestartAgent
