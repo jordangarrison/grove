@@ -9783,6 +9783,11 @@ mod tests {
                             "exec:tmux send-keys -l -t {} x",
                             feature_workspace_session()
                         ),
+                        format!(
+                            "capture:{}:{}:false",
+                            feature_workspace_session(),
+                            crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES
+                        ),
                         format!("paste-buffer:{}:14", feature_workspace_session()),
                     ]
                 );
