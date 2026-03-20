@@ -495,9 +495,6 @@ impl GroveApp {
                     }
                     return self.workspace_home_splash(workspace, has_running_tabs);
                 }
-                if self.preview_tab == PreviewTab::Diff {
-                    return "(loading diff...)".to_string();
-                }
                 if self.preview_tab == PreviewTab::Shell {
                     return self
                         .shell_session_status_summary(workspace)
@@ -605,6 +602,9 @@ impl GroveApp {
 
     pub(super) fn refresh_preview_summary(&mut self) {
         if self.selected_live_preview_session_if_ready().is_some() {
+            return;
+        }
+        if self.preview_tab == PreviewTab::Diff {
             return;
         }
         self.preview

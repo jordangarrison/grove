@@ -6823,6 +6823,20 @@ mod tests {
     }
 
     #[test]
+    fn refresh_preview_summary_does_not_clobber_diff_capture() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 0);
+        app.preview_tab = PreviewTab::Diff;
+        app.preview.apply_capture("1 file changed, +5 -2\n");
+
+        app.refresh_preview_summary();
+
+        assert_eq!(app.preview.lines, vec!["1 file changed, +5 -2".to_string()]);
+    }
+
+    #[test]
     fn selected_preview_stream_drops_stale_output_for_old_generation() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;

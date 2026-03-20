@@ -851,6 +851,7 @@ impl GroveApp {
         {
             self.write_tab_tmux_metadata(workspace_path.as_path(), &tab);
         }
+        self.preview.apply_capture("(loading diff...)");
         self.poll_preview();
         self.poll_diff_for_selected_workspace();
     }
