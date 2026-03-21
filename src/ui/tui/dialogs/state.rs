@@ -321,7 +321,7 @@ impl LaunchDialogField {
                 }
             }
             Self::StartButton => Self::CancelButton,
-            Self::CancelButton => Self::StartConfig(StartAgentConfigField::Name),
+            Self::CancelButton => Self::Agent,
         }
     }
 
@@ -713,3 +713,54 @@ pub(super) enum SettingsDialogField {
 cyclic_field_nav!(pub(super) SettingsDialogField {
     Theme, SaveButton, CancelButton,
 });
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn launch_dialog_field_next_cycles_through_all_fields() {
+        let expected = [
+            "agent",
+            "name",
+            "prompt",
+            "init_command",
+            "unsafe",
+            "start",
+            "cancel",
+        ];
+        let mut field = LaunchDialogField::Agent;
+        for label in &expected {
+            assert_eq!(field.label(), *label);
+            field = field.next();
+        }
+        assert_eq!(
+            field,
+            LaunchDialogField::Agent,
+            "next must wrap back to Agent"
+        );
+    }
+
+    #[test]
+    fn launch_dialog_field_previous_cycles_through_all_fields() {
+        let expected = [
+            "agent",
+            "cancel",
+            "start",
+            "unsafe",
+            "init_command",
+            "prompt",
+            "name",
+        ];
+        let mut field = LaunchDialogField::Agent;
+        for label in &expected {
+            assert_eq!(field.label(), *label);
+            field = field.previous();
+        }
+        assert_eq!(
+            field,
+            LaunchDialogField::Agent,
+            "previous must wrap back to Agent"
+        );
+    }
+}
