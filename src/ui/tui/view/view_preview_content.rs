@@ -73,6 +73,19 @@ impl GroveApp {
                             Style::new().fg(theme.overlay0),
                         ));
                     }
+                    if let Some(diff_stat) = selected_workspace
+                        .and_then(|ws| self.diff_stat_for_workspace(ws.path.as_path()))
+                    {
+                        spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
+                        spans.push(FtSpan::styled(
+                            format!("+{}", diff_stat.insertions),
+                            Style::new().fg(theme.green).bold(),
+                        ));
+                        spans.push(FtSpan::styled(
+                            format!(" -{}", diff_stat.deletions),
+                            Style::new().fg(theme.red).bold(),
+                        ));
+                    }
                     if *is_orphaned {
                         spans.push(FtSpan::styled(" · ", Style::new().fg(theme.subtext0)));
                         spans.push(FtSpan::styled(

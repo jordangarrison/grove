@@ -65,6 +65,11 @@ enum ReplayMsg {
         capture_ms: u64,
         result: Result<String, String>,
     },
+    DiffStatCompleted {
+        workspace_path: String,
+        insertions: usize,
+        deletions: usize,
+    },
     Noop,
 }
 
@@ -203,6 +208,7 @@ impl ReplayMsg {
             Self::RestartAgentCompleted { .. } => "restart_agent_completed",
             Self::InteractiveSendCompleted { .. } => "interactive_send_completed",
             Self::DiffCaptureCompleted { .. } => "diff_capture_completed",
+            Self::DiffStatCompleted { .. } => "diff_stat_completed",
             Self::Noop => "noop",
         }
     }
@@ -277,6 +283,11 @@ impl ReplayMsg {
                 capture_ms: completion.capture_ms,
                 result: completion.result.clone(),
             },
+            Msg::DiffStatCompleted(completion) => Self::DiffStatCompleted {
+                workspace_path: completion.workspace_path.to_string_lossy().to_string(),
+                insertions: completion.insertions,
+                deletions: completion.deletions,
+            },
             Msg::Noop => Self::Noop,
         }
     }
@@ -342,6 +353,15 @@ impl ReplayMsg {
                 workspace_path: PathBuf::from(workspace_path),
                 capture_ms: *capture_ms,
                 result: result.clone(),
+            }),
+            Self::DiffStatCompleted {
+                workspace_path,
+                insertions,
+                deletions,
+            } => Msg::DiffStatCompleted(DiffStatCompletion {
+                workspace_path: PathBuf::from(workspace_path),
+                insertions: *insertions,
+                deletions: *deletions,
             }),
             Self::Noop => Msg::Noop,
         }

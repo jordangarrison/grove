@@ -2,6 +2,7 @@ use super::update_prelude::*;
 
 const DIFF_POLL_INTERVAL_FOCUSED_MS: u64 = 2_000;
 const DIFF_POLL_INTERVAL_UNFOCUSED_MS: u64 = 10_000;
+const DIFF_STAT_POLL_INTERVAL_MS: u64 = 5_000;
 
 fn format_diff_summary(files_changed: usize, insertions: usize, deletions: usize) -> String {
     let file_word = if files_changed == 1 { "file" } else { "files" };
@@ -122,8 +123,20 @@ impl GroveApp {
             return;
         }
         match completion.result {
-            Ok(output) => {
-                self.preview.apply_capture(&output);
+            Ok(ref output) => {
+                self.preview.apply_capture(output);
+                let (_, ins, del) = parse_diff_stat_summary(output);
+                if ins > 0 || del > 0 {
+                    self.workspace_diff_stats.insert(
+                        completion.workspace_path.clone(),
+                        DiffStatBadge {
+                            insertions: ins,
+                            deletions: del,
+                        },
+                    );
+                } else {
+                    self.workspace_diff_stats.remove(&completion.workspace_path);
+                }
                 self.telemetry.event_log.log(
                     LogEvent::new("diff_poll", "capture_completed")
                         .with_data(
@@ -146,7 +159,23 @@ impl GroveApp {
         }
     }
 
+    pub(super) fn handle_diff_stat_completed(&mut self, completion: DiffStatCompletion) {
+        self.polling.diff_stat_in_flight = false;
+        if completion.insertions > 0 || completion.deletions > 0 {
+            self.workspace_diff_stats.insert(
+                completion.workspace_path,
+                DiffStatBadge {
+                    insertions: completion.insertions,
+                    deletions: completion.deletions,
+                },
+            );
+        } else {
+            self.workspace_diff_stats.remove(&completion.workspace_path);
+        }
+    }
+
     pub(super) fn maybe_poll_diff(&mut self) {
+        self.maybe_poll_diff_stat();
         if self.preview_tab != PreviewTab::Diff {
             return;
         }
@@ -165,6 +194,51 @@ impl GroveApp {
         }
         self.polling.last_diff_poll_at = Some(now);
         self.poll_diff_for_selected_workspace();
+    }
+
+    fn maybe_poll_diff_stat(&mut self) {
+        if self.polling.diff_stat_in_flight {
+            return;
+        }
+        let Some(workspace) = self.state.selected_workspace() else {
+            return;
+        };
+        let now = Instant::now();
+        if let Some(last) = self.polling.last_diff_stat_poll_at
+            && now.saturating_duration_since(last)
+                < Duration::from_millis(DIFF_STAT_POLL_INTERVAL_MS)
+        {
+            return;
+        }
+        self.polling.last_diff_stat_poll_at = Some(now);
+        self.polling.diff_stat_in_flight = true;
+        let workspace_path = workspace.path.clone();
+        self.queue_cmd(Cmd::task(move || {
+            let result = std::process::Command::new("git")
+                .args(["diff", "HEAD", "--shortstat"])
+                .current_dir(&workspace_path)
+                .output();
+            let (insertions, deletions) = match result {
+                Ok(output) => {
+                    let stat_str = String::from_utf8_lossy(&output.stdout);
+                    let (_, ins, del) = parse_diff_stat_summary(&stat_str);
+                    (ins, del)
+                }
+                Err(_) => (0, 0),
+            };
+            Msg::DiffStatCompleted(DiffStatCompletion {
+                workspace_path,
+                insertions,
+                deletions,
+            })
+        }));
+    }
+
+    pub(super) fn diff_stat_for_workspace(
+        &self,
+        workspace_path: &std::path::Path,
+    ) -> Option<&DiffStatBadge> {
+        self.workspace_diff_stats.get(workspace_path)
     }
 }
 
@@ -207,5 +281,26 @@ mod tests {
     fn parse_diff_stat_summary_empty() {
         let (files, ins, del) = parse_diff_stat_summary("");
         assert_eq!((files, ins, del), (0, 0, 0));
+    }
+
+    #[test]
+    fn parse_diff_stat_summary_shortstat_output() {
+        let stat = " 3 files changed, 47 insertions(+), 12 deletions(-)";
+        let (files, ins, del) = parse_diff_stat_summary(stat);
+        assert_eq!((files, ins, del), (3, 47, 12));
+    }
+
+    #[test]
+    fn parse_diff_stat_summary_insertions_only() {
+        let stat = " 1 file changed, 5 insertions(+)";
+        let (files, ins, del) = parse_diff_stat_summary(stat);
+        assert_eq!((files, ins, del), (1, 5, 0));
+    }
+
+    #[test]
+    fn parse_diff_stat_summary_deletions_only() {
+        let stat = " 2 files changed, 8 deletions(-)";
+        let (files, ins, del) = parse_diff_stat_summary(stat);
+        assert_eq!((files, ins, del), (2, 0, 8));
     }
 }

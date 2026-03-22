@@ -28,7 +28,15 @@ pub(super) enum Msg {
     RestartAgentCompleted(RestartAgentCompletion),
     InteractiveSendCompleted(InteractiveSendCompletion),
     DiffCaptureCompleted(DiffCaptureCompletion),
+    DiffStatCompleted(DiffStatCompletion),
     Noop,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct DiffStatCompletion {
+    pub(super) workspace_path: PathBuf,
+    pub(super) insertions: usize,
+    pub(super) deletions: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

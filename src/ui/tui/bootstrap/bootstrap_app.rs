@@ -209,6 +209,8 @@ impl GroveApp {
                 activity_animation: AnimationClock::new(),
                 poll_generation: 0,
                 last_diff_poll_at: None,
+                last_diff_stat_poll_at: None,
+                diff_stat_in_flight: false,
                 preview_stream: PreviewStreamState::default(),
             },
             workspace_attention: HashMap::new(),
@@ -255,6 +257,7 @@ impl GroveApp {
             preview_scroll: RefCell::new(Virtualized::external(0, 0).with_follow(true)),
             sidebar_list_state: RefCell::new(VirtualizedListState::new().with_overscan(0)),
             last_sidebar_mouse_scroll_at: None,
+            workspace_diff_stats: HashMap::new(),
             last_sidebar_mouse_scroll_delta: 0,
             #[cfg(test)]
             task_root_override: None,

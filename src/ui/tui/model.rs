@@ -301,7 +301,15 @@ struct PollingState {
     activity_animation: AnimationClock,
     poll_generation: u64,
     last_diff_poll_at: Option<Instant>,
+    last_diff_stat_poll_at: Option<Instant>,
+    diff_stat_in_flight: bool,
     preview_stream: PreviewStreamState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DiffStatBadge {
+    insertions: usize,
+    deletions: usize,
 }
 
 struct PerformanceState {
@@ -392,6 +400,7 @@ struct GroveApp {
     preview_scroll: RefCell<Virtualized<()>>,
     sidebar_list_state: RefCell<VirtualizedListState>,
     last_sidebar_mouse_scroll_at: Option<Instant>,
+    workspace_diff_stats: HashMap<PathBuf, DiffStatBadge>,
     last_sidebar_mouse_scroll_delta: i8,
     #[cfg(test)]
     task_root_override: Option<PathBuf>,

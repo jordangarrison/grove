@@ -116,6 +116,10 @@ impl GroveApp {
                 self.handle_diff_capture_completed(completion);
                 Cmd::None
             }
+            Msg::DiffStatCompleted(completion) => {
+                self.handle_diff_stat_completed(completion);
+                Cmd::None
+            }
             Msg::Noop => Cmd::None,
         };
         self.sync_preview_stream_target();
