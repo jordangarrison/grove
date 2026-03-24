@@ -2,7 +2,6 @@ use super::view_prelude::*;
 use crate::application::preview::{PreviewParsedLine, PreviewParsedSpan, PreviewParsedStyle};
 
 type AnimatedPreviewLabels = Vec<(String, u16, u16)>;
-const PREVIEW_MIN_CONTRAST_RATIO: f64 = 4.5;
 
 impl GroveApp {
     pub(super) fn preview_metadata_lines_and_labels(
@@ -283,18 +282,18 @@ fn parsed_preview_line_to_ft_line(line: &PreviewParsedLine, theme: UiTheme) -> F
     )
 }
 
-fn parsed_preview_span_to_ft_span(span: &PreviewParsedSpan, theme: UiTheme) -> FtSpan<'static> {
-    if let Some(style) = parsed_preview_style_to_ft_style(&span.style, theme) {
+fn parsed_preview_span_to_ft_span(span: &PreviewParsedSpan, _theme: UiTheme) -> FtSpan<'static> {
+    if let Some(style) = parsed_preview_style_to_ft_style(&span.style) {
         FtSpan::styled(span.text.clone(), style)
     } else {
         FtSpan::raw(span.text.clone())
     }
 }
 
-fn parsed_preview_style_to_ft_style(style: &PreviewParsedStyle, theme: UiTheme) -> Option<Style> {
+fn parsed_preview_style_to_ft_style(style: &PreviewParsedStyle) -> Option<Style> {
     let mut ft_style = Style::new();
 
-    let foreground = preview_foreground_color(style, theme);
+    let foreground = preview_foreground_color(style);
     let background = preview_background_color(style);
 
     if let Some(color) = foreground {
@@ -332,38 +331,17 @@ fn parsed_preview_style_to_ft_style(style: &PreviewParsedStyle, theme: UiTheme) 
     }
 }
 
-fn preview_foreground_color(style: &PreviewParsedStyle, theme: UiTheme) -> Option<PackedRgba> {
+fn preview_foreground_color(style: &PreviewParsedStyle) -> Option<PackedRgba> {
     let foreground = packed_rgb(style.foreground_rgb)?;
     if style.reverse {
         return Some(foreground);
     }
 
-    let background = preview_effective_background(style, theme);
-    if ftui::style::contrast_ratio_packed(foreground, background) >= PREVIEW_MIN_CONTRAST_RATIO {
-        return Some(foreground);
-    }
-
-    let candidates = [
-        foreground,
-        theme.text,
-        theme.subtext1,
-        theme.blue,
-        theme.green,
-        theme.yellow,
-        theme.red,
-        theme.teal,
-        theme.peach,
-        theme.mauve,
-    ];
-    Some(ftui::style::best_text_color_packed(background, &candidates))
+    Some(foreground)
 }
 
 fn preview_background_color(style: &PreviewParsedStyle) -> Option<PackedRgba> {
     packed_rgb(style.background_rgb)
-}
-
-fn preview_effective_background(style: &PreviewParsedStyle, theme: UiTheme) -> PackedRgba {
-    preview_background_color(style).unwrap_or(theme.base)
 }
 
 fn packed_rgb(color: Option<(u8, u8, u8)>) -> Option<PackedRgba> {

@@ -365,6 +365,20 @@ mod tests {
     }
 
     #[test]
+    fn apply_capture_builds_plain_and_styled_preview_from_colon_delimited_ansi() {
+        let mut state = PreviewState::new();
+
+        state.apply_capture("a\u{1b}[38:2::255:0:0mb\u{1b}[0mc");
+
+        assert_eq!(state.lines, vec!["abc".to_string()]);
+        assert_eq!(state.parsed_lines.len(), 1);
+        let line = &state.parsed_lines[0];
+        assert_eq!(line.spans.len(), 3);
+        assert_eq!(line.spans[1].text, "b");
+        assert_eq!(line.spans[1].style.foreground_rgb, Some((255, 0, 0)));
+    }
+
+    #[test]
     fn apply_capture_carries_style_across_lines_until_reset() {
         let mut state = PreviewState::new();
 

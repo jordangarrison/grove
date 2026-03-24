@@ -18,7 +18,9 @@ pub(crate) fn evaluate_capture_change(
     previous: Option<&OutputDigest>,
     raw_output: &str,
 ) -> CaptureChange {
-    let (render_output, cleaned_without_sgr) = strip_non_sgr_control_sequences(raw_output);
+    let normalized_output = normalize_colon_delimited_sgr_sequences(raw_output);
+    let (render_output, cleaned_without_sgr) =
+        strip_non_sgr_control_sequences(normalized_output.as_str());
     let cleaned_output = strip_mouse_fragments(&cleaned_without_sgr);
     let digest = OutputDigest {
         raw_hash: content_hash(raw_output),
@@ -51,6 +53,55 @@ fn is_safe_clean_text_character(character: char) -> bool {
 
 fn is_safe_render_text_character(character: char) -> bool {
     matches!(character, '\r' | '\n' | '\t') || !character.is_control()
+}
+
+fn normalize_colon_delimited_sgr_sequences(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut output = String::with_capacity(input.len());
+    let mut index = 0usize;
+
+    while index < bytes.len() {
+        if bytes[index] == b'\x1b' && bytes.get(index.saturating_add(1)) == Some(&b'[') {
+            let mut scan = index.saturating_add(2);
+            while scan < bytes.len() {
+                let final_byte = bytes[scan];
+                if (b'@'..=b'~').contains(&final_byte) {
+                    let params = &input[index.saturating_add(2)..scan];
+                    if final_byte == b'm' && params.contains(':') {
+                        output.push_str("\x1b[");
+                        output.push_str(&normalize_sgr_params(params));
+                        output.push('m');
+                    } else {
+                        output.push_str(&input[index..scan.saturating_add(1)]);
+                    }
+                    index = scan.saturating_add(1);
+                    break;
+                }
+                scan = scan.saturating_add(1);
+            }
+            if scan >= bytes.len() {
+                output.push_str(&input[index..]);
+                break;
+            }
+            continue;
+        }
+
+        let Some(character) = input[index..].chars().next() else {
+            break;
+        };
+        output.push(character);
+        index = index.saturating_add(character.len_utf8());
+    }
+
+    output
+}
+
+fn normalize_sgr_params(params: &str) -> String {
+    params
+        .split(';')
+        .flat_map(|segment| segment.split(':').filter(|value| !value.is_empty()))
+        .collect::<Vec<_>>()
+        .join(";")
 }
 
 pub(crate) fn strip_mouse_fragments(input: &str) -> String {
@@ -297,7 +348,9 @@ fn content_hash(content: &str) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{evaluate_capture_change, strip_mouse_fragments};
+    use super::{
+        evaluate_capture_change, normalize_colon_delimited_sgr_sequences, strip_mouse_fragments,
+    };
     use crate::application::agent_runtime::CaptureChange;
 
     #[test]
@@ -328,6 +381,17 @@ mod tests {
         let change = evaluate_capture_change(None, raw);
         assert_eq!(change.cleaned_output, "AB C\n");
         assert_eq!(change.render_output, "A\u{1b}[31mB\u{1b}[39m C\n");
+    }
+
+    #[test]
+    fn capture_change_normalizes_colon_delimited_sgr_sequences() {
+        let raw = "A\u{1b}[1;38:2::255:0:0mB\u{1b}[48:5:196mC\u{1b}[0m";
+        let change = evaluate_capture_change(None, raw);
+        assert_eq!(change.cleaned_output, "ABC");
+        assert_eq!(
+            change.render_output,
+            "A\u{1b}[1;38;2;255;0;0mB\u{1b}[48;5;196mC\u{1b}[0m"
+        );
     }
 
     #[test]
@@ -394,5 +458,17 @@ mod tests {
     fn strip_mouse_fragments_preserves_non_mouse_candidate_prefixes() {
         assert_eq!(strip_mouse_fragments("Mnot-mouse"), "Mnot-mouse");
         assert_eq!(strip_mouse_fragments("text [<x;1;2"), "text [<x;1;2");
+    }
+
+    #[test]
+    fn normalize_colon_delimited_sgr_sequences_rewrites_linux_style_colors() {
+        assert_eq!(
+            normalize_colon_delimited_sgr_sequences("\u{1b}[1;38:2::255:0:0mboom\u{1b}[0m"),
+            "\u{1b}[1;38;2;255;0;0mboom\u{1b}[0m"
+        );
+        assert_eq!(
+            normalize_colon_delimited_sgr_sequences("\u{1b}[48:5:196m!\u{1b}[0m"),
+            "\u{1b}[48;5;196m!\u{1b}[0m"
+        );
     }
 }

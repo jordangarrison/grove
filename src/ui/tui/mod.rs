@@ -7558,13 +7558,59 @@ mod tests {
     }
 
     #[test]
-    fn preview_pane_adjusts_low_contrast_ansi_foreground_against_theme_background() {
+    fn preview_pane_renders_colon_delimited_ansi_colors() {
+        let mut colon_app = fixture_app();
+        colon_app
+            .preview
+            .apply_capture("\u{1b}[38:2::255:0:0mError\u{1b}[0m: build failed");
+        let mut semicolon_app = fixture_app();
+        semicolon_app
+            .preview
+            .apply_capture("\u{1b}[38;2;255;0;0mError\u{1b}[0m: build failed");
+
+        let layout = colon_app.panes.test_rects(80, 24);
+        let x_start = layout.preview.x.saturating_add(1);
+        let x_end = layout.preview.right().saturating_sub(1);
+        let mut colon_fg = None;
+        with_rendered_frame(&colon_app, 80, 24, |frame| {
+            let Some(row) = find_row_containing(frame, "Error", x_start, x_end) else {
+                panic!("error row should be present in preview pane");
+            };
+            let Some(e_col) = find_cell_with_char(frame, row, x_start, x_end, 'E') else {
+                panic!("error row should include first character column");
+            };
+            let Some(cell) = frame.buffer.get(e_col, row) else {
+                panic!("rendered error cell should exist");
+            };
+
+            colon_fg = Some(cell.fg);
+        });
+
+        let mut semicolon_fg = None;
+        with_rendered_frame(&semicolon_app, 80, 24, |frame| {
+            let Some(row) = find_row_containing(frame, "Error", x_start, x_end) else {
+                panic!("error row should be present in preview pane");
+            };
+            let Some(e_col) = find_cell_with_char(frame, row, x_start, x_end, 'E') else {
+                panic!("error row should include first character column");
+            };
+            let Some(cell) = frame.buffer.get(e_col, row) else {
+                panic!("rendered error cell should exist");
+            };
+
+            semicolon_fg = Some(cell.fg);
+        });
+
+        assert_eq!(colon_fg, semicolon_fg);
+    }
+
+    #[test]
+    fn preview_pane_preserves_exact_ansi_foreground_against_theme_background() {
         let mut app = fixture_app();
         app.preview
             .apply_capture("\u{1b}[34mconst\u{1b}[0m value = 1");
 
         let raw_blue = PackedRgba::rgb(0, 0, 170);
-        assert!(ftui::style::contrast_ratio_packed(raw_blue, ui_theme().base) < 4.5);
 
         let layout = app.panes.test_rects(80, 24);
         let x_start = layout.preview.x.saturating_add(1);
@@ -7581,8 +7627,7 @@ mod tests {
                 panic!("rendered const cell should exist");
             };
 
-            assert_ne!(cell.fg, raw_blue);
-            assert!(ftui::style::contrast_ratio_packed(cell.fg, ui_theme().base) >= 4.5);
+            assert_eq!(cell.fg, raw_blue);
         });
     }
 
