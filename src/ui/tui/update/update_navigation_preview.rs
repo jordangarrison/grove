@@ -377,7 +377,7 @@ impl GroveApp {
         self.selected_shell_preview_session_if_ready()
     }
 
-    fn sync_live_preview_session_geometry(&mut self, session_name: &str) {
+    pub(in crate::ui::tui) fn sync_live_preview_session_geometry(&mut self, session_name: &str) {
         if self.interactive_target_session().as_deref() == Some(session_name) {
             return;
         }

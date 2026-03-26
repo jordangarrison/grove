@@ -34,6 +34,7 @@ pub(in crate::ui::tui) struct PreviewStreamState {
     pub(in crate::ui::tui) connected_session: Option<String>,
     pub(in crate::ui::tui) generation: u64,
     pub(in crate::ui::tui) bootstrap_completed: bool,
+    pub(in crate::ui::tui) reconciliation_pending: bool,
     pub(in crate::ui::tui) last_chunk_bytes: usize,
     pub(in crate::ui::tui) source: PreviewStreamSource,
     pub(in crate::ui::tui) buffer: String,
@@ -46,6 +47,7 @@ impl Default for PreviewStreamState {
             connected_session: None,
             generation: 0,
             bootstrap_completed: false,
+            reconciliation_pending: false,
             last_chunk_bytes: 0,
             source: PreviewStreamSource::Disconnected,
             buffer: String::new(),
@@ -87,8 +89,9 @@ impl GroveApp {
         &self,
         session_name: &str,
     ) -> bool {
-        let _ = session_name;
-        false
+        self.preview_stream_is_healthy_for_session(session_name)
+            && self.polling.preview_stream.bootstrap_completed
+            && !self.polling.preview_stream.reconciliation_pending
     }
 
     pub(in crate::ui::tui) fn sync_preview_stream_target(&mut self) {
@@ -98,6 +101,7 @@ impl GroveApp {
             if desired.is_none() {
                 self.polling.preview_stream.connected_session = None;
                 self.polling.preview_stream.bootstrap_completed = false;
+                self.polling.preview_stream.reconciliation_pending = false;
                 self.polling.preview_stream.source = PreviewStreamSource::Disconnected;
                 self.polling.preview_stream.buffer.clear();
             }
@@ -109,6 +113,7 @@ impl GroveApp {
         self.polling.preview_stream.target_session = desired.clone();
         self.polling.preview_stream.connected_session = None;
         self.polling.preview_stream.bootstrap_completed = false;
+        self.polling.preview_stream.reconciliation_pending = false;
         self.polling.preview_stream.last_chunk_bytes = 0;
         self.polling.preview_session_geometry = None;
         if previous.is_some() {
@@ -122,6 +127,9 @@ impl GroveApp {
             PreviewStreamSource::Disconnected
         };
         self.polling.preview_stream.buffer.clear();
+        if let Some(session_name) = desired {
+            self.sync_live_preview_session_geometry(session_name.as_str());
+        }
     }
 
     fn preview_stream_matches(&self, session_name: &str, generation: u64) -> bool {
@@ -164,10 +172,49 @@ impl GroveApp {
             return;
         }
 
-        self.preview.clear_selected_terminal();
         self.polling.preview_stream.last_chunk_bytes = output.chunk.len();
-        self.polling.preview_stream.buffer = output.chunk.clone();
-        self.poll_preview_prioritized();
+        self.polling
+            .preview_stream
+            .buffer
+            .push_str(output.chunk.as_str());
+
+        let geometry = self
+            .polling
+            .preview_session_geometry
+            .as_ref()
+            .filter(|geometry| geometry.session == output.session)
+            .cloned();
+
+        if let Some(geometry) = geometry {
+            if self.polling.preview_stream.bootstrap_completed {
+                if self.preview.selected_terminal().is_some() {
+                    self.preview
+                        .apply_selected_terminal_chunk(output.chunk.as_str());
+                } else {
+                    self.preview.bootstrap_selected_terminal_from_stream(
+                        self.polling.preview_stream.buffer.as_str(),
+                        geometry.width,
+                        geometry.height,
+                    );
+                }
+            } else {
+                self.preview.bootstrap_selected_terminal_from_stream(
+                    self.polling.preview_stream.buffer.as_str(),
+                    geometry.width,
+                    geometry.height,
+                );
+                self.polling.preview_stream.bootstrap_completed = true;
+                self.polling.preview_stream.reconciliation_pending = true;
+            }
+        } else {
+            self.preview.clear_selected_terminal();
+        }
+
+        if !self.polling.preview_stream.bootstrap_completed
+            || self.polling.preview_stream.reconciliation_pending
+        {
+            self.poll_preview_prioritized();
+        }
     }
 
     fn handle_preview_stream_disconnect(&mut self, disconnect: PreviewStreamDisconnected) {
@@ -187,9 +234,11 @@ impl GroveApp {
 
         self.polling.preview_stream.connected_session = None;
         self.polling.preview_stream.bootstrap_completed = true;
+        self.polling.preview_stream.reconciliation_pending = false;
         self.polling.preview_stream.last_chunk_bytes = 0;
         self.polling.preview_stream.source = PreviewStreamSource::Fallback;
         self.preview.clear_selected_terminal();
+        self.polling.preview_stream.buffer.clear();
         self.session.last_tmux_error = disconnect.error.clone();
         let mut event = LogEvent::new("preview_stream", "disconnected")
             .with_data("session", Value::from(disconnect.session.clone()))
@@ -222,9 +271,9 @@ impl GroveApp {
         if self.polling.preview_stream.target_session.as_deref() != Some(session_name) {
             return;
         }
-        self.preview.clear_selected_terminal();
         self.polling.preview_stream.buffer.clear();
         self.polling.preview_stream.bootstrap_completed = true;
+        self.polling.preview_stream.reconciliation_pending = false;
         if self.polling.preview_stream.source == PreviewStreamSource::Connecting {
             self.telemetry.event_log.log(
                 LogEvent::new("preview_stream", "bootstrap_completed")

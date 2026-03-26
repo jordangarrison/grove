@@ -237,8 +237,9 @@ mod tests {
         HelpHintContext, LaunchDialogField, LaunchDialogState, LaunchDialogTarget,
         LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, MergeWorkspaceCompletion,
         Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion,
-        PreviewStreamDisconnected, PreviewStreamEvent, PreviewStreamOutput, PreviewStreamSource,
-        PreviewTab, ProjectAddDialogField, ProjectDefaultsDialogField, PullUpstreamDialogField,
+        PreviewSessionGeometry, PreviewStreamConnected, PreviewStreamDisconnected,
+        PreviewStreamEvent, PreviewStreamOutput, PreviewStreamSource, PreviewTab,
+        ProjectAddDialogField, ProjectDefaultsDialogField, PullUpstreamDialogField,
         RefreshWorkspacesCompletion, SettingsDialogField, StartAgentCompletion,
         StartAgentConfigField, StartAgentConfigState, StopAgentCompletion, StopDialogField,
         TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WorkspaceAttention,
@@ -7012,7 +7013,13 @@ mod tests {
         app.mark_preview_stream_bootstrap_completed(&feature_workspace_session());
 
         assert_eq!(app.preview.lines, vec!["snapshot line".to_string()]);
-        assert!(app.preview.selected_terminal().is_none());
+        assert_eq!(
+            app.preview
+                .selected_terminal()
+                .expect("snapshot should seed selected terminal")
+                .plain_lines[0],
+            "snapshot line"
+        );
         assert_eq!(
             app.polling.preview_stream.connected_session,
             Some(feature_workspace_session())
@@ -7022,7 +7029,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_stream_output_does_not_render_partial_terminal_before_bootstrap() {
+    fn preview_stream_output_bootstraps_selected_terminal_when_geometry_known() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
         app.state.focus = PaneFocus::Preview;
@@ -7033,6 +7040,11 @@ mod tests {
             .mark_ready(feature_workspace_session());
         app.preview.apply_capture("stale snapshot\n");
         app.sync_preview_stream_target();
+        app.polling.preview_session_geometry = Some(PreviewSessionGeometry {
+            session: feature_workspace_session(),
+            width: 80,
+            height: 24,
+        });
         let generation = app.polling.preview_stream.generation;
 
         ftui::Model::update(
@@ -7044,9 +7056,52 @@ mod tests {
             })),
         );
 
-        assert!(app.preview.selected_terminal().is_none());
-        assert_eq!(app.preview.lines, vec!["stale snapshot".to_string()]);
-        assert!(!app.polling.preview_stream.bootstrap_completed);
+        let selected_terminal = app
+            .preview
+            .selected_terminal()
+            .expect("stream output should bootstrap selected terminal");
+        assert_eq!(selected_terminal.plain_lines[0], "partial prompt update");
+        assert!(app.polling.preview_stream.bootstrap_completed);
+    }
+
+    #[test]
+    fn healthy_preview_stream_output_updates_without_selected_poll() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.sync_preview_stream_target();
+        app.polling.preview_session_geometry = Some(PreviewSessionGeometry {
+            session: feature_workspace_session(),
+            width: 80,
+            height: 24,
+        });
+        app.polling.preview_stream.connected_session = Some(feature_workspace_session());
+        app.polling.preview_stream.source = PreviewStreamSource::Stream;
+        app.polling.preview_stream.bootstrap_completed = true;
+        app.preview
+            .bootstrap_selected_terminal("partial prompt", 80, 24, (14, 0), true);
+        let generation = app.polling.preview_stream.generation;
+
+        let cmd = ftui::Model::update(
+            &mut app,
+            Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
+                session: feature_workspace_session(),
+                generation,
+                chunk: " update".to_string(),
+            })),
+        );
+
+        assert!(!cmd_contains_task(&cmd));
+        let selected_terminal = app
+            .preview
+            .selected_terminal()
+            .expect("selected terminal should remain available");
+        assert_eq!(selected_terminal.plain_lines[0], "partial prompt update");
     }
 
     #[test]
@@ -7073,7 +7128,65 @@ mod tests {
         );
 
         assert!(cmd_contains_task(&cmd));
-        assert!(app.preview.selected_terminal().is_none());
+        assert_eq!(
+            app.preview
+                .selected_terminal()
+                .expect("first stream chunk should bootstrap selected terminal")
+                .plain_lines[0],
+            "delta line"
+        );
+    }
+
+    #[test]
+    fn connected_preview_stream_snapshot_does_not_enter_terminal_wrap_mode() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.sync_preview_stream_target();
+        let generation = app.polling.preview_stream.generation;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewStreamEvent(PreviewStreamEvent::Connected(PreviewStreamConnected {
+                session: feature_workspace_session(),
+                generation,
+            })),
+        );
+
+        app.apply_live_preview_capture(
+            &feature_workspace_session(),
+            crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES,
+            true,
+            0,
+            0,
+            Ok("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nsecond row\n".to_string()),
+        );
+
+        ftui::Model::update(
+            &mut app,
+            Msg::Resize {
+                width: 100,
+                height: 40,
+            },
+        );
+
+        let layout = app.panes.test_rects(100, 40);
+        let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+        let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+        let x_start = layout.preview.x.saturating_add(1);
+        let x_end = layout.preview.right().saturating_sub(1);
+        with_rendered_frame(&app, 100, 40, |frame| {
+            let second_row = row_text(frame, output_y.saturating_add(1), x_start, x_end);
+            assert!(
+                second_row.contains("second row"),
+                "expected snapshot rendering to preserve second row without terminal wrapping, got: {second_row}"
+            );
+        });
     }
 
     #[test]
