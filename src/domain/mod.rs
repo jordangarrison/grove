@@ -1,5 +1,73 @@
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PermissionMode {
+    #[default]
+    Default,
+    Auto,
+    Unsafe,
+}
+
+impl PermissionMode {
+    pub const fn next_for_agent(self, agent: AgentType) -> Self {
+        match agent {
+            AgentType::Claude => match self {
+                Self::Default => Self::Auto,
+                Self::Auto => Self::Unsafe,
+                Self::Unsafe => Self::Default,
+            },
+            AgentType::Codex | AgentType::OpenCode => match self {
+                Self::Default => Self::Unsafe,
+                Self::Auto | Self::Unsafe => Self::Default,
+            },
+        }
+    }
+
+    pub const fn next_global(self) -> Self {
+        match self {
+            Self::Default => Self::Auto,
+            Self::Auto => Self::Unsafe,
+            Self::Unsafe => Self::Default,
+        }
+    }
+
+    pub const fn is_unsafe(self) -> bool {
+        matches!(self, Self::Unsafe)
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Auto => "auto",
+            Self::Unsafe => "unsafe",
+        }
+    }
+
+    pub fn from_legacy_bool(value: bool) -> Self {
+        if value { Self::Unsafe } else { Self::Default }
+    }
+
+    pub fn from_marker(value: &str) -> Option<Self> {
+        match value.trim() {
+            "true" | "1" | "unsafe" => Some(Self::Unsafe),
+            "auto" => Some(Self::Auto),
+            "false" | "0" | "default" => Some(Self::Default),
+            _ => None,
+        }
+    }
+
+    pub const fn marker(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Auto => "auto",
+            Self::Unsafe => "unsafe",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentType {
     Claude,
@@ -352,8 +420,8 @@ impl Task {
 #[cfg(test)]
 mod tests {
     use super::{
-        AgentType, PullRequest, PullRequestStatus, Task, TaskValidationError, Workspace,
-        WorkspaceStatus, WorkspaceValidationError, Worktree, WorktreeValidationError,
+        AgentType, PermissionMode, PullRequest, PullRequestStatus, Task, TaskValidationError,
+        Workspace, WorkspaceStatus, WorkspaceValidationError, Worktree, WorktreeValidationError,
     };
     use std::path::PathBuf;
 
@@ -611,5 +679,119 @@ mod tests {
             ),
             Err(TaskValidationError::EmptyWorktrees)
         );
+    }
+
+    #[test]
+    fn permission_mode_cycles_claude_through_three_states() {
+        let mut mode = PermissionMode::Default;
+        mode = mode.next_for_agent(AgentType::Claude);
+        assert_eq!(mode, PermissionMode::Auto);
+        mode = mode.next_for_agent(AgentType::Claude);
+        assert_eq!(mode, PermissionMode::Unsafe);
+        mode = mode.next_for_agent(AgentType::Claude);
+        assert_eq!(mode, PermissionMode::Default);
+    }
+
+    #[test]
+    fn permission_mode_cycles_codex_through_two_states() {
+        let mut mode = PermissionMode::Default;
+        mode = mode.next_for_agent(AgentType::Codex);
+        assert_eq!(mode, PermissionMode::Unsafe);
+        mode = mode.next_for_agent(AgentType::Codex);
+        assert_eq!(mode, PermissionMode::Default);
+    }
+
+    #[test]
+    fn permission_mode_cycles_opencode_through_two_states() {
+        let mut mode = PermissionMode::Default;
+        mode = mode.next_for_agent(AgentType::OpenCode);
+        assert_eq!(mode, PermissionMode::Unsafe);
+        mode = mode.next_for_agent(AgentType::OpenCode);
+        assert_eq!(mode, PermissionMode::Default);
+    }
+
+    #[test]
+    fn permission_mode_codex_auto_falls_back_to_default() {
+        let mode = PermissionMode::Auto;
+        assert_eq!(
+            mode.next_for_agent(AgentType::Codex),
+            PermissionMode::Default
+        );
+    }
+
+    #[test]
+    fn permission_mode_global_cycles_three_states() {
+        let mut mode = PermissionMode::Default;
+        mode = mode.next_global();
+        assert_eq!(mode, PermissionMode::Auto);
+        mode = mode.next_global();
+        assert_eq!(mode, PermissionMode::Unsafe);
+        mode = mode.next_global();
+        assert_eq!(mode, PermissionMode::Default);
+    }
+
+    #[test]
+    fn permission_mode_from_marker_parses_legacy_and_new_values() {
+        assert_eq!(
+            PermissionMode::from_marker("true"),
+            Some(PermissionMode::Unsafe)
+        );
+        assert_eq!(
+            PermissionMode::from_marker("1"),
+            Some(PermissionMode::Unsafe)
+        );
+        assert_eq!(
+            PermissionMode::from_marker("unsafe"),
+            Some(PermissionMode::Unsafe)
+        );
+        assert_eq!(
+            PermissionMode::from_marker("auto"),
+            Some(PermissionMode::Auto)
+        );
+        assert_eq!(
+            PermissionMode::from_marker("false"),
+            Some(PermissionMode::Default)
+        );
+        assert_eq!(
+            PermissionMode::from_marker("0"),
+            Some(PermissionMode::Default)
+        );
+        assert_eq!(
+            PermissionMode::from_marker("default"),
+            Some(PermissionMode::Default)
+        );
+        assert_eq!(PermissionMode::from_marker("garbage"), None);
+    }
+
+    #[test]
+    fn permission_mode_from_legacy_bool() {
+        assert_eq!(
+            PermissionMode::from_legacy_bool(true),
+            PermissionMode::Unsafe
+        );
+        assert_eq!(
+            PermissionMode::from_legacy_bool(false),
+            PermissionMode::Default
+        );
+    }
+
+    #[test]
+    fn permission_mode_is_unsafe() {
+        assert!(!PermissionMode::Default.is_unsafe());
+        assert!(!PermissionMode::Auto.is_unsafe());
+        assert!(PermissionMode::Unsafe.is_unsafe());
+    }
+
+    #[test]
+    fn permission_mode_serde_roundtrip() {
+        for mode in [
+            PermissionMode::Default,
+            PermissionMode::Auto,
+            PermissionMode::Unsafe,
+        ] {
+            let json = serde_json::to_string(&mode).expect("should serialize");
+            let parsed: PermissionMode = serde_json::from_str(&json).expect("should deserialize");
+            assert_eq!(parsed, mode);
+        }
     }
 }

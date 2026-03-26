@@ -6,7 +6,7 @@ mod shared;
 use std::path::Path;
 use std::time::Duration;
 
-use crate::domain::{AgentType, WorkspaceStatus};
+use crate::domain::{AgentType, PermissionMode, WorkspaceStatus};
 
 #[cfg(test)]
 pub(super) use claude::project_dir_name as claude_project_dir_name;
@@ -19,43 +19,54 @@ pub(super) fn restart_exit_input(agent: AgentType) -> Option<super::RestartExitI
     }
 }
 
-pub(super) fn resume_command_with_skip_permissions(
+pub(super) fn resume_command_with_permission_mode(
     agent: AgentType,
     command: &str,
-    skip_permissions: bool,
+    permission_mode: PermissionMode,
 ) -> String {
-    if !skip_permissions {
-        return command.to_string();
-    }
-
-    match agent {
-        AgentType::Claude => {
-            if command.contains("--dangerously-skip-permissions") {
-                return command.to_string();
+    match permission_mode {
+        PermissionMode::Default => command.to_string(),
+        PermissionMode::Auto => match agent {
+            AgentType::Claude => {
+                if command.contains("--enable-auto-mode") {
+                    return command.to_string();
+                }
+                if let Some(remainder) = command.strip_prefix("claude ") {
+                    return format!("claude --enable-auto-mode {remainder}");
+                }
+                command.to_string()
             }
-            if let Some(remainder) = command.strip_prefix("claude ") {
-                return format!("claude --dangerously-skip-permissions {remainder}");
+            _ => command.to_string(),
+        },
+        PermissionMode::Unsafe => match agent {
+            AgentType::Claude => {
+                if command.contains("--dangerously-skip-permissions") {
+                    return command.to_string();
+                }
+                if let Some(remainder) = command.strip_prefix("claude ") {
+                    return format!("claude --dangerously-skip-permissions {remainder}");
+                }
+                command.to_string()
             }
-            command.to_string()
-        }
-        AgentType::Codex => {
-            if command.contains("--dangerously-bypass-approvals-and-sandbox") {
-                return command.to_string();
+            AgentType::Codex => {
+                if command.contains("--dangerously-bypass-approvals-and-sandbox") {
+                    return command.to_string();
+                }
+                if let Some(remainder) = command.strip_prefix("codex ") {
+                    return format!("codex --dangerously-bypass-approvals-and-sandbox {remainder}");
+                }
+                command.to_string()
             }
-            if let Some(remainder) = command.strip_prefix("codex ") {
-                return format!("codex --dangerously-bypass-approvals-and-sandbox {remainder}");
+            AgentType::OpenCode => {
+                if command.contains("OPENCODE_PERMISSION=") {
+                    return command.to_string();
+                }
+                format!(
+                    "OPENCODE_PERMISSION='{}' {command}",
+                    super::OPENCODE_UNSAFE_PERMISSION_JSON
+                )
             }
-            command.to_string()
-        }
-        AgentType::OpenCode => {
-            if command.contains("OPENCODE_PERMISSION=") {
-                return command.to_string();
-            }
-            format!(
-                "OPENCODE_PERMISSION='{}' {command}",
-                super::OPENCODE_UNSAFE_PERMISSION_JSON
-            )
-        }
+        },
     }
 }
 
@@ -67,15 +78,15 @@ pub(super) fn extract_resume_command(agent: AgentType, output: &str) -> Option<S
     }
 }
 
-pub(super) fn infer_skip_permissions_in_home(
+pub(super) fn infer_permission_mode_in_home(
     agent: AgentType,
     workspace_path: &Path,
     home_dir: &Path,
-) -> Option<bool> {
+) -> Option<PermissionMode> {
     match agent {
-        AgentType::Claude => claude::infer_skip_permissions_in_home(workspace_path, home_dir),
-        AgentType::Codex => codex::infer_skip_permissions_in_home(workspace_path, home_dir),
-        AgentType::OpenCode => opencode::infer_skip_permissions_in_home(workspace_path, home_dir),
+        AgentType::Claude => claude::infer_permission_mode_in_home(workspace_path, home_dir),
+        AgentType::Codex => codex::infer_permission_mode_in_home(workspace_path, home_dir),
+        AgentType::OpenCode => opencode::infer_permission_mode_in_home(workspace_path, home_dir),
     }
 }
 
@@ -122,8 +133,8 @@ pub(super) fn infer_resume_command_in_home(
 }
 
 #[cfg(test)]
-pub(super) fn codex_session_skip_permissions_mode(path: &Path) -> Option<bool> {
-    codex::session_skip_permissions_mode(path)
+pub(super) fn codex_session_permission_mode(path: &Path) -> Option<PermissionMode> {
+    codex::session_permission_mode(path)
 }
 
 pub(super) fn normalize_resume_session_id(value: &str) -> Option<String> {

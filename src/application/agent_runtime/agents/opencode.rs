@@ -7,7 +7,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use rusqlite::{Connection, OpenFlags};
 use serde::Deserialize;
 
-use crate::domain::WorkspaceStatus;
+use crate::domain::{PermissionMode, WorkspaceStatus};
 
 use super::shared;
 
@@ -114,13 +114,13 @@ pub(super) fn extract_resume_command(output: &str) -> Option<String> {
     found
 }
 
-pub(super) fn infer_skip_permissions_in_home(
+pub(super) fn infer_permission_mode_in_home(
     workspace_path: &Path,
     home_dir: &Path,
-) -> Option<bool> {
+) -> Option<PermissionMode> {
     let database_path = database_path_in_home(home_dir);
     let session = find_session_for_path_cached(&database_path, workspace_path)?;
-    session_skip_permissions_mode(&database_path, &session.session_id)
+    session_permission_mode(&database_path, &session.session_id)
 }
 
 pub(super) fn infer_resume_command_in_home(
@@ -171,7 +171,7 @@ pub(super) fn latest_attention_marker_in_home(
     ))
 }
 
-fn session_skip_permissions_mode(database_path: &Path, session_id: &str) -> Option<bool> {
+fn session_permission_mode(database_path: &Path, session_id: &str) -> Option<PermissionMode> {
     let connection = open_database(database_path)?;
     for ordering in ["DESC", "ASC"] {
         let query = format!(
@@ -185,8 +185,8 @@ fn session_skip_permissions_mode(database_path: &Path, session_id: &str) -> Opti
             })
             .ok()?;
         for row in rows.flatten() {
-            if let Some(skip_permissions) = shared::text_skip_permissions_mode(&row) {
-                return Some(skip_permissions);
+            if let Some(permission_mode) = shared::text_permission_mode(&row) {
+                return Some(permission_mode);
             }
         }
     }

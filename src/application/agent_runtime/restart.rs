@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::domain::{AgentType, Workspace};
+use crate::domain::{AgentType, PermissionMode, Workspace};
 
 use super::agents;
 use super::execution::execute_command_with;
@@ -45,21 +45,21 @@ fn restart_exit_plan(session_name: &str, exit_input: RestartExitInput) -> Vec<Ve
     }
 }
 
-fn resume_command_with_skip_permissions(
+fn resume_command_with_permission_mode(
     agent: AgentType,
     command: &str,
-    skip_permissions: bool,
+    permission_mode: PermissionMode,
 ) -> String {
-    agents::resume_command_with_skip_permissions(agent, command, skip_permissions)
+    agents::resume_command_with_permission_mode(agent, command, permission_mode)
 }
 
 fn restart_resume_command(
     session_name: &str,
     agent: AgentType,
     command: &str,
-    skip_permissions: bool,
+    permission_mode: PermissionMode,
 ) -> Vec<String> {
-    let command = resume_command_with_skip_permissions(agent, command, skip_permissions);
+    let command = resume_command_with_permission_mode(agent, command, permission_mode);
     vec![
         "tmux".to_string(),
         "send-keys".to_string(),
@@ -74,13 +74,16 @@ pub fn extract_agent_resume_command(agent: AgentType, output: &str) -> Option<St
     agents::extract_resume_command(agent, output)
 }
 
-pub fn infer_workspace_skip_permissions(agent: AgentType, workspace_path: &Path) -> Option<bool> {
+pub fn infer_workspace_permission_mode(
+    agent: AgentType,
+    workspace_path: &Path,
+) -> Option<PermissionMode> {
     let home_dir = dirs::home_dir()?;
     if !workspace_path.exists() {
         return None;
     }
 
-    agents::infer_skip_permissions_in_home(agent, workspace_path, &home_dir)
+    agents::infer_permission_mode_in_home(agent, workspace_path, &home_dir)
 }
 
 fn wait_for_resume_command(
@@ -138,7 +141,7 @@ fn truncate_excerpt(value: &str, max_chars: usize) -> String {
 
 pub fn restart_workspace_in_pane_with_io(
     workspace: &Workspace,
-    skip_permissions: bool,
+    permission_mode: PermissionMode,
     agent_env: &[(String, String)],
     mut execute: impl FnMut(&[String]) -> std::io::Result<()>,
     mut capture_output: impl FnMut(&str, usize, bool) -> std::io::Result<String>,
@@ -146,7 +149,7 @@ pub fn restart_workspace_in_pane_with_io(
     let home_dir = dirs::home_dir();
     restart_workspace_in_pane_with_io_in_home(
         workspace,
-        skip_permissions,
+        permission_mode,
         agent_env,
         &mut execute,
         &mut capture_output,
@@ -156,7 +159,7 @@ pub fn restart_workspace_in_pane_with_io(
 
 pub(super) fn restart_workspace_in_pane_with_io_in_home(
     workspace: &Workspace,
-    skip_permissions: bool,
+    permission_mode: PermissionMode,
     agent_env: &[(String, String)],
     mut execute: impl FnMut(&[String]) -> std::io::Result<()>,
     mut capture_output: impl FnMut(&str, usize, bool) -> std::io::Result<String>,
@@ -194,7 +197,7 @@ pub(super) fn restart_workspace_in_pane_with_io_in_home(
         &session_name,
         workspace.agent,
         resume_command.as_str(),
-        skip_permissions,
+        permission_mode,
     );
     execute_command_with(command.as_slice(), |command| execute(command))
         .map_err(|error| format!("restart resume command failed for '{session_name}': {error}"))
@@ -247,7 +250,7 @@ fn restart_agent_env_command(
 
 pub fn execute_restart_workspace_in_pane_with_result(
     workspace: &Workspace,
-    skip_permissions: bool,
+    permission_mode: PermissionMode,
     agent_env: Vec<(String, String)>,
 ) -> SessionExecutionResult {
     let workspace_name = workspace.name.clone();
@@ -255,7 +258,7 @@ pub fn execute_restart_workspace_in_pane_with_result(
     let session_name = session_name_for_workspace_ref(workspace);
     let result = restart_workspace_in_pane_with_io(
         workspace,
-        skip_permissions,
+        permission_mode,
         &agent_env,
         crate::infrastructure::process::execute_command,
         capture_output_with_process,
@@ -276,12 +279,12 @@ mod tests {
 
     use rusqlite::Connection;
 
-    use crate::domain::{AgentType, WorkspaceStatus};
+    use crate::domain::{AgentType, PermissionMode, WorkspaceStatus};
     use crate::test_support::unique_test_dir;
 
     use super::super::status::{
-        codex_session_skip_permissions_mode, infer_claude_skip_permissions_in_home,
-        infer_codex_skip_permissions_in_home, infer_opencode_skip_permissions_in_home,
+        codex_session_permission_mode, infer_claude_permission_mode_in_home,
+        infer_codex_permission_mode_in_home, infer_opencode_permission_mode_in_home,
     };
     use super::{
         execute_restart_workspace_in_pane_with_result, extract_agent_resume_command,
@@ -418,7 +421,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_session_skip_permissions_mode_detects_approval_policy() {
+    fn codex_session_permission_mode_detects_approval_policy() {
         let root = unique_test_dir("grove-codex-skip-mode");
         let session_file = root.join("session.jsonl");
         fs::write(
@@ -429,8 +432,8 @@ mod tests {
         )
         .expect("session file should be written");
         assert_eq!(
-            codex_session_skip_permissions_mode(&session_file),
-            Some(true)
+            codex_session_permission_mode(&session_file),
+            Some(PermissionMode::Unsafe)
         );
 
         fs::write(
@@ -441,15 +444,15 @@ mod tests {
         )
         .expect("session file should be rewritten");
         assert_eq!(
-            codex_session_skip_permissions_mode(&session_file),
-            Some(false)
+            codex_session_permission_mode(&session_file),
+            Some(PermissionMode::Default)
         );
 
         let _ = fs::remove_dir_all(root);
     }
 
     #[test]
-    fn infer_codex_skip_permissions_in_home_uses_workspace_session_file() {
+    fn infer_codex_permission_mode_in_home_uses_workspace_session_file() {
         let root = unique_test_dir("grove-codex-skip-infer");
         let home = root.join("home");
         let workspace_path = root.join("ws").join("feature-gamma");
@@ -498,15 +501,15 @@ mod tests {
         .expect("newer session rewrite should refresh mtime");
 
         assert_eq!(
-            infer_codex_skip_permissions_in_home(&workspace_path, &home),
-            Some(true)
+            infer_codex_permission_mode_in_home(&workspace_path, &home),
+            Some(PermissionMode::Unsafe)
         );
 
         let _ = fs::remove_dir_all(root);
     }
 
     #[test]
-    fn infer_claude_skip_permissions_in_home_uses_project_session_file() {
+    fn infer_claude_permission_mode_in_home_uses_project_session_file() {
         let root = unique_test_dir("grove-claude-skip-infer");
         let home = root.join("home");
         let workspace_path = root.join("ws").join("feature-zeta");
@@ -524,8 +527,8 @@ mod tests {
         )
         .expect("session file should be written");
         assert_eq!(
-            infer_claude_skip_permissions_in_home(&workspace_path, &home),
-            Some(true)
+            infer_claude_permission_mode_in_home(&workspace_path, &home),
+            Some(PermissionMode::Unsafe)
         );
 
         fs::write(
@@ -534,8 +537,8 @@ mod tests {
         )
         .expect("session file should be rewritten");
         assert_eq!(
-            infer_claude_skip_permissions_in_home(&workspace_path, &home),
-            Some(false)
+            infer_claude_permission_mode_in_home(&workspace_path, &home),
+            Some(PermissionMode::Default)
         );
 
         fs::write(
@@ -544,8 +547,8 @@ mod tests {
         )
         .expect("session file should be rewritten");
         assert_eq!(
-            infer_claude_skip_permissions_in_home(&workspace_path, &home),
-            Some(true)
+            infer_claude_permission_mode_in_home(&workspace_path, &home),
+            Some(PermissionMode::Unsafe)
         );
 
         fs::write(
@@ -554,15 +557,15 @@ mod tests {
         )
         .expect("session file should be rewritten");
         assert_eq!(
-            infer_claude_skip_permissions_in_home(&workspace_path, &home),
-            Some(false)
+            infer_claude_permission_mode_in_home(&workspace_path, &home),
+            Some(PermissionMode::Default)
         );
 
         let _ = fs::remove_dir_all(root);
     }
 
     #[test]
-    fn infer_opencode_skip_permissions_in_home_uses_message_data() {
+    fn infer_opencode_permission_mode_in_home_uses_message_data() {
         let root = unique_test_dir("grove-opencode-skip-infer");
         let home = root.join("home");
         let workspace_path = root.join("ws").join("feature-eta");
@@ -609,8 +612,8 @@ mod tests {
             .expect("message row should be inserted");
 
         assert_eq!(
-            infer_opencode_skip_permissions_in_home(&workspace_path, &home),
-            Some(true)
+            infer_opencode_permission_mode_in_home(&workspace_path, &home),
+            Some(PermissionMode::Unsafe)
         );
 
         let _ = fs::remove_dir_all(root);
@@ -650,7 +653,7 @@ mod tests {
 
         let result = restart_workspace_in_pane_with_io(
             &workspace,
-            false,
+            PermissionMode::Default,
             &[],
             |command| {
                 commands.push(command.to_vec());
@@ -705,7 +708,7 @@ mod tests {
 
         let result = restart_workspace_in_pane_with_io(
             &workspace,
-            false,
+            PermissionMode::Default,
             &[],
             |_command| Ok(()),
             |_session_name, _scrollback_lines, _include_escape_sequences| {
@@ -727,7 +730,7 @@ mod tests {
 
         let result = restart_workspace_in_pane_with_io(
             &workspace,
-            false,
+            PermissionMode::Default,
             &[],
             |_command| Ok(()),
             |_session_name, _scrollback_lines, _include_escape_sequences| {
@@ -758,7 +761,7 @@ mod tests {
 
         let result = restart_workspace_in_pane_with_io(
             &workspace,
-            false,
+            PermissionMode::Default,
             &[],
             |command| {
                 commands.push(command.to_vec());
@@ -830,7 +833,7 @@ mod tests {
 
         let result = restart_workspace_in_pane_with_io_in_home(
             &workspace,
-            false,
+            PermissionMode::Default,
             &[],
             |command| {
                 commands.push(command.to_vec());
@@ -867,7 +870,7 @@ mod tests {
 
         let result = restart_workspace_in_pane_with_io(
             &workspace,
-            false,
+            PermissionMode::Default,
             &[],
             |command| {
                 commands.push(command.to_vec());
@@ -913,7 +916,7 @@ mod tests {
 
         let result = restart_workspace_in_pane_with_io(
             &workspace,
-            false,
+            PermissionMode::Default,
             &[
                 ("FOO".to_string(), "bar".to_string()),
                 ("BAR".to_string(), "baz".to_string()),
@@ -960,7 +963,11 @@ mod tests {
         let mut workspace = fixture_workspace("feature-a", false);
         workspace.agent = AgentType::OpenCode;
 
-        let result = execute_restart_workspace_in_pane_with_result(&workspace, false, Vec::new());
+        let result = execute_restart_workspace_in_pane_with_result(
+            &workspace,
+            PermissionMode::Default,
+            Vec::new(),
+        );
         assert_eq!(result.workspace_name, "feature-a");
         assert_eq!(
             result.workspace_path,
@@ -971,7 +978,7 @@ mod tests {
     }
 
     #[test]
-    fn restart_workspace_in_pane_with_io_adds_skip_permissions_for_codex_resume() {
+    fn restart_workspace_in_pane_with_io_adds_permission_mode_for_codex_resume() {
         let mut workspace = fixture_workspace("feature-a", false);
         workspace.agent = AgentType::Codex;
         let mut commands = Vec::new();
@@ -979,7 +986,7 @@ mod tests {
 
         let result = restart_workspace_in_pane_with_io(
             &workspace,
-            true,
+            PermissionMode::Unsafe,
             &[],
             |command| {
                 commands.push(command.to_vec());
@@ -1008,14 +1015,14 @@ mod tests {
     }
 
     #[test]
-    fn restart_workspace_in_pane_with_io_adds_skip_permissions_for_claude_resume() {
+    fn restart_workspace_in_pane_with_io_adds_permission_mode_for_claude_resume() {
         let workspace = fixture_workspace("feature-a", false);
         let mut commands = Vec::new();
         let mut captures = vec!["resume with: claude --resume run-1234".to_string()];
 
         let result = restart_workspace_in_pane_with_io(
             &workspace,
-            true,
+            PermissionMode::Unsafe,
             &[],
             |command| {
                 commands.push(command.to_vec());
@@ -1044,7 +1051,7 @@ mod tests {
     }
 
     #[test]
-    fn restart_workspace_in_pane_with_io_adds_skip_permissions_for_codex_dash_resume() {
+    fn restart_workspace_in_pane_with_io_adds_permission_mode_for_codex_dash_resume() {
         let mut workspace = fixture_workspace("feature-a", false);
         workspace.agent = AgentType::Codex;
         let mut commands = Vec::new();
@@ -1052,7 +1059,7 @@ mod tests {
 
         let result = restart_workspace_in_pane_with_io(
             &workspace,
-            true,
+            PermissionMode::Unsafe,
             &[],
             |command| {
                 commands.push(command.to_vec());
@@ -1081,7 +1088,7 @@ mod tests {
     }
 
     #[test]
-    fn restart_workspace_in_pane_with_io_adds_skip_permissions_for_opencode_resume() {
+    fn restart_workspace_in_pane_with_io_adds_permission_mode_for_opencode_resume() {
         let mut workspace = fixture_workspace("feature-a", false);
         workspace.agent = AgentType::OpenCode;
         let mut commands = Vec::new();
@@ -1089,7 +1096,7 @@ mod tests {
 
         let result = restart_workspace_in_pane_with_io(
             &workspace,
-            true,
+            PermissionMode::Unsafe,
             &[],
             |command| {
                 commands.push(command.to_vec());

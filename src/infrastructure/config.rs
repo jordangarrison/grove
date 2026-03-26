@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::domain::PermissionMode;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum ThemeName {
@@ -48,7 +50,7 @@ pub struct GroveConfig {
     #[serde(default)]
     pub hidden_base_project_paths: Vec<PathBuf>,
     #[serde(default)]
-    pub launch_skip_permissions: bool,
+    pub launch_permission_mode: PermissionMode,
 }
 
 const fn default_sidebar_width_pct() -> u16 {
@@ -64,7 +66,7 @@ impl Default for GroveConfig {
             task_order: Vec::new(),
             attention_acks: Vec::new(),
             hidden_base_project_paths: Vec::new(),
-            launch_skip_permissions: false,
+            launch_permission_mode: PermissionMode::Default,
         }
     }
 }
@@ -74,7 +76,7 @@ impl GroveConfig {
         GlobalSettings {
             sidebar_width_pct: self.sidebar_width_pct,
             theme: self.theme,
-            launch_skip_permissions: self.launch_skip_permissions,
+            launch_permission_mode: self.launch_permission_mode,
         }
     }
 }
@@ -130,7 +132,7 @@ pub struct GlobalSettings {
     #[serde(default)]
     pub theme: ThemeName,
     #[serde(default)]
-    pub launch_skip_permissions: bool,
+    pub launch_permission_mode: PermissionMode,
 }
 
 impl Default for GlobalSettings {
@@ -138,7 +140,7 @@ impl Default for GlobalSettings {
         Self {
             sidebar_width_pct: default_sidebar_width_pct(),
             theme: ThemeName::default(),
-            launch_skip_permissions: false,
+            launch_permission_mode: PermissionMode::Default,
         }
     }
 }
@@ -203,7 +205,7 @@ pub fn load_from_path(path: &Path) -> Result<GroveConfig, String> {
         task_order: projects.task_order,
         attention_acks: projects.attention_acks,
         hidden_base_project_paths: projects.hidden_base_project_paths,
-        launch_skip_permissions: settings.launch_skip_permissions,
+        launch_permission_mode: settings.launch_permission_mode,
     })
 }
 
@@ -291,9 +293,9 @@ pub fn save_to_path(path: &Path, config: &GroveConfig) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AgentEnvDefaults, GlobalSettings, GroveConfig, ProjectConfig, ProjectDefaults,
-        RepositoryConfig, RepositoryDefaults, ThemeName, load_from_path, projects_path_for,
-        save_global_to_path, save_projects_to_path, save_to_path,
+        AgentEnvDefaults, GlobalSettings, GroveConfig, PermissionMode, ProjectConfig,
+        ProjectDefaults, RepositoryConfig, RepositoryDefaults, ThemeName, load_from_path,
+        projects_path_for, save_global_to_path, save_projects_to_path, save_to_path,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -326,7 +328,7 @@ mod tests {
                 task_order: Vec::new(),
                 attention_acks: Vec::new(),
                 hidden_base_project_paths: Vec::new(),
-                launch_skip_permissions: false,
+                launch_permission_mode: PermissionMode::Default,
             }
         );
     }
@@ -370,7 +372,7 @@ mod tests {
             task_order: vec!["grove".to_string(), "task-workflow".to_string()],
             attention_acks: Vec::new(),
             hidden_base_project_paths: vec![PathBuf::from("/repos/hidden")],
-            launch_skip_permissions: true,
+            launch_permission_mode: PermissionMode::Unsafe,
         };
         save_to_path(&path, &config).expect("config should save");
 
@@ -412,7 +414,7 @@ mod tests {
         assert_eq!(loaded.attention_acks, Vec::new());
         assert_eq!(loaded.task_order, Vec::<String>::new());
         assert_eq!(loaded.hidden_base_project_paths, Vec::<PathBuf>::new());
-        assert!(!loaded.launch_skip_permissions);
+        assert_eq!(loaded.launch_permission_mode, PermissionMode::Default);
         assert_eq!(loaded.projects[0].defaults.base_branch, "");
         assert_eq!(loaded.projects[0].defaults.workspace_init_command, "");
         assert_eq!(
@@ -438,7 +440,7 @@ mod tests {
             task_order: vec!["grove".to_string()],
             attention_acks: Vec::new(),
             hidden_base_project_paths: vec![PathBuf::from("/repos/hidden")],
-            launch_skip_permissions: false,
+            launch_permission_mode: PermissionMode::Default,
         };
         save_projects_to_path(
             &projects_path,
@@ -451,14 +453,14 @@ mod tests {
         let updated = GlobalSettings {
             sidebar_width_pct: 48,
             theme: ThemeName::CatppuccinLatte,
-            launch_skip_permissions: true,
+            launch_permission_mode: PermissionMode::Unsafe,
         };
         save_global_to_path(&path, &updated).expect("global settings should save");
 
         let loaded = load_from_path(&path).expect("combined config should load");
         assert_eq!(loaded.sidebar_width_pct, 48);
         assert_eq!(loaded.theme, ThemeName::CatppuccinLatte);
-        assert!(loaded.launch_skip_permissions);
+        assert_eq!(loaded.launch_permission_mode, PermissionMode::Unsafe);
         assert_eq!(loaded.projects.len(), 1);
         assert_eq!(loaded.projects[0].name, "grove");
         assert_eq!(loaded.task_order, vec!["grove".to_string()]);
@@ -473,7 +475,7 @@ mod tests {
         let settings = GlobalSettings {
             sidebar_width_pct: 61,
             theme: ThemeName::CatppuccinFrappe,
-            launch_skip_permissions: true,
+            launch_permission_mode: PermissionMode::Unsafe,
         };
         save_global_to_path(&path, &settings).expect("global settings should save");
         let projects = vec![ProjectConfig {
@@ -488,7 +490,7 @@ mod tests {
         let loaded = load_from_path(&path).expect("combined config should load");
         assert_eq!(loaded.sidebar_width_pct, 61);
         assert_eq!(loaded.theme, ThemeName::CatppuccinFrappe);
-        assert!(loaded.launch_skip_permissions);
+        assert_eq!(loaded.launch_permission_mode, PermissionMode::Unsafe);
         assert_eq!(loaded.projects.len(), 1);
         assert_eq!(loaded.projects[0].name, "grove");
         assert_eq!(loaded.task_order, task_order);

@@ -276,7 +276,7 @@ impl GroveApp {
                 self.toggle_mouse_capture();
             }
             UiCommand::ToggleUnsafe => {
-                self.launch_skip_permissions = !self.launch_skip_permissions;
+                self.launch_permission_mode = self.launch_permission_mode.next_global();
             }
             UiCommand::FocusAttentionInbox => {
                 self.focus_attention_inbox();

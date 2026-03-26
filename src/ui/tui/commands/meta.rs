@@ -1224,8 +1224,8 @@ static COMMAND_META: [UiCommandMeta; 49] = [
         palette: Some(PaletteCommandSpec {
             id: "palette:toggle_unsafe",
             title: "Toggle Unsafe Launch",
-            description: "Toggle launch skip-permissions default (!)",
-            tags: &["unsafe", "permissions", "!"],
+            description: "Cycle launch permission mode (! default/auto/unsafe)",
+            tags: &["unsafe", "permissions", "!", "auto"],
             category: "Workspace",
         }),
         help_hints: &[HelpHintSpec {

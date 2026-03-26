@@ -1,3 +1,5 @@
+use crate::domain::PermissionMode;
+
 use super::update_prelude::*;
 
 impl GroveApp {
@@ -26,8 +28,8 @@ impl GroveApp {
         read_workspace_init_command(&task.root_path)
     }
 
-    pub(super) fn task_skip_permissions_for_task(&self, task: &Task) -> bool {
-        read_workspace_skip_permissions(&task.root_path).unwrap_or(self.launch_skip_permissions)
+    pub(super) fn task_permission_mode_for_task(&self, task: &Task) -> PermissionMode {
+        read_workspace_permission_mode(&task.root_path).unwrap_or(self.launch_permission_mode)
     }
 
     pub(super) fn project_agent_env_for_workspace(
@@ -76,17 +78,20 @@ impl GroveApp {
             .or_else(|| self.project_workspace_init_command_for_workspace(workspace))
     }
 
-    pub(super) fn workspace_skip_permissions_for_workspace(&self, workspace: &Workspace) -> bool {
-        if let Some(skip_permissions) = read_workspace_skip_permissions(&workspace.path) {
-            return skip_permissions;
+    pub(super) fn workspace_permission_mode_for_workspace(
+        &self,
+        workspace: &Workspace,
+    ) -> PermissionMode {
+        if let Some(permission_mode) = read_workspace_permission_mode(&workspace.path) {
+            return permission_mode;
         }
-        if let Some(skip_permissions) =
-            infer_workspace_skip_permissions(workspace.agent, &workspace.path)
+        if let Some(permission_mode) =
+            infer_workspace_permission_mode(workspace.agent, &workspace.path)
         {
-            return skip_permissions;
+            return permission_mode;
         }
 
-        self.launch_skip_permissions
+        self.launch_permission_mode
     }
 
     fn start_task_agent_with_options(
@@ -95,16 +100,16 @@ impl GroveApp {
         agent: AgentType,
         prompt: Option<String>,
         init_command: Option<String>,
-        skip_permissions: bool,
+        permission_mode: PermissionMode,
     ) {
         if self.dialogs.start_in_flight || self.dialogs.restart_in_flight {
             return;
         }
 
-        self.launch_skip_permissions = skip_permissions;
-        if let Err(error) = write_workspace_skip_permissions(&task.root_path, skip_permissions) {
+        self.launch_permission_mode = permission_mode;
+        if let Err(error) = write_workspace_permission_mode(&task.root_path, permission_mode) {
             self.session.last_tmux_error =
-                Some(format!("skip permissions marker persist failed: {error}"));
+                Some(format!("permission mode marker persist failed: {error}"));
         }
         if let Err(error) = write_workspace_init_command(&task.root_path, init_command.as_deref()) {
             self.session.last_tmux_error =
@@ -119,7 +124,7 @@ impl GroveApp {
             theme_name: self.theme_name,
             prompt,
             workspace_init_command: init_command.or_else(|| self.task_init_command_for_task(&task)),
-            skip_permissions,
+            permission_mode,
             agent_env: Vec::new(),
             capture_cols: Some(capture_cols),
             capture_rows: Some(capture_rows),
@@ -155,7 +160,7 @@ impl GroveApp {
         workspace: Workspace,
         prompt: Option<String>,
         init_command: Option<String>,
-        skip_permissions: bool,
+        permission_mode: PermissionMode,
     ) {
         if self.dialogs.start_in_flight || self.dialogs.restart_in_flight {
             return;
@@ -165,10 +170,10 @@ impl GroveApp {
             return;
         }
 
-        self.launch_skip_permissions = skip_permissions;
-        if let Err(error) = write_workspace_skip_permissions(&workspace.path, skip_permissions) {
+        self.launch_permission_mode = permission_mode;
+        if let Err(error) = write_workspace_permission_mode(&workspace.path, permission_mode) {
             self.session.last_tmux_error =
-                Some(format!("skip permissions marker persist failed: {error}"));
+                Some(format!("permission mode marker persist failed: {error}"));
         }
         if let Err(error) = write_workspace_init_command(&workspace.path, init_command.as_deref()) {
             self.session.last_tmux_error =
@@ -189,7 +194,7 @@ impl GroveApp {
             prompt,
             self.theme_name,
             workspace_init_command,
-            skip_permissions,
+            permission_mode,
             agent_env,
             Some((capture_cols, capture_rows)),
         );
@@ -233,8 +238,8 @@ impl GroveApp {
 
         let prompt = read_workspace_launch_prompt(&workspace.path);
         let init_command = self.workspace_init_command_for_workspace(&workspace);
-        let skip_permissions = self.workspace_skip_permissions_for_workspace(&workspace);
-        self.start_workspace_agent_with_options(workspace, prompt, init_command, skip_permissions);
+        let permission_mode = self.workspace_permission_mode_for_workspace(&workspace);
+        self.start_workspace_agent_with_options(workspace, prompt, init_command, permission_mode);
     }
 
     pub(super) fn apply_start_agent_completion(&mut self, completion: StartAgentCompletion) {
@@ -322,8 +327,8 @@ impl GroveApp {
                     Value::from(usize_to_u64(dialog.start_config.name.len())),
                 ),
                 (
-                    "skip_permissions".to_string(),
-                    Value::from(dialog.start_config.skip_permissions),
+                    "permission_mode".to_string(),
+                    Value::from(dialog.start_config.permission_mode.label()),
                 ),
                 (
                     "init_len".to_string(),
@@ -336,13 +341,13 @@ impl GroveApp {
             name,
             prompt,
             init_command,
-            skip_permissions,
+            permission_mode,
         } = dialog.start_config.parse_start_options();
         let options = StartOptions {
             name,
             prompt,
             init_command,
-            skip_permissions,
+            permission_mode,
         };
         match dialog.target {
             LaunchDialogTarget::WorkspaceTab => {
@@ -357,7 +362,7 @@ impl GroveApp {
                     dialog.agent,
                     options.prompt,
                     options.init_command,
-                    options.skip_permissions,
+                    options.permission_mode,
                 );
             }
         }

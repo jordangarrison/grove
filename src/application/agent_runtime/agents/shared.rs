@@ -6,21 +6,24 @@ use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
-use crate::domain::WorkspaceStatus;
+use crate::domain::{PermissionMode, WorkspaceStatus};
 
-pub(super) fn session_file_skip_permissions_mode(path: &Path, max_lines: usize) -> Option<bool> {
+pub(super) fn session_file_permission_mode(
+    path: &Path,
+    max_lines: usize,
+) -> Option<PermissionMode> {
     let file = File::open(path).ok()?;
     let reader = BufReader::new(file);
     for line in reader.lines().map_while(Result::ok).take(max_lines) {
-        if let Some(skip_permissions) = text_skip_permissions_mode(&line) {
-            return Some(skip_permissions);
+        if let Some(permission_mode) = text_permission_mode(&line) {
+            return Some(permission_mode);
         }
     }
 
     None
 }
 
-pub(super) fn text_skip_permissions_mode(value: &str) -> Option<bool> {
+pub(super) fn text_permission_mode(value: &str) -> Option<PermissionMode> {
     let lower = value.to_ascii_lowercase();
     if lower.contains("approval policy is currently never")
         || lower.contains("<approval_policy>never</approval_policy>")
@@ -29,7 +32,7 @@ pub(super) fn text_skip_permissions_mode(value: &str) -> Option<bool> {
         || lower.contains("\"permissionmode\":\"bypasspermissions\"")
         || lower.contains("\"permissionmode\": \"bypasspermissions\"")
     {
-        return Some(true);
+        return Some(PermissionMode::Unsafe);
     }
     if lower.contains("approval policy is currently on-request")
         || lower.contains("<approval_policy>on-request</approval_policy>")
@@ -38,7 +41,7 @@ pub(super) fn text_skip_permissions_mode(value: &str) -> Option<bool> {
         || lower.contains("\"permissionmode\":\"default\"")
         || lower.contains("\"permissionmode\": \"default\"")
     {
-        return Some(false);
+        return Some(PermissionMode::Default);
     }
 
     None

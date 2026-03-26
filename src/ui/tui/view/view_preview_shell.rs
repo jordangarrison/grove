@@ -75,12 +75,8 @@ impl GroveApp {
                 }
             ));
             lines.push(format!(
-                "Unsafe launch: {}",
-                if dialog.start_config.skip_permissions {
-                    "on"
-                } else {
-                    "off"
-                }
+                "Permission mode: {}",
+                dialog.start_config.permission_mode.label()
             ));
         }
         if let Some(dialog) = self.delete_dialog() {

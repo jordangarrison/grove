@@ -1,4 +1,5 @@
 use super::*;
+use crate::domain::PermissionMode;
 
 pub(super) fn modal_labeled_input_row(
     content_width: usize,
@@ -174,11 +175,11 @@ pub(super) fn modal_actions_row(
     )])
 }
 
-pub(super) fn unsafe_state_label(skip_permissions: bool) -> &'static str {
-    if skip_permissions {
-        "on, bypass approvals and sandbox"
-    } else {
-        "off, standard safety checks"
+pub(super) fn unsafe_state_label(permission_mode: PermissionMode) -> &'static str {
+    match permission_mode {
+        PermissionMode::Default => "off, standard safety checks",
+        PermissionMode::Auto => "auto, classifier-guarded",
+        PermissionMode::Unsafe => "on, bypass approvals and sandbox",
     }
 }
 
@@ -220,10 +221,10 @@ where
             content_width,
             theme,
             "Unsafe",
-            unsafe_state_label(start_config.skip_permissions),
+            unsafe_state_label(start_config.permission_mode),
             is_focused(StartAgentConfigField::Unsafe),
             packed(theme.accent),
-            if start_config.skip_permissions {
+            if start_config.permission_mode != PermissionMode::Default {
                 packed(theme.error)
             } else {
                 packed(theme.text)

@@ -108,7 +108,7 @@ impl GroveApp {
             .unwrap_or_else(|_| GroveConfig::default());
         let sidebar_width_pct = clamp_sidebar_ratio(persisted_config.sidebar_width_pct);
         let theme_name = persisted_config.theme;
-        let launch_skip_permissions = persisted_config.launch_skip_permissions;
+        let launch_permission_mode = persisted_config.launch_permission_mode;
         let task_order = persisted_config.task_order;
         let workspace_attention_ack_markers = persisted_config
             .attention_acks
@@ -230,7 +230,7 @@ impl GroveApp {
             theme_name,
             sidebar_hidden: false,
             mouse_capture_enabled: true,
-            launch_skip_permissions,
+            launch_permission_mode,
             divider_resize: ftui::layout::pane::PaneDragResizeMachine::new_with_hysteresis(1, 1)
                 .expect("valid divider resize machine"),
             divider_resize_anchor_x: 0,

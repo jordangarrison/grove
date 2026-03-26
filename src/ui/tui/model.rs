@@ -45,7 +45,7 @@ use crate::application::agent_runtime::capture::{
 use crate::application::agent_runtime::{
     CommandExecutionMode, LivePreviewTarget, OutputDigest, SessionActivity, ShellLaunchRequest,
     TaskLaunchRequest, WorkspaceStatusTarget, execute_command_with,
-    git_session_name_for_workspace, infer_workspace_skip_permissions, poll_interval,
+    git_session_name_for_workspace, infer_workspace_permission_mode, poll_interval,
     restart_workspace_in_pane_with_io, session_name_for_task, session_name_for_workspace_ref,
     shell_session_name_for_workspace, tmux_launch_error_indicates_duplicate_session,
     trimmed_nonempty, workspace_can_enter_interactive, workspace_can_start_agent,
@@ -80,7 +80,7 @@ use crate::application::workspace_lifecycle::{
     update_workspace_from_base_with_terminator, workspace_lifecycle_error_message,
     write_workspace_base_marker,
 };
-use crate::domain::{AgentType, Task, Workspace, WorkspaceStatus};
+use crate::domain::{AgentType, PermissionMode, Task, Workspace, WorkspaceStatus};
 use crate::infrastructure::adapters::DiscoveryState;
 use crate::infrastructure::config::{
     AgentEnvDefaults, GroveConfig, ProjectConfig, ThemeName, WorkspaceAttentionAckConfig,
@@ -96,7 +96,7 @@ use performance::DurationWindow;
 use bootstrap_config::AppDependencies;
 use bootstrap_config::{
     project_display_name, read_workspace_init_command, read_workspace_launch_prompt,
-    read_workspace_skip_permissions, write_workspace_init_command, write_workspace_skip_permissions,
+    read_workspace_permission_mode, write_workspace_init_command, write_workspace_permission_mode,
 };
 use terminal::{
     ClipboardAccess, CommandTmuxInput, PreviewStreamSource, PreviewStreamState,
@@ -389,7 +389,7 @@ struct GroveApp {
     theme_name: ThemeName,
     sidebar_hidden: bool,
     mouse_capture_enabled: bool,
-    launch_skip_permissions: bool,
+    launch_permission_mode: PermissionMode,
     divider_resize: PaneDragResizeMachine,
     divider_resize_anchor_x: i32,
     divider_resize_event_seq: u64,

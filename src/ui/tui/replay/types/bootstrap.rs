@@ -14,7 +14,7 @@ struct ReplayBootstrapSnapshot {
     sidebar_width_pct: u16,
     sidebar_hidden: bool,
     mouse_capture_enabled: bool,
-    launch_skip_permissions: bool,
+    launch_permission_mode: PermissionMode,
     #[serde(default)]
     theme_name: ThemeName,
 }
@@ -105,7 +105,7 @@ impl ReplayBootstrapSnapshot {
             sidebar_width_pct: app.sidebar_width_pct,
             sidebar_hidden: app.sidebar_hidden,
             mouse_capture_enabled: app.mouse_capture_enabled,
-            launch_skip_permissions: app.launch_skip_permissions,
+            launch_permission_mode: app.launch_permission_mode,
             theme_name: app.theme_name,
         }
     }

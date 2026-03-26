@@ -9,7 +9,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use serde::Deserialize;
 
-use crate::domain::WorkspaceStatus;
+use crate::domain::{PermissionMode, WorkspaceStatus};
 
 use super::shared;
 
@@ -113,17 +113,17 @@ pub(super) fn extract_resume_command(output: &str) -> Option<String> {
     found
 }
 
-pub(super) fn infer_skip_permissions_in_home(
+pub(super) fn infer_permission_mode_in_home(
     workspace_path: &Path,
     home_dir: &Path,
-) -> Option<bool> {
+) -> Option<PermissionMode> {
     let sessions_dir = home_dir.join(".codex").join("sessions");
     let session_file = find_session_for_path_cached(&sessions_dir, workspace_path)?;
-    session_skip_permissions_mode(&session_file)
+    session_permission_mode(&session_file)
 }
 
-pub(super) fn session_skip_permissions_mode(path: &Path) -> Option<bool> {
-    shared::session_file_skip_permissions_mode(path, 24)
+pub(super) fn session_permission_mode(path: &Path) -> Option<PermissionMode> {
+    shared::session_file_permission_mode(path, 24)
 }
 
 pub(super) fn detect_session_status_in_home(

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::domain::{AgentType, Workspace};
+use crate::domain::{AgentType, PermissionMode, Workspace};
 use crate::infrastructure::config::ThemeName;
 
 use super::sessions::{session_name_for_task, session_name_for_workspace_in_project};
@@ -14,7 +14,7 @@ pub fn launch_request_for_workspace(
     prompt: Option<String>,
     theme_name: ThemeName,
     workspace_init_command: Option<String>,
-    skip_permissions: bool,
+    permission_mode: PermissionMode,
     agent_env: Vec<(String, String)>,
     capture_size: Option<(u16, u16)>,
 ) -> LaunchRequest {
@@ -30,7 +30,7 @@ pub fn launch_request_for_workspace(
         theme_name,
         prompt,
         workspace_init_command,
-        skip_permissions,
+        permission_mode,
         agent_env,
         capture_cols,
         capture_rows,
@@ -82,7 +82,7 @@ pub fn build_launch_plan(request: &LaunchRequest) -> LaunchPlan {
                 )
             })
     });
-    let agent_cmd = build_agent_command(request.agent, request.skip_permissions);
+    let agent_cmd = build_agent_command(request.agent, request.permission_mode);
     let launch_agent_cmd = launch_command_with_workspace_init(
         &request.workspace_path,
         agent_cmd,
@@ -101,7 +101,7 @@ pub fn build_launch_plan(request: &LaunchRequest) -> LaunchPlan {
 
 pub fn build_task_launch_plan(request: &super::TaskLaunchRequest) -> LaunchPlan {
     let session_name = session_name_for_task(request.task_slug.as_str());
-    let agent_cmd = build_agent_command(request.agent, request.skip_permissions);
+    let agent_cmd = build_agent_command(request.agent, request.permission_mode);
     let launch_agent_cmd = launch_command_with_workspace_init(
         &request.task_root,
         agent_cmd,
@@ -117,7 +117,7 @@ pub fn build_task_launch_plan(request: &super::TaskLaunchRequest) -> LaunchPlan 
         theme_name: request.theme_name,
         prompt: request.prompt.clone(),
         workspace_init_command: request.workspace_init_command.clone(),
-        skip_permissions: request.skip_permissions,
+        permission_mode: request.permission_mode,
         agent_env: request.agent_env.clone(),
         capture_cols: request.capture_cols,
         capture_rows: request.capture_rows,
@@ -149,7 +149,7 @@ pub fn build_shell_launch_plan(request: &ShellLaunchRequest) -> LaunchPlan {
         theme_name: request.theme_name,
         prompt: None,
         workspace_init_command: request.workspace_init_command.clone(),
-        skip_permissions: false,
+        permission_mode: PermissionMode::Default,
         agent_env: Vec::new(),
         capture_cols: request.capture_cols,
         capture_rows: request.capture_rows,
@@ -313,24 +313,29 @@ pub fn stop_plan(session_name: &str) -> Vec<Vec<String>> {
     ]
 }
 
-pub(crate) fn build_agent_command(agent: AgentType, skip_permissions: bool) -> String {
+pub(crate) fn build_agent_command(agent: AgentType, permission_mode: PermissionMode) -> String {
     if let Some(command_override) = env_agent_command_override(agent) {
         return command_override;
     }
 
-    default_agent_command(agent, skip_permissions)
+    default_agent_command(agent, permission_mode)
 }
 
-pub(super) fn default_agent_command(agent: AgentType, skip_permissions: bool) -> String {
-    match (agent, skip_permissions) {
-        (AgentType::Claude, true) => "claude --dangerously-skip-permissions".to_string(),
-        (AgentType::Claude, false) => "claude".to_string(),
-        (AgentType::Codex, true) => "codex --dangerously-bypass-approvals-and-sandbox".to_string(),
-        (AgentType::Codex, false) => "codex".to_string(),
-        (AgentType::OpenCode, true) => {
+pub(super) fn default_agent_command(agent: AgentType, permission_mode: PermissionMode) -> String {
+    match (agent, permission_mode) {
+        (AgentType::Claude, PermissionMode::Unsafe) => {
+            "claude --dangerously-skip-permissions".to_string()
+        }
+        (AgentType::Claude, PermissionMode::Auto) => "claude --enable-auto-mode".to_string(),
+        (AgentType::Claude, PermissionMode::Default) => "claude".to_string(),
+        (AgentType::Codex, PermissionMode::Unsafe) => {
+            "codex --dangerously-bypass-approvals-and-sandbox".to_string()
+        }
+        (AgentType::Codex, _) => "codex".to_string(),
+        (AgentType::OpenCode, PermissionMode::Unsafe) => {
             format!("OPENCODE_PERMISSION='{OPENCODE_UNSAFE_PERMISSION_JSON}' opencode")
         }
-        (AgentType::OpenCode, false) => "opencode".to_string(),
+        (AgentType::OpenCode, _) => "opencode".to_string(),
     }
 }
 
@@ -396,7 +401,7 @@ mod tests {
     use std::path::PathBuf;
 
     use crate::application::agent_runtime::{LaunchRequest, TaskLaunchRequest};
-    use crate::domain::AgentType;
+    use crate::domain::{AgentType, PermissionMode};
 
     use super::super::capture::tmux_capture_error_indicates_missing_session;
     use super::{
@@ -413,7 +418,7 @@ mod tests {
             theme_name: crate::infrastructure::config::ThemeName::default(),
             prompt: None,
             workspace_init_command: None,
-            skip_permissions: false,
+            permission_mode: PermissionMode::Default,
             agent_env: Vec::new(),
             capture_cols: None,
             capture_rows: None,
@@ -474,18 +479,38 @@ mod tests {
     }
 
     #[test]
-    fn codex_launch_command_matches_prd_flags() {
-        assert_eq!(default_agent_command(AgentType::Codex, false), "codex");
+    fn default_agent_command_maps_permission_modes_to_flags() {
         assert_eq!(
-            default_agent_command(AgentType::Codex, true),
+            default_agent_command(AgentType::Claude, PermissionMode::Default),
+            "claude"
+        );
+        assert_eq!(
+            default_agent_command(AgentType::Claude, PermissionMode::Auto),
+            "claude --enable-auto-mode"
+        );
+        assert_eq!(
+            default_agent_command(AgentType::Claude, PermissionMode::Unsafe),
+            "claude --dangerously-skip-permissions"
+        );
+        assert_eq!(
+            default_agent_command(AgentType::Codex, PermissionMode::Default),
+            "codex"
+        );
+        assert_eq!(
+            default_agent_command(AgentType::Codex, PermissionMode::Unsafe),
             "codex --dangerously-bypass-approvals-and-sandbox"
         );
         assert_eq!(
-            default_agent_command(AgentType::OpenCode, false),
+            default_agent_command(AgentType::Codex, PermissionMode::Auto),
+            "codex",
+            "auto mode falls back to default for non-Claude agents"
+        );
+        assert_eq!(
+            default_agent_command(AgentType::OpenCode, PermissionMode::Default),
             "opencode"
         );
         assert_eq!(
-            default_agent_command(AgentType::OpenCode, true),
+            default_agent_command(AgentType::OpenCode, PermissionMode::Unsafe),
             "OPENCODE_PERMISSION='{\"*\":\"allow\"}' opencode"
         );
     }
@@ -516,7 +541,7 @@ mod tests {
             theme_name: crate::infrastructure::config::ThemeName::default(),
             prompt: None,
             workspace_init_command: None,
-            skip_permissions: true,
+            permission_mode: PermissionMode::Unsafe,
             agent_env: Vec::new(),
             capture_cols: None,
             capture_rows: None,
@@ -551,7 +576,7 @@ mod tests {
             theme_name: crate::infrastructure::config::ThemeName::default(),
             prompt: None,
             workspace_init_command: Some("direnv allow".to_string()),
-            skip_permissions: false,
+            permission_mode: PermissionMode::Default,
             agent_env: Vec::new(),
             capture_cols: None,
             capture_rows: None,
@@ -593,7 +618,7 @@ mod tests {
             theme_name: crate::infrastructure::config::ThemeName::default(),
             prompt: None,
             workspace_init_command: Some("echo init".to_string()),
-            skip_permissions: false,
+            permission_mode: PermissionMode::Default,
             agent_env: Vec::new(),
             capture_cols: None,
             capture_rows: None,
@@ -619,7 +644,7 @@ mod tests {
             theme_name: crate::infrastructure::config::ThemeName::CatppuccinMocha,
             prompt: None,
             workspace_init_command: None,
-            skip_permissions: true,
+            permission_mode: PermissionMode::Unsafe,
             agent_env: Vec::new(),
             capture_cols: Some(132),
             capture_rows: Some(44),
@@ -654,7 +679,7 @@ mod tests {
             theme_name: crate::infrastructure::config::ThemeName::CatppuccinMocha,
             prompt: None,
             workspace_init_command: None,
-            skip_permissions: false,
+            permission_mode: PermissionMode::Default,
             agent_env: Vec::new(),
             capture_cols: None,
             capture_rows: None,
@@ -698,7 +723,7 @@ mod tests {
             theme_name: crate::infrastructure::config::ThemeName::default(),
             prompt: None,
             workspace_init_command: None,
-            skip_permissions: false,
+            permission_mode: PermissionMode::Default,
             agent_env: vec![
                 (
                     "CLAUDE_CONFIG_DIR".to_string(),
@@ -741,7 +766,7 @@ mod tests {
             theme_name: crate::infrastructure::config::ThemeName::default(),
             prompt: Some("fix migration".to_string()),
             workspace_init_command: None,
-            skip_permissions: false,
+            permission_mode: PermissionMode::Default,
             agent_env: Vec::new(),
             capture_cols: None,
             capture_rows: None,
@@ -792,7 +817,7 @@ mod tests {
             theme_name: crate::infrastructure::config::ThemeName::default(),
             prompt: None,
             workspace_init_command: Some("direnv allow".to_string()),
-            skip_permissions: true,
+            permission_mode: PermissionMode::Unsafe,
             agent_env: Vec::new(),
             capture_cols: None,
             capture_rows: None,

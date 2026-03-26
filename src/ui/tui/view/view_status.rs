@@ -56,12 +56,8 @@ impl GroveApp {
     }
 
     #[cfg(test)]
-    fn unsafe_label(&self) -> &'static str {
-        if self.launch_skip_permissions {
-            "on"
-        } else {
-            "off"
-        }
+    fn permission_mode_label(&self) -> &'static str {
+        self.launch_permission_mode.label()
     }
 
     #[cfg(test)]
@@ -90,13 +86,9 @@ impl GroveApp {
                 }
                 if let Some(dialog) = self.launch_dialog() {
                     return format!(
-                        "Status: start agent, field={}, unsafe={}, name=\"{}\", prompt=\"{}\", init=\"{}\"",
+                        "Status: start agent, field={}, perm={}, name=\"{}\", prompt=\"{}\", init=\"{}\"",
                         dialog.focused_field.label(),
-                        if dialog.start_config.skip_permissions {
-                            "on"
-                        } else {
-                            "off"
-                        },
+                        dialog.start_config.permission_mode.label(),
                         dialog.start_config.name.replace('\n', "\\n"),
                         dialog.start_config.prompt.replace('\n', "\\n"),
                         dialog.start_config.init_command.replace('\n', "\\n"),
@@ -105,24 +97,24 @@ impl GroveApp {
                 if self.session.interactive.is_some() {
                     if let Some(message) = &self.session.last_tmux_error {
                         return format!(
-                            "Status: INSERT, unsafe={}, tmux error: {message}",
-                            self.unsafe_label()
+                            "Status: INSERT, perm={}, tmux error: {message}",
+                            self.permission_mode_label()
                         );
                     }
-                    return format!("Status: INSERT, unsafe={}", self.unsafe_label());
+                    return format!("Status: INSERT, perm={}", self.permission_mode_label());
                 }
                 if self.task_reorder_active() {
                     return "Status: task reorder".to_string();
                 }
 
                 match self.state.mode {
-                    UiMode::List => format!("Status: list, unsafe={}", self.unsafe_label()),
+                    UiMode::List => format!("Status: list, perm={}", self.permission_mode_label()),
                     UiMode::Preview => {
                         let preview_height = self
                             .preview_output_dimensions()
                             .map_or(1, |(_, height)| usize::from(height));
                         format!(
-                            "Status: preview, autoscroll={}, offset={}, split={}%, unsafe={}",
+                            "Status: preview, autoscroll={}, offset={}, split={}%, perm={}",
                             if self.preview_auto_scroll_for_height(preview_height) {
                                 "on"
                             } else {
@@ -130,7 +122,7 @@ impl GroveApp {
                             },
                             self.preview_scroll_offset_for_height(preview_height),
                             self.sidebar_width_pct,
-                            self.unsafe_label(),
+                            self.permission_mode_label(),
                         )
                     }
                 }

@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use crate::domain::WorkspaceStatus;
+use crate::domain::{PermissionMode, WorkspaceStatus};
 
 use super::shared;
 
@@ -36,10 +36,10 @@ pub(super) fn extract_resume_command(output: &str) -> Option<String> {
     found
 }
 
-pub(super) fn infer_skip_permissions_in_home(
+pub(super) fn infer_permission_mode_in_home(
     workspace_path: &Path,
     home_dir: &Path,
-) -> Option<bool> {
+) -> Option<PermissionMode> {
     let workspace_path = shared::absolute_path(workspace_path)?;
     let project_dir_name = project_dir_name(&workspace_path);
     let project_dir = home_dir
@@ -48,10 +48,8 @@ pub(super) fn infer_skip_permissions_in_home(
         .join(project_dir_name);
     let session_files = shared::find_recent_jsonl_files(&project_dir, Some("agent-"))?;
     for session_file in session_files {
-        if let Some(skip_permissions) =
-            shared::session_file_skip_permissions_mode(&session_file, 96)
-        {
-            return Some(skip_permissions);
+        if let Some(permission_mode) = shared::session_file_permission_mode(&session_file, 96) {
+            return Some(permission_mode);
         }
     }
 

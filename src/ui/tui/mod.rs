@@ -252,7 +252,8 @@ mod tests {
         CreateTaskRequest, CreateTaskResult, TaskBranchSource,
     };
     use crate::domain::{
-        AgentType, PullRequest, PullRequestStatus, Task, Workspace, WorkspaceStatus, Worktree,
+        AgentType, PermissionMode, PullRequest, PullRequestStatus, Task, Workspace,
+        WorkspaceStatus, Worktree,
     };
     use crate::infrastructure::adapters::DiscoveryState;
     use crate::infrastructure::config::{ProjectConfig, ProjectDefaults, ThemeName};
@@ -4426,7 +4427,7 @@ mod tests {
                 String::new(),
                 String::new(),
                 String::new(),
-                false,
+                PermissionMode::Default,
             ),
             focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
         });
@@ -4457,7 +4458,7 @@ mod tests {
                 String::new(),
                 String::new(),
                 String::new(),
-                false,
+                PermissionMode::Default,
             ),
             focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
         });
@@ -7604,7 +7605,7 @@ mod tests {
                 String::new(),
                 String::new(),
                 String::new(),
-                false,
+                PermissionMode::Default,
             ),
             focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
         });
@@ -7810,7 +7811,7 @@ mod tests {
                 String::new(),
                 String::new(),
                 String::new(),
-                false,
+                PermissionMode::Default,
             ),
             focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Prompt),
         });
@@ -8723,7 +8724,7 @@ mod tests {
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
                 focus_agent_preview_tab(&mut app);
                 select_workspace(&mut app, 1);
-                app.launch_skip_permissions = true;
+                app.launch_permission_mode = PermissionMode::Unsafe;
 
                 ftui::Model::update(
                     &mut app,
@@ -9014,7 +9015,7 @@ mod tests {
                         String::new(),
                         String::new(),
                         String::new(),
-                        false,
+                        PermissionMode::Default,
                     ),
                     focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Name),
                 });
@@ -9044,7 +9045,7 @@ mod tests {
                         "bugfix-tab".to_string(),
                         String::new(),
                         String::new(),
-                        false,
+                        PermissionMode::Default,
                     ),
                     focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Name),
                 });
@@ -9077,7 +9078,7 @@ mod tests {
                         String::new(),
                         String::new(),
                         String::new(),
-                        false,
+                        PermissionMode::Default,
                     ),
                     focused_field: LaunchDialogField::StartConfig(StartAgentConfigField::Name),
                 });
@@ -9110,7 +9111,7 @@ mod tests {
                         String::new(),
                         String::new(),
                         String::new(),
-                        false,
+                        PermissionMode::Default,
                     ),
                     focused_field: LaunchDialogField::StartButton,
                 });
@@ -9144,7 +9145,7 @@ mod tests {
                         String::new(),
                         String::new(),
                         String::new(),
-                        false,
+                        PermissionMode::Default,
                     ),
                     focused_field: LaunchDialogField::StartButton,
                 });
@@ -9183,7 +9184,7 @@ mod tests {
                         String::new(),
                         String::new(),
                         String::new(),
-                        false,
+                        PermissionMode::Default,
                     ),
                     focused_field: LaunchDialogField::StartButton,
                 });
@@ -13655,7 +13656,7 @@ mod tests {
             }
 
             #[test]
-            fn unsafe_toggle_updates_launch_skip_permissions_for_session() {
+            fn unsafe_toggle_cycles_launch_permission_mode() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
                 focus_agent_preview_tab(&mut app);
@@ -13665,7 +13666,7 @@ mod tests {
                     Msg::Key(KeyEvent::new(KeyCode::Char('!')).with_kind(KeyEventKind::Press)),
                 );
 
-                assert!(app.launch_skip_permissions);
+                assert_eq!(app.launch_permission_mode, PermissionMode::Auto);
                 assert!(!app.config_path.exists());
             }
 

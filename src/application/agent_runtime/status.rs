@@ -1,6 +1,8 @@
 use std::path::Path;
 use std::time::Duration;
 
+#[cfg(test)]
+use crate::domain::PermissionMode;
 use crate::domain::{AgentType, WorkspaceStatus};
 
 use super::agents;
@@ -188,32 +190,32 @@ pub(crate) fn latest_assistant_attention_marker(
 }
 
 #[cfg(test)]
-pub(super) fn infer_claude_skip_permissions_in_home(
+pub(super) fn infer_claude_permission_mode_in_home(
     workspace_path: &Path,
     home_dir: &Path,
-) -> Option<bool> {
-    agents::infer_skip_permissions_in_home(AgentType::Claude, workspace_path, home_dir)
+) -> Option<PermissionMode> {
+    agents::infer_permission_mode_in_home(AgentType::Claude, workspace_path, home_dir)
 }
 
 #[cfg(test)]
-pub(super) fn infer_codex_skip_permissions_in_home(
+pub(super) fn infer_codex_permission_mode_in_home(
     workspace_path: &Path,
     home_dir: &Path,
-) -> Option<bool> {
-    agents::infer_skip_permissions_in_home(AgentType::Codex, workspace_path, home_dir)
+) -> Option<PermissionMode> {
+    agents::infer_permission_mode_in_home(AgentType::Codex, workspace_path, home_dir)
 }
 
 #[cfg(test)]
-pub(super) fn codex_session_skip_permissions_mode(path: &Path) -> Option<bool> {
-    agents::codex_session_skip_permissions_mode(path)
+pub(super) fn codex_session_permission_mode(path: &Path) -> Option<PermissionMode> {
+    agents::codex_session_permission_mode(path)
 }
 
 #[cfg(test)]
-pub(super) fn infer_opencode_skip_permissions_in_home(
+pub(super) fn infer_opencode_permission_mode_in_home(
     workspace_path: &Path,
     home_dir: &Path,
-) -> Option<bool> {
-    agents::infer_skip_permissions_in_home(AgentType::OpenCode, workspace_path, home_dir)
+) -> Option<PermissionMode> {
+    agents::infer_permission_mode_in_home(AgentType::OpenCode, workspace_path, home_dir)
 }
 
 #[cfg(test)]

@@ -199,7 +199,7 @@ mod tests {
     use std::collections::HashSet;
     use std::path::PathBuf;
 
-    use crate::domain::{AgentType, WorkspaceStatus};
+    use crate::domain::{AgentType, PermissionMode, WorkspaceStatus};
 
     use super::super::LivePreviewTarget;
     use super::super::launch_plan::{
@@ -320,7 +320,7 @@ mod tests {
             Some("run checks".to_string()),
             crate::infrastructure::config::ThemeName::default(),
             Some("direnv allow".to_string()),
-            true,
+            PermissionMode::Unsafe,
             vec![(
                 "CLAUDE_CONFIG_DIR".to_string(),
                 "~/.claude-work".to_string(),
@@ -340,7 +340,7 @@ mod tests {
             request.workspace_init_command.as_deref(),
             Some("direnv allow")
         );
-        assert!(request.skip_permissions);
+        assert_eq!(request.permission_mode, PermissionMode::Unsafe);
         assert_eq!(
             request.agent_env,
             vec![(

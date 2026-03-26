@@ -1,12 +1,12 @@
 use super::*;
-use crate::domain::Worktree;
+use crate::domain::{PermissionMode, Worktree};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct StartAgentConfigState {
     pub(super) name: String,
     pub(super) prompt: String,
     pub(super) init_command: String,
-    pub(super) skip_permissions: bool,
+    pub(super) permission_mode: PermissionMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,7 +14,7 @@ pub(super) struct StartOptions {
     pub(super) name: Option<String>,
     pub(super) prompt: Option<String>,
     pub(super) init_command: Option<String>,
-    pub(super) skip_permissions: bool,
+    pub(super) permission_mode: PermissionMode,
 }
 
 impl StartAgentConfigState {
@@ -22,13 +22,13 @@ impl StartAgentConfigState {
         name: String,
         prompt: String,
         init_command: String,
-        skip_permissions: bool,
+        permission_mode: PermissionMode,
     ) -> Self {
         Self {
             name,
             prompt,
             init_command,
-            skip_permissions,
+            permission_mode,
         }
     }
 
@@ -41,7 +41,7 @@ impl StartAgentConfigState {
             name: trimmed_nonempty(&self.name),
             prompt: trimmed_nonempty(&self.prompt),
             init_command: trimmed_nonempty(&self.init_command),
-            skip_permissions: self.skip_permissions,
+            permission_mode: self.permission_mode,
         }
     }
 
@@ -72,8 +72,8 @@ impl StartAgentConfigState {
         }
     }
 
-    pub(super) fn toggle_unsafe(&mut self) {
-        self.skip_permissions = !self.skip_permissions;
+    pub(super) fn cycle_permission_mode(&mut self, agent: AgentType) {
+        self.permission_mode = self.permission_mode.next_for_agent(agent);
     }
 }
 

@@ -14,7 +14,7 @@ impl GroveApp {
 
         let prompt = read_workspace_launch_prompt(&task.root_path).unwrap_or_default();
         let init_command = self.task_init_command_for_task(&task);
-        let skip_permissions = self.task_skip_permissions_for_task(&task);
+        let permission_mode = self.task_permission_mode_for_task(&task);
         let agent = self.task_agent_for_selected_task();
         self.set_launch_dialog(LaunchDialogState {
             target: LaunchDialogTarget::ParentTask(task.clone()),
@@ -23,7 +23,7 @@ impl GroveApp {
                 String::new(),
                 prompt.clone(),
                 init_command.clone().unwrap_or_default(),
-                skip_permissions,
+                permission_mode,
             ),
             focused_field: LaunchDialogField::Agent,
         });
@@ -39,8 +39,8 @@ impl GroveApp {
                     Value::from(usize_to_u64(prompt.len())),
                 ),
                 (
-                    "skip_permissions".to_string(),
-                    Value::from(skip_permissions),
+                    "permission_mode".to_string(),
+                    Value::from(permission_mode.label()),
                 ),
                 (
                     "init_len".to_string(),
@@ -162,7 +162,7 @@ impl GroveApp {
                             }
                             StartAgentConfigField::Unsafe => {
                                 if character == ' ' || character == 'j' || character == 'k' {
-                                    dialog.start_config.toggle_unsafe();
+                                    dialog.start_config.cycle_permission_mode(dialog.agent);
                                 }
                             }
                         },
@@ -186,7 +186,7 @@ impl GroveApp {
         };
         let prompt = read_workspace_launch_prompt(&workspace.path).unwrap_or_default();
         let init_command = self.workspace_init_command_for_workspace(&workspace);
-        let skip_permissions = self.workspace_skip_permissions_for_workspace(&workspace);
+        let permission_mode = self.workspace_permission_mode_for_workspace(&workspace);
         let agent = self
             .last_agent_selection
             .get(workspace.path.as_path())
@@ -199,7 +199,7 @@ impl GroveApp {
                 String::new(),
                 prompt.clone(),
                 init_command.clone().unwrap_or_default(),
-                skip_permissions,
+                permission_mode,
             ),
             focused_field: LaunchDialogField::Agent,
         });
@@ -215,8 +215,8 @@ impl GroveApp {
                     Value::from(usize_to_u64(prompt.len())),
                 ),
                 (
-                    "skip_permissions".to_string(),
-                    Value::from(skip_permissions),
+                    "permission_mode".to_string(),
+                    Value::from(permission_mode.label()),
                 ),
                 (
                     "init_len".to_string(),

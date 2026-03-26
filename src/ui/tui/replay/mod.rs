@@ -14,7 +14,7 @@ use super::*;
 use crate::application::task_lifecycle::{
     CreateTaskRequest, CreateTaskResult, TaskBranchSource, TaskLifecycleError,
 };
-use crate::domain::{PullRequest, PullRequestStatus, Task, Worktree};
+use crate::domain::{PermissionMode, PullRequest, PullRequestStatus, Task, Worktree};
 use crate::infrastructure::config::ThemeName;
 
 const REPLAY_SCHEMA_VERSION: u64 = 1;
@@ -113,7 +113,7 @@ mod tests {
             sidebar_width_pct: 33,
             sidebar_hidden: false,
             mouse_capture_enabled: true,
-            launch_skip_permissions: false,
+            launch_permission_mode: PermissionMode::Default,
             theme_name: ThemeName::CatppuccinMocha,
         }
     }

@@ -405,7 +405,7 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
 
-    use crate::domain::{AgentType, WorkspaceStatus};
+    use crate::domain::{AgentType, PermissionMode, WorkspaceStatus};
     use crate::test_support::unique_test_dir;
 
     use super::super::{LaunchPlan, LaunchRequest, LauncherScript};
@@ -501,7 +501,7 @@ mod tests {
             theme_name: crate::infrastructure::config::ThemeName::default(),
             prompt: None,
             workspace_init_command: None,
-            skip_permissions: false,
+            permission_mode: PermissionMode::Default,
             agent_env: Vec::new(),
             capture_cols: Some(120),
             capture_rows: Some(40),

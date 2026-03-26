@@ -980,8 +980,8 @@ impl GroveApp {
         };
         self.last_agent_selection
             .insert(workspace.path.clone(), agent);
-        self.launch_skip_permissions = options.skip_permissions;
-        let _ = write_workspace_skip_permissions(&workspace.path, options.skip_permissions);
+        self.launch_permission_mode = options.permission_mode;
+        let _ = write_workspace_permission_mode(&workspace.path, options.permission_mode);
         let _ = write_workspace_init_command(&workspace.path, options.init_command.as_deref());
 
         let Some(tabs) = self.workspace_tabs.get_mut(workspace.path.as_path()) else {
@@ -1020,7 +1020,7 @@ impl GroveApp {
             options
                 .init_command
                 .or_else(|| self.workspace_init_command_for_workspace(&workspace)),
-            options.skip_permissions,
+            options.permission_mode,
             agent_env,
             Some((capture_cols, capture_rows)),
         );

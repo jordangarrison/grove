@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crate::domain::{AgentType, Workspace};
+use crate::domain::{AgentType, PermissionMode, Workspace};
 use crate::infrastructure::config::ThemeName;
 
 mod agents;
@@ -41,7 +41,7 @@ pub use polling::{
 pub use reconciliation::reconcile_with_sessions;
 pub use restart::{
     execute_restart_workspace_in_pane_with_result, extract_agent_resume_command,
-    infer_workspace_skip_permissions, restart_workspace_in_pane_with_io,
+    infer_workspace_permission_mode, restart_workspace_in_pane_with_io,
 };
 pub use sessions::{
     git_preview_session_if_ready, git_session_name_for_workspace, live_preview_agent_session,
@@ -102,7 +102,7 @@ pub struct LaunchRequest {
     pub theme_name: ThemeName,
     pub prompt: Option<String>,
     pub workspace_init_command: Option<String>,
-    pub skip_permissions: bool,
+    pub permission_mode: PermissionMode,
     pub agent_env: Vec<(String, String)>,
     pub capture_cols: Option<u16>,
     pub capture_rows: Option<u16>,
@@ -116,7 +116,7 @@ pub struct TaskLaunchRequest {
     pub theme_name: ThemeName,
     pub prompt: Option<String>,
     pub workspace_init_command: Option<String>,
-    pub skip_permissions: bool,
+    pub permission_mode: PermissionMode,
     pub agent_env: Vec<(String, String)>,
     pub capture_cols: Option<u16>,
     pub capture_rows: Option<u16>,
