@@ -19,5 +19,3 @@ sysinfo = "0.33.1"
 [dev-dependencies]
 proptest = "1.6.0"
 
-[patch."https://github.com/Dicklesworthstone/frankentui.git"]
-ftui-pty = { path = ".reference/frankentui/crates/ftui-pty" }

@@ -1,7 +1,5 @@
 use super::view_prelude::*;
-use crate::application::preview::{
-    PreviewAnsi16Color, PreviewParsedLine, PreviewParsedSpan, PreviewParsedStyle,
-};
+use crate::application::preview::{PreviewParsedLine, PreviewParsedSpan, PreviewParsedStyle};
 
 type AnimatedPreviewLabels = Vec<(String, u16, u16)>;
 
@@ -284,8 +282,6 @@ fn plain_preview_line(line: &str) -> PreviewParsedLine {
             style: PreviewParsedStyle {
                 foreground_rgb: None,
                 background_rgb: None,
-                foreground_ansi16: None,
-                background_ansi16: None,
                 bold: false,
                 dim: false,
                 italic: false,
@@ -373,92 +369,20 @@ fn parsed_preview_style_to_ft_style(
 
 fn preview_foreground_color(
     style: &PreviewParsedStyle,
-    theme: ftui::ResolvedTheme,
+    _theme: ftui::ResolvedTheme,
 ) -> Option<PackedRgba> {
-    let foreground = preview_ansi16_color(style.foreground_ansi16, theme)
-        .or_else(|| packed_rgb(style.foreground_rgb))?;
-    if style.reverse {
-        return Some(foreground);
-    }
-
-    Some(foreground)
+    packed_rgb(style.foreground_rgb)
 }
 
 fn preview_background_color(
     style: &PreviewParsedStyle,
-    theme: ftui::ResolvedTheme,
+    _theme: ftui::ResolvedTheme,
 ) -> Option<PackedRgba> {
-    preview_ansi16_color(style.background_ansi16, theme)
-        .or_else(|| packed_rgb(style.background_rgb))
+    packed_rgb(style.background_rgb)
 }
 
 fn packed_rgb(color: Option<(u8, u8, u8)>) -> Option<PackedRgba> {
     color.map(|(r, g, b)| PackedRgba::rgb(r, g, b))
-}
-
-fn preview_ansi16_color(
-    color: Option<PreviewAnsi16Color>,
-    theme: ftui::ResolvedTheme,
-) -> Option<PackedRgba> {
-    let base = match color? {
-        PreviewAnsi16Color::Black => packed(theme.overlay),
-        PreviewAnsi16Color::Red => packed(theme.error),
-        PreviewAnsi16Color::Green => packed(theme.success),
-        PreviewAnsi16Color::Yellow => packed(theme.warning),
-        PreviewAnsi16Color::Blue => packed(theme.primary),
-        PreviewAnsi16Color::Magenta => packed(theme.secondary),
-        PreviewAnsi16Color::Cyan => packed(theme.info),
-        PreviewAnsi16Color::White => packed(theme.text_muted),
-        PreviewAnsi16Color::BrightBlack => packed(theme.border),
-        PreviewAnsi16Color::BrightRed => preview_bright_variant(packed(theme.error), theme),
-        PreviewAnsi16Color::BrightGreen => preview_bright_variant(packed(theme.success), theme),
-        PreviewAnsi16Color::BrightYellow => preview_bright_variant(packed(theme.warning), theme),
-        PreviewAnsi16Color::BrightBlue => preview_bright_variant(packed(theme.primary), theme),
-        PreviewAnsi16Color::BrightMagenta => preview_bright_variant(packed(theme.secondary), theme),
-        PreviewAnsi16Color::BrightCyan => preview_bright_variant(packed(theme.info), theme),
-        PreviewAnsi16Color::BrightWhite => packed(theme.text),
-    };
-    Some(base)
-}
-
-fn preview_bright_variant(color: PackedRgba, theme: ftui::ResolvedTheme) -> PackedRgba {
-    let target = if preview_theme_is_dark(theme) {
-        packed(theme.text)
-    } else {
-        packed(theme.text_subtle)
-    };
-    blend_packed(color, target, 0.22)
-}
-
-fn preview_theme_is_dark(theme: ftui::ResolvedTheme) -> bool {
-    relative_luminance(packed(theme.background)) < relative_luminance(packed(theme.text))
-}
-
-fn blend_packed(source: PackedRgba, target: PackedRgba, amount: f32) -> PackedRgba {
-    let mix = |from: u8, to: u8| -> u8 {
-        let from = from as f32;
-        let to = to as f32;
-        (from + (to - from) * amount).round().clamp(0.0, 255.0) as u8
-    };
-
-    PackedRgba::rgb(
-        mix(source.r(), target.r()),
-        mix(source.g(), target.g()),
-        mix(source.b(), target.b()),
-    )
-}
-
-fn relative_luminance(color: PackedRgba) -> f32 {
-    let channel = |value: u8| -> f32 {
-        let normalized = value as f32 / 255.0;
-        if normalized <= 0.04045 {
-            normalized / 12.92
-        } else {
-            ((normalized + 0.055) / 1.055).powf(2.4)
-        }
-    };
-
-    0.2126 * channel(color.r()) + 0.7152 * channel(color.g()) + 0.0722 * channel(color.b())
 }
 
 fn preview_parsed_line_plain_text(line: &PreviewParsedLine) -> String {
@@ -468,8 +392,6 @@ fn preview_parsed_line_plain_text(line: &PreviewParsedLine) -> String {
 fn preview_style_is_plain(style: &PreviewParsedStyle) -> bool {
     style.foreground_rgb.is_none()
         && style.background_rgb.is_none()
-        && style.foreground_ansi16.is_none()
-        && style.background_ansi16.is_none()
         && !style.bold
         && !style.dim
         && !style.italic
@@ -494,8 +416,6 @@ mod tests {
                 style: PreviewParsedStyle {
                     foreground_rgb: None,
                     background_rgb: None,
-                    foreground_ansi16: None,
-                    background_ansi16: None,
                     bold: false,
                     dim: false,
                     italic: false,

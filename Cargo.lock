@@ -331,7 +331,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -378,7 +378,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -480,11 +480,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
+name = "frankenterm-core"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f40e07cb276abd387f0d2ea079efb7ec53072742801204643b0bab3f8964f8d"
+dependencies = [
+ "bitflags 2.11.0",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "unicode-width",
+]
+
+[[package]]
 name = "ftui"
 version = "0.2.1"
 source = "git+https://github.com/Dicklesworthstone/frankentui.git?tag=v0.2.1#87fc5e942f7792b00d1bc0687d228fda46dfc466"
 dependencies = [
- "ftui-core 0.2.1",
+ "ftui-core",
  "ftui-layout",
  "ftui-render",
  "ftui-runtime",
@@ -498,21 +511,8 @@ name = "ftui-backend"
 version = "0.2.1"
 source = "git+https://github.com/Dicklesworthstone/frankentui.git?tag=v0.2.1#87fc5e942f7792b00d1bc0687d228fda46dfc466"
 dependencies = [
- "ftui-core 0.2.1",
+ "ftui-core",
  "ftui-render",
-]
-
-[[package]]
-name = "ftui-core"
-version = "0.1.1"
-dependencies = [
- "bitflags 2.11.0",
- "crossterm",
- "signal-hook 0.4.3",
- "unicode-display-width",
- "unicode-segmentation",
- "unicode-width",
- "web-time",
 ]
 
 [[package]]
@@ -536,7 +536,7 @@ name = "ftui-extras"
 version = "0.2.1"
 source = "git+https://github.com/Dicklesworthstone/frankentui.git?tag=v0.2.1#87fc5e942f7792b00d1bc0687d228fda46dfc466"
 dependencies = [
- "ftui-core 0.2.1",
+ "ftui-core",
  "ftui-render",
  "ftui-style",
  "ftui-text",
@@ -554,7 +554,7 @@ name = "ftui-layout"
 version = "0.2.1"
 source = "git+https://github.com/Dicklesworthstone/frankentui.git?tag=v0.2.1#87fc5e942f7792b00d1bc0687d228fda46dfc466"
 dependencies = [
- "ftui-core 0.2.1",
+ "ftui-core",
  "rustc-hash",
  "serde",
  "smallvec",
@@ -562,9 +562,11 @@ dependencies = [
 
 [[package]]
 name = "ftui-pty"
-version = "0.1.1"
+version = "0.2.1"
+source = "git+https://github.com/Dicklesworthstone/frankentui.git?tag=v0.2.1#87fc5e942f7792b00d1bc0687d228fda46dfc466"
 dependencies = [
- "ftui-core 0.1.1",
+ "frankenterm-core",
+ "ftui-core",
  "portable-pty",
  "serde_json",
  "time",
@@ -580,7 +582,7 @@ dependencies = [
  "ahash",
  "bitflags 2.11.0",
  "bumpalo",
- "ftui-core 0.2.1",
+ "ftui-core",
  "memchr",
  "smallvec",
  "unicode-segmentation",
@@ -594,7 +596,7 @@ source = "git+https://github.com/Dicklesworthstone/frankentui.git?tag=v0.2.1#87f
 dependencies = [
  "arc-swap",
  "ftui-backend",
- "ftui-core 0.2.1",
+ "ftui-core",
  "ftui-i18n",
  "ftui-layout",
  "ftui-render",
@@ -622,7 +624,7 @@ name = "ftui-text"
 version = "0.2.1"
 source = "git+https://github.com/Dicklesworthstone/frankentui.git?tag=v0.2.1#87fc5e942f7792b00d1bc0687d228fda46dfc466"
 dependencies = [
- "ftui-core 0.2.1",
+ "ftui-core",
  "ftui-layout",
  "ftui-render",
  "ftui-style",
@@ -642,7 +644,7 @@ source = "git+https://github.com/Dicklesworthstone/frankentui.git?tag=v0.2.1#87f
 dependencies = [
  "ahash",
  "bitflags 2.11.0",
- "ftui-core 0.2.1",
+ "ftui-core",
  "ftui-layout",
  "ftui-render",
  "ftui-runtime",
@@ -1377,7 +1379,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1600,7 +1602,7 @@ dependencies = [
  "getrandom 0.4.1",
  "once_cell",
  "rustix",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
