@@ -13,8 +13,8 @@ use serde_json::Value;
 use crate::infrastructure::event_log::Event as LogEvent;
 use crate::ui::state::{PaneFocus, UiMode};
 use crate::ui::tui::{
-    CommandTmuxInput, GroveApp, LIVE_PREVIEW_FULL_SCROLLBACK_LINES, Msg, PreviewStreamConnected,
-    PreviewStreamDisconnected, PreviewStreamEvent, PreviewStreamOutput,
+    CommandTmuxInput, GroveApp, LIVE_PREVIEW_FULL_SCROLLBACK_LINES, Msg, PreviewSessionGeometry,
+    PreviewStreamConnected, PreviewStreamDisconnected, PreviewStreamEvent, PreviewStreamOutput,
 };
 
 const TMUX_CONTROL_MODE_POLL_MS: u64 = 50;
@@ -127,9 +127,6 @@ impl GroveApp {
             PreviewStreamSource::Disconnected
         };
         self.polling.preview_stream.buffer.clear();
-        if let Some(session_name) = desired {
-            self.sync_live_preview_session_geometry(session_name.as_str());
-        }
     }
 
     fn preview_stream_matches(&self, session_name: &str, generation: u64) -> bool {
@@ -183,7 +180,15 @@ impl GroveApp {
             .preview_session_geometry
             .as_ref()
             .filter(|geometry| geometry.session == output.session)
-            .cloned();
+            .cloned()
+            .or_else(|| {
+                self.preview_output_dimensions()
+                    .map(|(width, height)| PreviewSessionGeometry {
+                        session: output.session.clone(),
+                        width,
+                        height,
+                    })
+            });
 
         if let Some(geometry) = geometry {
             if self.polling.preview_stream.bootstrap_completed {
