@@ -7914,7 +7914,7 @@ mod tests {
                 row,
                 s_col,
                 s_col.saturating_add(7),
-                PackedRgba::rgb(0, 170, 0),
+                packed(ui_theme().success),
             );
         });
     }
@@ -7987,7 +7987,7 @@ mod tests {
                 panic!("rendered const cell should exist");
             };
 
-            assert_eq!(cell.fg, PackedRgba::rgb(0, 0, 170));
+            assert_eq!(cell.fg, packed(ui_theme().primary));
         });
     }
 
@@ -8102,7 +8102,7 @@ mod tests {
                 row,
                 s_col,
                 s_col.saturating_add(7),
-                PackedRgba::rgb(0, 170, 0),
+                packed(ui_theme().success),
             );
         });
     }
@@ -11924,7 +11924,7 @@ mod tests {
                         panic!("preview content cell should exist");
                     };
                     assert_eq!(cell.content.as_char(), Some('b'));
-                    assert_eq!(cell.fg, PackedRgba::rgb(170, 0, 0));
+                    assert_eq!(cell.fg, packed(ui_theme().error));
                 });
             }
 

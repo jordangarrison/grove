@@ -369,20 +369,81 @@ fn parsed_preview_style_to_ft_style(
 
 fn preview_foreground_color(
     style: &PreviewParsedStyle,
-    _theme: ftui::ResolvedTheme,
+    theme: ftui::ResolvedTheme,
 ) -> Option<PackedRgba> {
-    packed_rgb(style.foreground_rgb)
+    let (r, g, b) = style.foreground_rgb?;
+    Some(ansi16_theme_color(r, g, b, theme).unwrap_or(PackedRgba::rgb(r, g, b)))
 }
 
 fn preview_background_color(
     style: &PreviewParsedStyle,
-    _theme: ftui::ResolvedTheme,
+    theme: ftui::ResolvedTheme,
 ) -> Option<PackedRgba> {
-    packed_rgb(style.background_rgb)
+    let (r, g, b) = style.background_rgb?;
+    Some(ansi16_theme_color(r, g, b, theme).unwrap_or(PackedRgba::rgb(r, g, b)))
 }
 
-fn packed_rgb(color: Option<(u8, u8, u8)>) -> Option<PackedRgba> {
-    color.map(|(r, g, b)| PackedRgba::rgb(r, g, b))
+/// Map the fixed RGB values that upstream ftui-pty produces for ANSI 16
+/// colors back to theme-appropriate colors. Truecolor values pass through.
+fn ansi16_theme_color(r: u8, g: u8, b: u8, theme: ftui::ResolvedTheme) -> Option<PackedRgba> {
+    let base = match (r, g, b) {
+        (0, 0, 0) => packed(theme.overlay),
+        (170, 0, 0) => packed(theme.error),
+        (0, 170, 0) => packed(theme.success),
+        (170, 170, 0) => packed(theme.warning),
+        (0, 0, 170) => packed(theme.primary),
+        (170, 0, 170) => packed(theme.secondary),
+        (0, 170, 170) => packed(theme.info),
+        (170, 170, 170) => packed(theme.text_muted),
+        (85, 85, 85) => packed(theme.border),
+        (255, 85, 85) => bright_variant(packed(theme.error), theme),
+        (85, 255, 85) => bright_variant(packed(theme.success), theme),
+        (255, 255, 85) => bright_variant(packed(theme.warning), theme),
+        (85, 85, 255) => bright_variant(packed(theme.primary), theme),
+        (255, 85, 255) => bright_variant(packed(theme.secondary), theme),
+        (85, 255, 255) => bright_variant(packed(theme.info), theme),
+        (255, 255, 255) => packed(theme.text),
+        _ => return None,
+    };
+    Some(base)
+}
+
+fn bright_variant(color: PackedRgba, theme: ftui::ResolvedTheme) -> PackedRgba {
+    let target = if is_dark_theme(theme) {
+        packed(theme.text)
+    } else {
+        packed(theme.text_subtle)
+    };
+    blend(color, target, 0.22)
+}
+
+fn is_dark_theme(theme: ftui::ResolvedTheme) -> bool {
+    luminance(packed(theme.background)) < luminance(packed(theme.text))
+}
+
+fn blend(source: PackedRgba, target: PackedRgba, amount: f32) -> PackedRgba {
+    let mix = |from: u8, to: u8| -> u8 {
+        let from = from as f32;
+        let to = to as f32;
+        (from + (to - from) * amount).round().clamp(0.0, 255.0) as u8
+    };
+    PackedRgba::rgb(
+        mix(source.r(), target.r()),
+        mix(source.g(), target.g()),
+        mix(source.b(), target.b()),
+    )
+}
+
+fn luminance(color: PackedRgba) -> f32 {
+    let channel = |value: u8| -> f32 {
+        let normalized = value as f32 / 255.0;
+        if normalized <= 0.04045 {
+            normalized / 12.92
+        } else {
+            ((normalized + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * channel(color.r()) + 0.7152 * channel(color.g()) + 0.0722 * channel(color.b())
 }
 
 fn preview_parsed_line_plain_text(line: &PreviewParsedLine) -> String {
