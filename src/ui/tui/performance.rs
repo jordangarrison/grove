@@ -217,6 +217,7 @@ impl GroveApp {
         match self.polling.preview_stream.source {
             PreviewStreamSource::Connecting => "connecting",
             PreviewStreamSource::Stream => "stream",
+            PreviewStreamSource::Fallback => "fallback",
             PreviewStreamSource::Disconnected => "disconnected",
         }
     }

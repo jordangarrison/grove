@@ -24,6 +24,7 @@ const TMUX_CONTROL_MODE_PAUSE_AFTER_SECONDS: &str = "0.1";
 pub(in crate::ui::tui) enum PreviewStreamSource {
     Connecting,
     Stream,
+    Fallback,
     Disconnected,
 }
 
@@ -95,6 +96,7 @@ impl GroveApp {
     ) -> bool {
         self.polling.preview_stream.bootstrap_completed
             && self.polling.preview_stream.target_session.as_deref() == Some(session_name)
+            && self.polling.preview_stream.source != PreviewStreamSource::Fallback
     }
 
     pub(in crate::ui::tui) fn sync_preview_stream_target(&mut self) {
@@ -198,7 +200,7 @@ impl GroveApp {
         self.polling.preview_stream.connected_session = None;
         self.polling.preview_stream.bootstrap_completed = true;
         self.polling.preview_stream.last_chunk_bytes = 0;
-        self.polling.preview_stream.source = PreviewStreamSource::Disconnected;
+        self.polling.preview_stream.source = PreviewStreamSource::Fallback;
         self.session.last_tmux_error = disconnect.error.clone();
         let mut event = LogEvent::new("preview_stream", "disconnected")
             .with_data("session", Value::from(disconnect.session.clone()))
@@ -470,7 +472,7 @@ enum StreamProcessEvent {
 
 enum ParsedControlModeLine {
     Connected,
-    Output,
+    Output(String),
     Disconnected(Option<String>),
 }
 
@@ -493,7 +495,7 @@ fn map_control_mode_line_to_msg(
     session_name: &str,
     generation: u64,
     line: &str,
-    capture_snapshot: impl Fn(&str) -> std::io::Result<String>,
+    _capture_snapshot: impl Fn(&str) -> std::io::Result<String>,
 ) -> Option<Msg> {
     let parsed = parse_control_mode_line(session_name, line)?;
     let event = match parsed {
@@ -501,18 +503,11 @@ fn map_control_mode_line_to_msg(
             session: session_name.to_string(),
             generation,
         }),
-        ParsedControlModeLine::Output => match capture_snapshot(session_name) {
-            Ok(snapshot) => PreviewStreamEvent::Output(PreviewStreamOutput {
-                session: session_name.to_string(),
-                generation,
-                chunk: snapshot,
-            }),
-            Err(error) => PreviewStreamEvent::Disconnected(PreviewStreamDisconnected {
-                session: session_name.to_string(),
-                generation,
-                error: Some(format!("tmux stream snapshot failed: {error}")),
-            }),
-        },
+        ParsedControlModeLine::Output(chunk) => PreviewStreamEvent::Output(PreviewStreamOutput {
+            session: session_name.to_string(),
+            generation,
+            chunk,
+        }),
         ParsedControlModeLine::Disconnected(error) => {
             PreviewStreamEvent::Disconnected(PreviewStreamDisconnected {
                 session: session_name.to_string(),
@@ -527,18 +522,20 @@ fn map_control_mode_line_to_msg(
 fn parse_control_mode_line(session_name: &str, line: &str) -> Option<ParsedControlModeLine> {
     if let Some(value) = line.strip_prefix("%output ") {
         let (_, payload) = value.split_once(' ')?;
-        if decode_control_mode_text(payload).is_empty() {
+        let chunk = decode_control_mode_text(payload);
+        if chunk.is_empty() {
             return None;
         }
-        return Some(ParsedControlModeLine::Output);
+        return Some(ParsedControlModeLine::Output(chunk));
     }
 
     if let Some(value) = line.strip_prefix("%extended-output ") {
         let (_, payload) = value.split_once(" : ")?;
-        if decode_control_mode_text(payload).is_empty() {
+        let chunk = decode_control_mode_text(payload);
+        if chunk.is_empty() {
             return None;
         }
-        return Some(ParsedControlModeLine::Output);
+        return Some(ParsedControlModeLine::Output(chunk));
     }
 
     if let Some(value) = line.strip_prefix("%client-session-changed ") {
@@ -677,12 +674,12 @@ mod tests {
     }
 
     #[test]
-    fn control_mode_output_line_captures_full_snapshot() {
+    fn control_mode_output_line_decodes_incremental_chunk_without_snapshot() {
         let msg = map_control_mode_line_to_msg(
             "grove-wt-grove-grove-agent-1",
             7,
             "%extended-output %180 0 : \\033[51;1H\\033[1mhi",
-            |_| Ok("full snapshot\n".to_string()),
+            |_| Err(std::io::Error::other("snapshot should not be called")),
         )
         .expect("output line should map to a message");
 
@@ -691,7 +688,7 @@ mod tests {
             Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
                 session: "grove-wt-grove-grove-agent-1".to_string(),
                 generation: 7,
-                chunk: "full snapshot\n".to_string(),
+                chunk: "\u{1b}[51;1H\u{1b}[1mhi".to_string(),
             }))
         );
     }

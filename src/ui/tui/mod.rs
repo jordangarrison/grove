@@ -7095,7 +7095,7 @@ mod tests {
         assert!(app.polling.preview_stream.bootstrap_completed);
         assert_eq!(
             app.polling.preview_stream.source,
-            PreviewStreamSource::Disconnected
+            PreviewStreamSource::Fallback
         );
     }
 
@@ -7154,9 +7154,9 @@ mod tests {
             .iter()
             .find(|row| row.label == "grove")
             .expect("background workspace row should exist after fallback");
-        assert_eq!(selected_poll_row.cadence, "disconnected");
+        assert_eq!(selected_poll_row.cadence, "fallback");
         assert_eq!(background_poll_row.cadence, background_stream_row.cadence);
-        assert_eq!(app.selected_preview_source_summary(), "disconnected");
+        assert_eq!(app.selected_preview_source_summary(), "fallback");
     }
 
     #[test]
