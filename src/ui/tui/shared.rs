@@ -837,6 +837,13 @@ pub(super) struct PendingResizeVerification {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct PreviewSessionGeometry {
+    pub(super) session: String,
+    pub(super) width: u16,
+    pub(super) height: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct QueuedInteractiveSend {
     pub(super) command: Vec<String>,
     pub(super) target_session: String,

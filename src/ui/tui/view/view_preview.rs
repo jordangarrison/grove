@@ -54,6 +54,7 @@ impl GroveApp {
         ));
 
         Paragraph::new(FtText::from_lines(text_lines))
+            .wrap(ftui::text::WrapMode::None)
             .style(
                 Style::new()
                     .fg(packed(theme.text))

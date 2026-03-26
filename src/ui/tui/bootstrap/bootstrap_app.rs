@@ -208,6 +208,7 @@ impl GroveApp {
                 interactive_poll_due_at: None,
                 activity_animation: AnimationClock::new(),
                 poll_generation: 0,
+                preview_session_geometry: None,
                 last_diff_poll_at: None,
                 last_diff_stat_poll_at: None,
                 diff_capture_in_flight: false,

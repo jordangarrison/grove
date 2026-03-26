@@ -377,6 +377,46 @@ impl GroveApp {
         self.selected_shell_preview_session_if_ready()
     }
 
+    fn sync_live_preview_session_geometry(&mut self, session_name: &str) {
+        if self.interactive_target_session().as_deref() == Some(session_name) {
+            return;
+        }
+
+        let Some((pane_width, pane_height)) = self.preview_output_dimensions() else {
+            return;
+        };
+        if self
+            .polling
+            .preview_session_geometry
+            .as_ref()
+            .is_some_and(|geometry| {
+                geometry.session == session_name
+                    && geometry.width == pane_width
+                    && geometry.height == pane_height
+            })
+        {
+            return;
+        }
+
+        let attempted_geometry = PreviewSessionGeometry {
+            session: session_name.to_string(),
+            width: pane_width,
+            height: pane_height,
+        };
+        if let Err(error) = self
+            .tmux_input
+            .resize_session(session_name, pane_width, pane_height)
+        {
+            let message = error.to_string();
+            self.session.last_tmux_error = Some(message.clone());
+            self.log_tmux_error(message);
+            self.polling.preview_session_geometry = Some(attempted_geometry);
+            return;
+        }
+
+        self.polling.preview_session_geometry = Some(attempted_geometry);
+    }
+
     pub(super) fn prepare_live_preview_session(&mut self) -> Option<LivePreviewTarget> {
         let session_name = match self.preview_tab {
             PreviewTab::Home => self.selected_task_preview_session_if_ready()?,
@@ -385,6 +425,7 @@ impl GroveApp {
             PreviewTab::Agent => self.selected_agent_preview_session_if_ready()?,
             PreviewTab::Diff => return None,
         };
+        self.sync_live_preview_session_geometry(session_name.as_str());
         Some(LivePreviewTarget {
             session_name,
             include_escape_sequences: true,

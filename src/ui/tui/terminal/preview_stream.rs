@@ -64,13 +64,6 @@ impl GroveApp {
         self.selected_live_preview_session_if_ready()
     }
 
-    fn latest_preview_raw_output(&self) -> Option<String> {
-        self.preview
-            .recent_captures
-            .back()
-            .map(|capture| capture.raw_output.clone())
-    }
-
     pub(in crate::ui::tui) fn preview_stream_subscription(
         &self,
     ) -> Option<Box<dyn Subscription<Msg>>> {
@@ -94,13 +87,13 @@ impl GroveApp {
         &self,
         session_name: &str,
     ) -> bool {
-        self.polling.preview_stream.bootstrap_completed
-            && self.polling.preview_stream.target_session.as_deref() == Some(session_name)
-            && self.polling.preview_stream.source != PreviewStreamSource::Fallback
+        let _ = session_name;
+        false
     }
 
     pub(in crate::ui::tui) fn sync_preview_stream_target(&mut self) {
         let desired = self.desired_preview_stream_session();
+        let previous = self.polling.preview_stream.target_session.clone();
         if desired == self.polling.preview_stream.target_session {
             if desired.is_none() {
                 self.polling.preview_stream.connected_session = None;
@@ -117,17 +110,18 @@ impl GroveApp {
         self.polling.preview_stream.connected_session = None;
         self.polling.preview_stream.bootstrap_completed = false;
         self.polling.preview_stream.last_chunk_bytes = 0;
-        self.preview.clear_selected_terminal();
+        self.polling.preview_session_geometry = None;
+        if previous.is_some() {
+            self.preview.reset_selected_session_state();
+        } else {
+            self.preview.clear_selected_terminal();
+        }
         self.polling.preview_stream.source = if desired.is_some() {
             PreviewStreamSource::Connecting
         } else {
             PreviewStreamSource::Disconnected
         };
-        self.polling.preview_stream.buffer = if desired.is_some() {
-            self.latest_preview_raw_output().unwrap_or_default()
-        } else {
-            String::new()
-        };
+        self.polling.preview_stream.buffer.clear();
     }
 
     fn preview_stream_matches(&self, session_name: &str, generation: u64) -> bool {
@@ -170,30 +164,10 @@ impl GroveApp {
             return;
         }
 
-        let (width, height) = self.preview_output_dimensions().unwrap_or((80, 24));
-        if self.preview.selected_terminal().is_some() {
-            self.preview
-                .apply_selected_terminal_chunk(output.chunk.as_str());
-        } else {
-            self.preview.bootstrap_selected_terminal(
-                output.chunk.as_str(),
-                width,
-                height,
-                (0, 0),
-                true,
-            );
-        }
-        self.polling.preview_stream.bootstrap_completed = true;
+        self.preview.clear_selected_terminal();
         self.polling.preview_stream.last_chunk_bytes = output.chunk.len();
         self.polling.preview_stream.buffer = output.chunk.clone();
-        self.apply_live_preview_capture(
-            output.session.as_str(),
-            LIVE_PREVIEW_FULL_SCROLLBACK_LINES,
-            true,
-            0,
-            0,
-            Ok(output.chunk),
-        );
+        self.poll_preview_prioritized();
     }
 
     fn handle_preview_stream_disconnect(&mut self, disconnect: PreviewStreamDisconnected) {
@@ -215,6 +189,7 @@ impl GroveApp {
         self.polling.preview_stream.bootstrap_completed = true;
         self.polling.preview_stream.last_chunk_bytes = 0;
         self.polling.preview_stream.source = PreviewStreamSource::Fallback;
+        self.preview.clear_selected_terminal();
         self.session.last_tmux_error = disconnect.error.clone();
         let mut event = LogEvent::new("preview_stream", "disconnected")
             .with_data("session", Value::from(disconnect.session.clone()))
@@ -247,16 +222,8 @@ impl GroveApp {
         if self.polling.preview_stream.target_session.as_deref() != Some(session_name) {
             return;
         }
-        if let Some(raw_output) = self.latest_preview_raw_output() {
-            let (width, height) = self.preview_output_dimensions().unwrap_or((80, 24));
-            self.preview.bootstrap_selected_terminal(
-                raw_output.as_str(),
-                width,
-                height,
-                (0, 0),
-                true,
-            );
-        }
+        self.preview.clear_selected_terminal();
+        self.polling.preview_stream.buffer.clear();
         self.polling.preview_stream.bootstrap_completed = true;
         if self.polling.preview_stream.source == PreviewStreamSource::Connecting {
             self.telemetry.event_log.log(

@@ -175,6 +175,16 @@ impl PreviewState {
         self.selected_terminal = None;
     }
 
+    pub(crate) fn reset_selected_session_state(&mut self) {
+        self.lines.clear();
+        self.parsed_lines.clear();
+        self.render_lines.clear();
+        self.recent_captures.clear();
+        self.selected_terminal = None;
+        self.last_digest = None;
+    }
+
+    #[cfg(test)]
     pub(crate) fn bootstrap_selected_terminal(
         &mut self,
         raw_output: &str,
@@ -192,6 +202,7 @@ impl PreviewState {
         ));
     }
 
+    #[cfg(test)]
     pub(crate) fn apply_selected_terminal_chunk(&mut self, chunk: &str) {
         let Some(terminal) = self.selected_terminal.as_mut() else {
             return;

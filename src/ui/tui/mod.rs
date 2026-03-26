@@ -6996,18 +6996,83 @@ mod tests {
             Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
                 session: feature_workspace_session(),
                 generation,
-                chunk: "next line\nsecond line\n".to_string(),
+                chunk: "delta line\n".to_string(),
             })),
         );
 
-        assert_eq!(
-            app.preview.lines,
-            vec!["next line".to_string(), "second line".to_string()]
+        app.apply_live_preview_capture(
+            &feature_workspace_session(),
+            crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES,
+            true,
+            0,
+            0,
+            Ok("snapshot line\n".to_string()),
         );
+        app.mark_preview_stream_bootstrap_completed(&feature_workspace_session());
+
+        assert_eq!(app.preview.lines, vec!["snapshot line".to_string()]);
+        assert!(app.preview.selected_terminal().is_none());
         assert_eq!(
             app.polling.preview_stream.connected_session,
             Some(feature_workspace_session())
         );
+        assert!(app.polling.preview_stream.bootstrap_completed);
+        assert!(app.polling.preview_stream.buffer.is_empty());
+    }
+
+    #[test]
+    fn preview_stream_output_does_not_render_partial_terminal_before_bootstrap() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.preview.apply_capture("stale snapshot\n");
+        app.sync_preview_stream_target();
+        let generation = app.polling.preview_stream.generation;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
+                session: feature_workspace_session(),
+                generation,
+                chunk: "partial prompt update".to_string(),
+            })),
+        );
+
+        assert!(app.preview.selected_terminal().is_none());
+        assert_eq!(app.preview.lines, vec!["stale snapshot".to_string()]);
+        assert!(!app.polling.preview_stream.bootstrap_completed);
+    }
+
+    #[test]
+    fn preview_stream_output_requests_prioritized_snapshot_poll() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.sync_preview_stream_target();
+        app.telemetry.deferred_cmds.clear();
+        let generation = app.polling.preview_stream.generation;
+
+        let cmd = ftui::Model::update(
+            &mut app,
+            Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
+                session: feature_workspace_session(),
+                generation,
+                chunk: "delta line\n".to_string(),
+            })),
+        );
+
+        assert!(cmd_contains_task(&cmd));
+        assert!(app.preview.selected_terminal().is_none());
     }
 
     #[test]
@@ -7025,6 +7090,44 @@ mod tests {
         app.refresh_preview_summary();
 
         assert_eq!(app.preview.lines, vec!["real output".to_string()]);
+    }
+
+    #[test]
+    fn switching_ready_agent_tabs_clears_stale_preview_until_new_session_bootstraps() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        let first_session = feature_agent_tab_session(1);
+        let second_session = feature_agent_tab_session(2);
+        let first_tab_id =
+            insert_running_agent_tab(&mut app, 1, first_session.as_str(), "Claude 1");
+        let second_tab_id =
+            insert_running_agent_tab(&mut app, 1, second_session.as_str(), "Claude 2");
+        if let Some(tabs) = app
+            .workspace_tabs
+            .get_mut(feature_workspace_path().as_path())
+        {
+            tabs.active_tab_id = first_tab_id;
+        }
+        app.sync_preview_tab_from_active_workspace_tab();
+        app.session.agent_sessions.mark_ready(first_session);
+        app.session.agent_sessions.mark_ready(second_session);
+        app.preview.apply_capture("claude-1 output\n");
+        app.preview
+            .bootstrap_selected_terminal("claude-1 output\n", 80, 24, (0, 0), true);
+        app.sync_preview_stream_target();
+
+        let switched = app.select_tab_by_id_for_selected_workspace(second_tab_id);
+
+        assert!(switched);
+        assert_eq!(
+            app.polling.preview_stream.target_session,
+            Some(feature_agent_tab_session(2))
+        );
+        assert!(app.preview.selected_terminal().is_none());
+        assert!(app.preview.lines.is_empty());
+        assert!(app.polling.preview_stream.buffer.is_empty());
     }
 
     #[test]
@@ -7194,7 +7297,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_stream_reconnect_bootstrap_reseeds_selected_terminal() {
+    fn preview_stream_reconnect_bootstrap_clears_stale_selected_terminal() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
         app.state.focus = PaneFocus::Preview;
@@ -7237,13 +7340,8 @@ mod tests {
             }),
         );
 
-        assert_eq!(
-            app.preview
-                .selected_terminal()
-                .expect("selected terminal should be reseeded")
-                .plain_lines[0],
-            "fresh output"
-        );
+        assert!(app.preview.selected_terminal().is_none());
+        assert_eq!(app.preview.lines, vec!["fresh output".to_string()]);
         assert!(app.polling.preview_stream.bootstrap_completed);
     }
 
@@ -11807,6 +11905,61 @@ mod tests {
             }
 
             #[test]
+            fn preview_selected_terminal_rows_do_not_soft_wrap() {
+                let (mut app, _commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+                select_workspace(&mut app, 0);
+                app.preview_tab = PreviewTab::Agent;
+                app.preview.lines = vec!["stale snapshot".to_string()];
+                app.preview.parsed_lines.clear();
+                app.preview.bootstrap_selected_terminal(
+                    "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nsecond row\n",
+                    80,
+                    24,
+                    (0, 0),
+                    true,
+                );
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+
+                let layout = app.panes.test_rects(100, 40);
+                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+                let x_start = layout.preview.x.saturating_add(1);
+                let x_end = layout.preview.right().saturating_sub(1);
+                with_rendered_frame(&app, 100, 40, |frame| {
+                    let first_row = row_text(frame, output_y, x_start, x_end);
+                    let trailing_rows = [
+                        row_text(frame, output_y.saturating_add(1), x_start, x_end),
+                        row_text(frame, output_y.saturating_add(2), x_start, x_end),
+                        row_text(frame, output_y.saturating_add(3), x_start, x_end),
+                    ];
+                    assert!(
+                        first_row.contains("abcdefghijklmnopqrstuvwxyz"),
+                        "expected first terminal row to render in-place, got: {first_row}"
+                    );
+                    assert!(
+                        trailing_rows
+                            .iter()
+                            .all(|row| !row.contains("abcdefghijklmnopqrstuvwxyz")),
+                        "expected overflow text to be clipped, not wrapped into following rows: {trailing_rows:?}"
+                    );
+                    assert!(
+                        trailing_rows
+                            .iter()
+                            .any(|row| row.contains("second row") || row.contains("cond row")),
+                        "expected next terminal row to stay nearby, got: {trailing_rows:?}"
+                    );
+                });
+            }
+
+            #[test]
             fn preview_output_rows_use_theme_background_for_shell_tab() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
@@ -14169,6 +14322,116 @@ mod tests {
                     targets
                         .iter()
                         .any(|target| target.workspace_name == "feature-a")
+                );
+            }
+
+            #[test]
+            fn prepare_live_preview_session_resizes_selected_agent_tab_once_per_target() {
+                let (mut app, _commands, _captures, _cursor_captures, calls) =
+                    fixture_app_with_tmux_and_calls(
+                        WorkspaceStatus::Active,
+                        Vec::new(),
+                        Vec::new(),
+                    );
+                app.state.mode = UiMode::Preview;
+                app.state.focus = PaneFocus::Preview;
+                select_workspace(&mut app, 1);
+                let first_session = feature_agent_tab_session(1);
+                let second_session = feature_agent_tab_session(2);
+                let first_tab_id =
+                    insert_running_agent_tab(&mut app, 1, first_session.as_str(), "Claude 1");
+                let second_tab_id =
+                    insert_running_agent_tab(&mut app, 1, second_session.as_str(), "Claude 2");
+                if let Some(tabs) = app
+                    .workspace_tabs
+                    .get_mut(feature_workspace_path().as_path())
+                {
+                    tabs.active_tab_id = first_tab_id;
+                }
+                app.sync_preview_tab_from_active_workspace_tab();
+                app.session.agent_sessions.mark_ready(first_session.clone());
+                app.session
+                    .agent_sessions
+                    .mark_ready(second_session.clone());
+                let (expected_width, expected_height) = app
+                    .preview_output_dimensions()
+                    .expect("preview dimensions should exist");
+
+                let first_live_preview = app.prepare_live_preview_session();
+                let second_live_preview = app.prepare_live_preview_session();
+
+                assert_eq!(
+                    first_live_preview.map(|target| target.session_name),
+                    Some(first_session.clone())
+                );
+                assert_eq!(
+                    second_live_preview.map(|target| target.session_name),
+                    Some(first_session.clone())
+                );
+                assert_eq!(
+                    calls.borrow().as_slice(),
+                    &[format!(
+                        "resize:{first_session}:{expected_width}:{expected_height}"
+                    )]
+                );
+
+                calls.borrow_mut().clear();
+                let switched = app.select_tab_by_id_for_selected_workspace(second_tab_id);
+                assert!(switched);
+                assert!(calls.borrow().iter().any(|call| {
+                    call == &format!("resize:{second_session}:{expected_width}:{expected_height}")
+                }));
+                calls.borrow_mut().clear();
+
+                let switched_live_preview = app.prepare_live_preview_session();
+
+                assert_eq!(
+                    switched_live_preview.map(|target| target.session_name),
+                    Some(second_session.clone())
+                );
+                assert!(calls.borrow().is_empty());
+            }
+
+            #[test]
+            fn prepare_live_preview_session_resizes_after_exiting_interactive() {
+                let (mut app, _commands, _captures, _cursor_captures, calls) =
+                    fixture_app_with_tmux_and_calls(
+                        WorkspaceStatus::Active,
+                        vec![Ok("entered\n".to_string())],
+                        vec![Ok("1 0 0 78 34".to_string())],
+                    );
+                select_workspace(&mut app, 1);
+                let (expected_width, expected_height) = app
+                    .preview_output_dimensions()
+                    .expect("preview dimensions should exist");
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+                calls.borrow_mut().clear();
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(
+                        KeyEvent::new(KeyCode::Char('\\'))
+                            .with_modifiers(Modifiers::CTRL)
+                            .with_kind(KeyEventKind::Press),
+                    ),
+                );
+
+                let live_preview = app.prepare_live_preview_session();
+
+                assert_eq!(
+                    live_preview.map(|target| target.session_name),
+                    Some(feature_workspace_session())
+                );
+                assert_eq!(
+                    calls.borrow().as_slice(),
+                    &[format!(
+                        "resize:{}:{expected_width}:{expected_height}",
+                        feature_workspace_session()
+                    )]
                 );
             }
 

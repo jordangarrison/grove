@@ -299,6 +299,7 @@ struct PollingState {
     interactive_poll_due_at: Option<Instant>,
     activity_animation: AnimationClock,
     poll_generation: u64,
+    preview_session_geometry: Option<PreviewSessionGeometry>,
     last_diff_poll_at: Option<Instant>,
     last_diff_stat_poll_at: Option<Instant>,
     diff_capture_in_flight: bool,

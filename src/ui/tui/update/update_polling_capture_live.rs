@@ -76,6 +76,14 @@ impl GroveApp {
         if clear_selected_terminal {
             self.preview.clear_selected_terminal();
         }
+        if self
+            .polling
+            .preview_session_geometry
+            .as_ref()
+            .is_some_and(|geometry| geometry.session == session_name)
+        {
+            self.polling.preview_session_geometry = None;
+        }
     }
 
     fn manual_preview_viewport_anchor(&self) -> Option<PreviewViewportAnchor> {
