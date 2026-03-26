@@ -56,10 +56,17 @@ impl Default for PreviewStreamState {
 }
 
 impl GroveApp {
-    fn desired_preview_stream_session(&self) -> Option<String> {
-        if self.session.interactive.is_some() {
+    fn latest_live_preview_raw_output_for_session(&self, session_name: &str) -> Option<String> {
+        if self.polling.last_live_preview_session.as_deref() != Some(session_name) {
             return None;
         }
+        self.preview
+            .recent_captures
+            .back()
+            .map(|capture| capture.raw_output.clone())
+    }
+
+    fn desired_preview_stream_session(&self) -> Option<String> {
         if self.state.mode != UiMode::Preview || self.state.focus != PaneFocus::Preview {
             return None;
         }
@@ -89,6 +96,9 @@ impl GroveApp {
         &self,
         session_name: &str,
     ) -> bool {
+        if self.interactive_target_session().as_deref() == Some(session_name) {
+            return false;
+        }
         self.preview_stream_is_healthy_for_session(session_name)
             && self.polling.preview_stream.bootstrap_completed
             && !self.polling.preview_stream.reconciliation_pending
@@ -202,13 +212,18 @@ impl GroveApp {
                         geometry.height,
                     );
                 }
-            } else {
+            } else if let Some(raw_output) =
+                self.latest_live_preview_raw_output_for_session(output.session.as_str())
+            {
                 self.preview.bootstrap_selected_terminal_from_stream(
-                    self.polling.preview_stream.buffer.as_str(),
+                    raw_output.as_str(),
                     geometry.width,
                     geometry.height,
                 );
-                self.polling.preview_stream.bootstrap_completed = true;
+                self.preview
+                    .apply_selected_terminal_chunk(output.chunk.as_str());
+                self.polling.preview_stream.reconciliation_pending = true;
+            } else {
                 self.polling.preview_stream.reconciliation_pending = true;
             }
         } else {

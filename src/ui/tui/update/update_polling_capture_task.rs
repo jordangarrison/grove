@@ -37,13 +37,20 @@ impl GroveApp {
 
         if let Some(live_preview_target) = live_preview {
             let capture_started_at = Instant::now();
-            let result = self
-                .tmux_input
-                .capture_output(
-                    &live_preview_target.session_name,
-                    live_scrollback_lines,
-                    live_preview_target.include_escape_sequences,
-                )
+            let result =
+                if cursor_session.as_deref() == Some(live_preview_target.session_name.as_str()) {
+                    self.tmux_input.capture_joined_output(
+                        &live_preview_target.session_name,
+                        live_scrollback_lines,
+                        live_preview_target.include_escape_sequences,
+                    )
+                } else {
+                    self.tmux_input.capture_output(
+                        &live_preview_target.session_name,
+                        live_scrollback_lines,
+                        live_preview_target.include_escape_sequences,
+                    )
+                }
                 .map_err(|error| error.to_string());
             let capture_ms =
                 Self::duration_millis(Instant::now().saturating_duration_since(capture_started_at));
@@ -97,11 +104,19 @@ impl GroveApp {
         Cmd::task(move || {
             let live_capture = live_preview.map(|target| {
                 let capture_started_at = Instant::now();
-                let result = CommandTmuxInput::capture_session_output(
-                    &target.session_name,
-                    live_scrollback_lines,
-                    target.include_escape_sequences,
-                )
+                let result = if cursor_session.as_deref() == Some(target.session_name.as_str()) {
+                    CommandTmuxInput::capture_joined_session_output(
+                        &target.session_name,
+                        live_scrollback_lines,
+                        target.include_escape_sequences,
+                    )
+                } else {
+                    CommandTmuxInput::capture_session_output(
+                        &target.session_name,
+                        live_scrollback_lines,
+                        target.include_escape_sequences,
+                    )
+                }
                 .map_err(|error| error.to_string());
                 let capture_ms = GroveApp::duration_millis(
                     Instant::now().saturating_duration_since(capture_started_at),

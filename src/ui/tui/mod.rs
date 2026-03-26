@@ -362,6 +362,27 @@ mod tests {
             }
         }
 
+        fn capture_joined_output(
+            &self,
+            target_session: &str,
+            scrollback_lines: usize,
+            include_escape_sequences: bool,
+        ) -> std::io::Result<String> {
+            self.calls.borrow_mut().push(format!(
+                "capture-joined:{target_session}:{scrollback_lines}:{include_escape_sequences}"
+            ));
+            let mut captures = self.captures.borrow_mut();
+            if captures.is_empty() {
+                return Ok(String::new());
+            }
+
+            let next = captures.remove(0);
+            match next {
+                Ok(output) => Ok(output),
+                Err(error) => Err(std::io::Error::other(error)),
+            }
+        }
+
         fn capture_cursor_metadata(&self, target_session: &str) -> std::io::Result<String> {
             self.calls
                 .borrow_mut()
@@ -6957,6 +6978,150 @@ mod tests {
     }
 
     #[test]
+    fn preview_stream_stays_targeted_in_interactive_mode() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.sync_preview_stream_target();
+        let generation = app.polling.preview_stream.generation;
+
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            app.viewport_height,
+            app.viewport_width,
+        ));
+        app.sync_preview_stream_target();
+
+        assert_eq!(
+            app.polling.preview_stream.target_session,
+            Some(feature_workspace_session())
+        );
+        assert_eq!(app.polling.preview_stream.generation, generation);
+    }
+
+    #[test]
+    fn interactive_preview_poll_is_not_blocked_by_healthy_stream() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.sync_preview_stream_target();
+        app.polling.preview_stream.connected_session = Some(feature_workspace_session());
+        app.polling.preview_stream.source = PreviewStreamSource::Stream;
+        app.polling.preview_stream.bootstrap_completed = true;
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            app.viewport_height,
+            app.viewport_width,
+        ));
+
+        assert!(!app.preview_stream_blocks_selected_poll(&feature_workspace_session()));
+    }
+
+    #[test]
+    fn preview_stream_output_in_interactive_mode_preserves_snapshot_until_bootstrap_capture() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.preview.apply_capture("history line\n");
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            app.viewport_height,
+            app.viewport_width,
+        ));
+        app.sync_preview_stream_target();
+        app.polling.preview_session_geometry = Some(PreviewSessionGeometry {
+            session: feature_workspace_session(),
+            width: 80,
+            height: 24,
+        });
+        let generation = app.polling.preview_stream.generation;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
+                session: feature_workspace_session(),
+                generation,
+                chunk: "interactive prompt".to_string(),
+            })),
+        );
+
+        assert!(app.preview.selected_terminal().is_none());
+        assert_eq!(
+            app.preview.active_plain_lines(),
+            &["history line".to_string()]
+        );
+    }
+
+    #[test]
+    fn preview_stream_output_in_interactive_mode_seeds_terminal_from_latest_live_capture() {
+        let mut app = fixture_background_app(WorkspaceStatus::Active);
+        app.state.mode = UiMode::Preview;
+        app.state.focus = PaneFocus::Preview;
+        select_workspace(&mut app, 1);
+        focus_agent_preview_tab(&mut app);
+        app.session
+            .agent_sessions
+            .mark_ready(feature_workspace_session());
+        app.preview.apply_capture("history line\n");
+        app.polling.last_live_preview_session = Some(feature_workspace_session());
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            feature_workspace_session(),
+            Instant::now(),
+            app.viewport_height,
+            app.viewport_width,
+        ));
+        app.sync_preview_stream_target();
+        let generation = app.polling.preview_stream.generation;
+
+        ftui::Model::update(
+            &mut app,
+            Msg::PreviewStreamEvent(PreviewStreamEvent::Output(PreviewStreamOutput {
+                session: feature_workspace_session(),
+                generation,
+                chunk: "interactive prompt".to_string(),
+            })),
+        );
+
+        let selected_terminal = app
+            .preview
+            .selected_terminal()
+            .expect("existing live capture should seed the selected terminal");
+        assert_eq!(
+            selected_terminal.raw_stream,
+            "history line\ninteractive prompt"
+        );
+        assert_eq!(selected_terminal.plain_lines[0], "history line");
+        assert_eq!(
+            selected_terminal.plain_lines[1].trim_start(),
+            "interactive prompt"
+        );
+        assert!(!app.polling.preview_stream.bootstrap_completed);
+        assert!(app.polling.preview_stream.reconciliation_pending);
+    }
+
+    #[test]
     fn selected_preview_stream_reports_connecting_before_first_stream_event() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
@@ -7029,7 +7194,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_stream_output_bootstraps_selected_terminal_when_geometry_known() {
+    fn preview_stream_output_preserves_snapshot_until_bootstrap_capture() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
         app.state.focus = PaneFocus::Preview;
@@ -7056,12 +7221,13 @@ mod tests {
             })),
         );
 
-        let selected_terminal = app
-            .preview
-            .selected_terminal()
-            .expect("stream output should bootstrap selected terminal");
-        assert_eq!(selected_terminal.plain_lines[0], "partial prompt update");
-        assert!(app.polling.preview_stream.bootstrap_completed);
+        assert!(app.preview.selected_terminal().is_none());
+        assert_eq!(
+            app.preview.active_plain_lines(),
+            &["stale snapshot".to_string()]
+        );
+        assert!(!app.polling.preview_stream.bootstrap_completed);
+        assert!(app.polling.preview_stream.reconciliation_pending);
     }
 
     #[test]
@@ -7128,13 +7294,8 @@ mod tests {
         );
 
         assert!(cmd_contains_task(&cmd));
-        assert_eq!(
-            app.preview
-                .selected_terminal()
-                .expect("first stream chunk should bootstrap selected terminal")
-                .plain_lines[0],
-            "delta line"
-        );
+        assert!(app.preview.selected_terminal().is_none());
+        assert!(app.polling.preview_stream.reconciliation_pending);
     }
 
     #[test]
@@ -9681,7 +9842,7 @@ mod tests {
 
                 assert!(calls.borrow().iter().any(|call| {
                     call == &format!(
-                        "capture:{}:{}:true",
+                        "capture-joined:{}:{}:true",
                         feature_workspace_session(),
                         crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES
                     )
@@ -9691,6 +9852,87 @@ mod tests {
                         .borrow()
                         .iter()
                         .any(|call| call == &format!("cursor:{}", feature_workspace_session()))
+                );
+            }
+
+            #[test]
+            fn interactive_preview_poll_uses_joined_capture_for_live_session() {
+                let (mut app, _commands, _captures, _cursor_captures, calls) =
+                    fixture_app_with_tmux_and_calls(
+                        WorkspaceStatus::Active,
+                        vec![Ok("entered\n".to_string())],
+                        vec![Ok("1 0 0 78 34".to_string())],
+                    );
+                select_workspace(&mut app, 1);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(calls.borrow().iter().any(|call| {
+                    call == &format!(
+                        "capture-joined:{}:{}:true",
+                        feature_workspace_session(),
+                        crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES
+                    )
+                }));
+                assert!(!calls.borrow().iter().any(|call| {
+                    call == &format!(
+                        "capture:{}:{}:true",
+                        feature_workspace_session(),
+                        crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES
+                    )
+                }));
+            }
+
+            #[test]
+            fn interactive_live_capture_clears_transient_stream_terminal_state() {
+                let (mut app, _commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+                select_workspace(&mut app, 1);
+                focus_agent_preview_tab(&mut app);
+                app.state.mode = UiMode::Preview;
+                app.state.focus = PaneFocus::Preview;
+                app.session
+                    .agent_sessions
+                    .mark_ready(feature_workspace_session());
+                app.session.interactive = Some(InteractiveState::new(
+                    "%0".to_string(),
+                    feature_workspace_session(),
+                    Instant::now(),
+                    34,
+                    78,
+                ));
+                app.sync_preview_stream_target();
+                app.polling.preview_stream.connected_session = Some(feature_workspace_session());
+                app.polling.preview_stream.source = PreviewStreamSource::Stream;
+                app.polling.preview_stream.bootstrap_completed = true;
+                app.polling.preview_session_geometry = Some(PreviewSessionGeometry {
+                    session: feature_workspace_session(),
+                    width: 78,
+                    height: 34,
+                });
+                app.preview
+                    .bootstrap_selected_terminal_from_stream("stream line\n", 78, 34);
+
+                app.apply_live_preview_capture(
+                    &feature_workspace_session(),
+                    crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES,
+                    true,
+                    0,
+                    0,
+                    Ok("stream line\npoll row\ncool".to_string()),
+                );
+
+                assert!(app.preview.selected_terminal().is_none());
+                assert_eq!(
+                    app.preview.lines,
+                    vec![
+                        "stream line".to_string(),
+                        "poll row".to_string(),
+                        "cool".to_string(),
+                    ]
                 );
             }
 
@@ -9723,7 +9965,7 @@ mod tests {
                 }));
                 assert!(calls.borrow().iter().any(|call| {
                     call == &format!(
-                        "capture:{}:{}:true",
+                        "capture-joined:{}:{}:true",
                         feature_workspace_session(),
                         crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES
                     )
@@ -10382,7 +10624,7 @@ mod tests {
                     calls.borrow().as_slice(),
                     &[
                         format!(
-                            "capture:{}:{}:true",
+                            "capture-joined:{}:{}:true",
                             feature_workspace_session(),
                             crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES
                         ),
@@ -10392,7 +10634,7 @@ mod tests {
                             feature_workspace_session()
                         ),
                         format!(
-                            "capture:{}:{}:false",
+                            "capture-joined:{}:{}:false",
                             feature_workspace_session(),
                             crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES
                         ),
