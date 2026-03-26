@@ -181,10 +181,11 @@ impl GroveApp {
         _preview_height: usize,
         _allow_cursor_overlay: bool,
     ) -> Vec<PreviewParsedLine> {
-        let parsed_start = visible_start.min(self.preview.parsed_lines.len());
-        let parsed_end = visible_end.min(self.preview.parsed_lines.len());
+        let active_parsed_lines = self.preview.active_parsed_lines();
+        let parsed_start = visible_start.min(active_parsed_lines.len());
+        let parsed_end = visible_end.min(active_parsed_lines.len());
         let visible_parsed_slice = if parsed_start < parsed_end {
-            &self.preview.parsed_lines[parsed_start..parsed_end]
+            &active_parsed_lines[parsed_start..parsed_end]
         } else {
             &[]
         };

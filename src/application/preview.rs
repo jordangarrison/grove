@@ -128,6 +128,26 @@ impl PreviewState {
         self.selected_terminal.as_ref()
     }
 
+    pub(crate) fn active_plain_lines(&self) -> &[String] {
+        self.selected_terminal
+            .as_ref()
+            .map_or(self.lines.as_slice(), |terminal| {
+                terminal.plain_lines.as_slice()
+            })
+    }
+
+    pub(crate) fn active_plain_line(&self, line_idx: usize) -> Option<&String> {
+        self.active_plain_lines().get(line_idx)
+    }
+
+    pub(crate) fn active_parsed_lines(&self) -> &[PreviewParsedLine] {
+        self.selected_terminal
+            .as_ref()
+            .map_or(self.parsed_lines.as_slice(), |terminal| {
+                terminal.parsed_lines.as_slice()
+            })
+    }
+
     pub(crate) fn clear_selected_terminal(&mut self) {
         self.selected_terminal = None;
     }

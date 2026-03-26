@@ -12,7 +12,8 @@ impl GroveApp {
     }
 
     pub(super) fn preview_line_count(&self) -> usize {
-        self.preview.lines.len() + usize::from(self.preview_has_missing_trailing_blank_row())
+        self.preview.active_plain_lines().len()
+            + usize::from(self.preview_has_missing_trailing_blank_row())
     }
 
     pub(super) fn clear_preview_selection(&mut self) {
@@ -95,10 +96,14 @@ impl GroveApp {
     }
 
     pub(super) fn preview_plain_line(&self, line_idx: usize) -> Option<String> {
-        self.preview.lines.get(line_idx).cloned().or_else(|| {
-            (self.preview_has_missing_trailing_blank_row() && line_idx == self.preview.lines.len())
+        self.preview
+            .active_plain_line(line_idx)
+            .cloned()
+            .or_else(|| {
+                (self.preview_has_missing_trailing_blank_row()
+                    && line_idx == self.preview.active_plain_lines().len())
                 .then(String::new)
-        })
+            })
     }
 
     pub(super) fn preview_plain_lines_range(&self, start: usize, end: usize) -> Vec<String> {

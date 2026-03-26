@@ -11505,6 +11505,76 @@ mod tests {
             }
 
             #[test]
+            fn preview_prefers_selected_terminal_lines_over_stale_snapshot_lines() {
+                let (mut app, _commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+                select_workspace(&mut app, 0);
+                app.preview_tab = PreviewTab::Agent;
+                app.preview.lines = vec!["stale snapshot".to_string()];
+                app.preview.parsed_lines.clear();
+                app.preview
+                    .bootstrap_selected_terminal("live stream\n", 80, 24, (0, 0), true);
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+
+                let layout = app.panes.test_rects(100, 40);
+                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+                let x_start = layout.preview.x.saturating_add(1);
+                let x_end = layout.preview.right().saturating_sub(1);
+                with_rendered_frame(&app, 100, 40, |frame| {
+                    let rendered = row_text(frame, output_y, x_start, x_end);
+                    assert!(
+                        rendered.contains("live stream"),
+                        "expected selected terminal output, got: {rendered}"
+                    );
+                });
+            }
+
+            #[test]
+            fn preview_prefers_selected_terminal_explicit_colors_over_theme_defaults() {
+                let (mut app, _commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
+                select_workspace(&mut app, 0);
+                app.preview_tab = PreviewTab::Agent;
+                app.preview.lines = vec!["abc".to_string()];
+                app.preview.parsed_lines.clear();
+                app.preview.bootstrap_selected_terminal(
+                    "a\u{1b}[31mb\u{1b}[0mc",
+                    80,
+                    24,
+                    (0, 0),
+                    true,
+                );
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+
+                let layout = app.panes.test_rects(100, 40);
+                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+                let color_x = preview_inner.x.saturating_add(1);
+                with_rendered_frame(&app, 100, 40, |frame| {
+                    let Some(cell) = frame.buffer.get(color_x, output_y) else {
+                        panic!("preview content cell should exist");
+                    };
+                    assert_eq!(cell.content.as_char(), Some('b'));
+                    assert_eq!(cell.fg, PackedRgba::rgb(170, 0, 0));
+                });
+            }
+
+            #[test]
             fn preview_output_rows_use_theme_background_for_shell_tab() {
                 let (mut app, _commands, _captures, _cursor_captures) =
                     fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
