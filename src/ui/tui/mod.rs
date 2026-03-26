@@ -7913,7 +7913,7 @@ mod tests {
                 row,
                 s_col,
                 s_col.saturating_add(7),
-                PackedRgba::rgb(0, 170, 0),
+                packed(ui_theme().success),
             );
         });
     }
@@ -7966,12 +7966,10 @@ mod tests {
     }
 
     #[test]
-    fn preview_pane_preserves_exact_ansi_foreground_against_theme_background() {
+    fn preview_pane_maps_ansi_foreground_to_theme_terminal_palette() {
         let mut app = fixture_app();
         app.preview
             .apply_capture("\u{1b}[34mconst\u{1b}[0m value = 1");
-
-        let raw_blue = PackedRgba::rgb(0, 0, 170);
 
         let layout = app.panes.test_rects(80, 24);
         let x_start = layout.preview.x.saturating_add(1);
@@ -7988,7 +7986,32 @@ mod tests {
                 panic!("rendered const cell should exist");
             };
 
-            assert_eq!(cell.fg, raw_blue);
+            assert_eq!(cell.fg, packed(ui_theme().primary));
+        });
+    }
+
+    #[test]
+    fn preview_pane_preserves_exact_truecolor_foreground() {
+        let mut app = fixture_app();
+        app.preview
+            .apply_capture("\u{1b}[38;2;12;34;56mconst\u{1b}[0m value = 1");
+
+        let layout = app.panes.test_rects(80, 24);
+        let x_start = layout.preview.x.saturating_add(1);
+        let x_end = layout.preview.right().saturating_sub(1);
+
+        with_rendered_frame(&app, 80, 24, |frame| {
+            let Some(row) = find_row_containing(frame, "const", x_start, x_end) else {
+                panic!("const row should be present in preview pane");
+            };
+            let Some(c_col) = find_cell_with_char(frame, row, x_start, x_end, 'c') else {
+                panic!("const row should include first character column");
+            };
+            let Some(cell) = frame.buffer.get(c_col, row) else {
+                panic!("rendered const cell should exist");
+            };
+
+            assert_eq!(cell.fg, PackedRgba::rgb(12, 34, 56));
         });
     }
 
@@ -8078,7 +8101,7 @@ mod tests {
                 row,
                 s_col,
                 s_col.saturating_add(7),
-                PackedRgba::rgb(0, 170, 0),
+                packed(ui_theme().success),
             );
         });
     }
@@ -11900,7 +11923,7 @@ mod tests {
                         panic!("preview content cell should exist");
                     };
                     assert_eq!(cell.content.as_char(), Some('b'));
-                    assert_eq!(cell.fg, PackedRgba::rgb(170, 0, 0));
+                    assert_eq!(cell.fg, packed(ui_theme().error));
                 });
             }
 

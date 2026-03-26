@@ -8,18 +8,6 @@ pub fn tmux_theme_commands(session_name: &str, theme_name: ThemeName) -> Vec<Vec
     let theme = crate::ui::tui::ui_theme_for(theme_name);
 
     vec![
-        tmux_style_option(
-            session_name,
-            "window-style",
-            Some(theme.text),
-            Some(theme.background),
-        ),
-        tmux_style_option(
-            session_name,
-            "window-active-style",
-            Some(theme.text),
-            Some(theme.background),
-        ),
         tmux_style_option(session_name, "pane-border-style", Some(theme.border), None),
         tmux_style_option(
             session_name,
@@ -105,6 +93,7 @@ fn tmux_hex(color: Color) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infrastructure::config::ThemeName;
 
     #[test]
     fn grove_managed_tmux_sessions_filters_and_deduplicates_known_prefixes() {
@@ -118,5 +107,27 @@ mod tests {
                 "grove-task-feature-a".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn tmux_theme_commands_do_not_override_window_default_colors() {
+        let commands = tmux_theme_commands("grove-ws-main", ThemeName::CatppuccinMocha);
+
+        assert!(!commands.iter().any(|command| {
+            command.len() == 6
+                && command[0] == "tmux"
+                && command[1] == "set-option"
+                && command[2] == "-t"
+                && command[3] == "grove-ws-main"
+                && matches!(command[4].as_str(), "window-style" | "window-active-style")
+        }));
+        assert!(commands.iter().any(|command| {
+            command.len() == 6
+                && command[0] == "tmux"
+                && command[1] == "set-option"
+                && command[2] == "-t"
+                && command[3] == "grove-ws-main"
+                && command[4] == "status-style"
+        }));
     }
 }

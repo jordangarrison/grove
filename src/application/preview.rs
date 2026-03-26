@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use ftui::text::display_width;
-use ftui_pty::virtual_terminal::{CellStyle, VirtualTerminal};
+use ftui_pty::virtual_terminal::{Ansi16Color, CellStyle, VirtualTerminal};
 
 use crate::application::agent_runtime::capture::strip_mouse_fragments;
 use crate::application::agent_runtime::{OutputDigest, evaluate_capture_change};
@@ -24,6 +24,8 @@ pub(crate) struct CaptureRecord {
 pub(crate) struct PreviewParsedStyle {
     pub(crate) foreground_rgb: Option<(u8, u8, u8)>,
     pub(crate) background_rgb: Option<(u8, u8, u8)>,
+    pub(crate) foreground_ansi16: Option<PreviewAnsi16Color>,
+    pub(crate) background_ansi16: Option<PreviewAnsi16Color>,
     pub(crate) bold: bool,
     pub(crate) dim: bool,
     pub(crate) italic: bool,
@@ -42,6 +44,26 @@ pub(crate) struct PreviewParsedSpan {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PreviewParsedLine {
     pub(crate) spans: Vec<PreviewParsedSpan>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PreviewAnsi16Color {
+    Black,
+    Red,
+    Green,
+    Yellow,
+    Blue,
+    Magenta,
+    Cyan,
+    White,
+    BrightBlack,
+    BrightRed,
+    BrightGreen,
+    BrightYellow,
+    BrightBlue,
+    BrightMagenta,
+    BrightCyan,
+    BrightWhite,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -358,6 +380,8 @@ fn preview_style_from_cell(style: &CellStyle) -> PreviewParsedStyle {
     PreviewParsedStyle {
         foreground_rgb: style.fg.map(|color| (color.r, color.g, color.b)),
         background_rgb: style.bg.map(|color| (color.r, color.g, color.b)),
+        foreground_ansi16: style.fg_ansi16.map(preview_ansi16_color),
+        background_ansi16: style.bg_ansi16.map(preview_ansi16_color),
         bold: style.bold,
         dim: style.dim,
         italic: style.italic,
@@ -365,6 +389,27 @@ fn preview_style_from_cell(style: &CellStyle) -> PreviewParsedStyle {
         blink: style.blink,
         reverse: style.reverse,
         strikethrough: style.strikethrough,
+    }
+}
+
+fn preview_ansi16_color(color: Ansi16Color) -> PreviewAnsi16Color {
+    match color {
+        Ansi16Color::Black => PreviewAnsi16Color::Black,
+        Ansi16Color::Red => PreviewAnsi16Color::Red,
+        Ansi16Color::Green => PreviewAnsi16Color::Green,
+        Ansi16Color::Yellow => PreviewAnsi16Color::Yellow,
+        Ansi16Color::Blue => PreviewAnsi16Color::Blue,
+        Ansi16Color::Magenta => PreviewAnsi16Color::Magenta,
+        Ansi16Color::Cyan => PreviewAnsi16Color::Cyan,
+        Ansi16Color::White => PreviewAnsi16Color::White,
+        Ansi16Color::BrightBlack => PreviewAnsi16Color::BrightBlack,
+        Ansi16Color::BrightRed => PreviewAnsi16Color::BrightRed,
+        Ansi16Color::BrightGreen => PreviewAnsi16Color::BrightGreen,
+        Ansi16Color::BrightYellow => PreviewAnsi16Color::BrightYellow,
+        Ansi16Color::BrightBlue => PreviewAnsi16Color::BrightBlue,
+        Ansi16Color::BrightMagenta => PreviewAnsi16Color::BrightMagenta,
+        Ansi16Color::BrightCyan => PreviewAnsi16Color::BrightCyan,
+        Ansi16Color::BrightWhite => PreviewAnsi16Color::BrightWhite,
     }
 }
 
