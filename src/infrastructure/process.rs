@@ -1,7 +1,15 @@
 use std::process::{Command, Output};
 
+const SHELL_INIT_GETCWD_PREFIX: &str = "shell-init: error retrieving current directory: getcwd:";
+
 pub(crate) fn stderr_trimmed(output: &Output) -> String {
-    String::from_utf8_lossy(&output.stderr).trim().to_string()
+    String::from_utf8_lossy(&output.stderr)
+        .lines()
+        .filter(|line| !line.starts_with(SHELL_INIT_GETCWD_PREFIX))
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<&str>>()
+        .join("\n")
 }
 
 pub(crate) fn stderr_or_status(output: &Output) -> String {
@@ -32,7 +40,9 @@ pub(crate) fn execute_command(command: &[String]) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::execute_command;
+    use super::{execute_command, stderr_trimmed};
+    use std::os::unix::process::ExitStatusExt;
+    use std::process::Output;
 
     #[test]
     fn execute_command_ignores_empty_commands() {
@@ -66,5 +76,16 @@ mod tests {
             error_text,
             "command failed: sh -c echo boom >&2; exit 1; boom"
         );
+    }
+
+    #[test]
+    fn stderr_trimmed_ignores_shell_init_getcwd_noise() {
+        let output = Output {
+            status: std::process::ExitStatus::from_raw(256),
+            stdout: Vec::new(),
+            stderr: b"shell-init: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory\nboom\n".to_vec(),
+        };
+
+        assert_eq!(stderr_trimmed(&output), "boom");
     }
 }
