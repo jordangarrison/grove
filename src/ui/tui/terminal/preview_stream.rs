@@ -80,6 +80,7 @@ impl GroveApp {
 
     fn desired_preview_stream_session(&self) -> Option<String> {
         self.interactive_target_session()
+            .or_else(|| self.selected_live_preview_session_if_ready())
     }
 
     pub(in crate::ui::tui) fn preview_stream_subscription(

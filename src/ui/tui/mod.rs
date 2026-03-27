@@ -6943,7 +6943,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_stream_stays_disconnected_outside_interactive_on_workspace_change() {
+    fn preview_stream_retargets_on_workspace_change() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
         let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
@@ -6955,7 +6955,10 @@ mod tests {
             .mark_ready(feature_workspace_session());
         app.sync_preview_stream_target();
 
-        assert!(app.polling.preview_stream.target_session.is_none());
+        assert_eq!(
+            app.polling.preview_stream.target_session,
+            Some(feature_workspace_session())
+        );
         let first_generation = app.polling.preview_stream.generation;
 
         select_workspace(&mut app, 0);
@@ -6966,12 +6969,15 @@ mod tests {
         app.state.workspaces[0].status = WorkspaceStatus::Active;
         app.sync_preview_stream_target();
 
-        assert!(app.polling.preview_stream.target_session.is_none());
-        assert_eq!(app.polling.preview_stream.generation, first_generation);
+        assert_eq!(
+            app.polling.preview_stream.target_session,
+            Some(main_workspace_session())
+        );
+        assert!(app.polling.preview_stream.generation > first_generation);
     }
 
     #[test]
-    fn preview_stream_stays_disconnected_when_agent_preview_is_not_visible() {
+    fn preview_stream_disconnects_when_agent_preview_is_not_visible() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
         let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
@@ -6982,7 +6988,10 @@ mod tests {
             .mark_ready(feature_workspace_session());
 
         app.sync_preview_stream_target();
-        assert!(app.polling.preview_stream.target_session.is_none());
+        assert_eq!(
+            app.polling.preview_stream.target_session,
+            Some(feature_workspace_session())
+        );
 
         app.preview_tab = PreviewTab::Git;
         app.sync_preview_stream_target();
@@ -6992,7 +7001,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_stream_stays_disconnected_when_preview_pane_blurs() {
+    fn preview_stream_stays_connected_when_preview_pane_blurs() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
         let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
@@ -7009,13 +7018,16 @@ mod tests {
         let _ = app.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
         app.sync_preview_stream_target();
 
-        assert!(app.polling.preview_stream.target_session.is_none());
+        assert_eq!(
+            app.polling.preview_stream.target_session,
+            Some(feature_workspace_session())
+        );
         assert_eq!(app.polling.preview_stream.generation, generation);
         assert!(app.preview.selected_terminal().is_some());
     }
 
     #[test]
-    fn preview_stream_stays_disconnected_while_workspace_list_is_focused() {
+    fn preview_stream_retargets_while_workspace_list_is_focused() {
         let mut app = fixture_background_app(WorkspaceStatus::Active);
         app.state.mode = UiMode::Preview;
         let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
@@ -7027,7 +7039,10 @@ mod tests {
             .mark_ready(feature_workspace_session());
         app.sync_preview_stream_target();
 
-        assert!(app.polling.preview_stream.target_session.is_none());
+        assert_eq!(
+            app.polling.preview_stream.target_session,
+            Some(feature_workspace_session())
+        );
 
         let _ = app.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
         select_workspace(&mut app, 0);
@@ -7039,7 +7054,10 @@ mod tests {
             .mark_ready(main_workspace_session());
         app.sync_preview_stream_target();
 
-        assert!(app.polling.preview_stream.target_session.is_none());
+        assert_eq!(
+            app.polling.preview_stream.target_session,
+            Some(main_workspace_session())
+        );
     }
 
     #[test]
@@ -7055,6 +7073,11 @@ mod tests {
         app.sync_preview_stream_target();
         let generation = app.polling.preview_stream.generation;
 
+        assert_eq!(
+            app.polling.preview_stream.target_session,
+            Some(feature_workspace_session())
+        );
+
         app.session.interactive = Some(InteractiveState::new(
             "%0".to_string(),
             feature_workspace_session(),
@@ -7068,7 +7091,7 @@ mod tests {
             app.polling.preview_stream.target_session,
             Some(feature_workspace_session())
         );
-        assert!(app.polling.preview_stream.generation > generation);
+        assert_eq!(app.polling.preview_stream.generation, generation);
     }
 
     #[test]
