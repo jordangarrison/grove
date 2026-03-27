@@ -68,7 +68,14 @@ direnv allow   # or: nix develop
 make tui
 ```
 
-### Option 1, Nix flake (recommended)
+### Option 1, Homebrew
+
+```bash
+brew tap MichaelVessia/tap
+brew install grove
+```
+
+### Option 2, Nix flake (recommended for Nix users)
 
 Run directly:
 
@@ -115,7 +122,7 @@ Use with Home Manager:
 Available environment overrides: `GROVE_CLAUDE_CMD`, `GROVE_CODEX_CMD`,
 `GROVE_LAZYGIT_CMD`.
 
-### Option 2, Devbox
+### Option 3, Devbox
 
 Add Grove to your `devbox.json`:
 
@@ -123,21 +130,21 @@ Add Grove to your `devbox.json`:
 devbox add github:MichaelVessia/grove
 ```
 
-### Option 3, direnv (auto Nix shell)
+### Option 4, direnv (auto Nix shell)
 
 ```bash
 direnv allow
 cargo build
 ```
 
-### Option 4, Nix dev shell
+### Option 5, Nix dev shell
 
 ```bash
 nix develop
 cargo build
 ```
 
-### Option 5, plain Cargo
+### Option 6, plain Cargo
 
 ```bash
 cargo build --release
