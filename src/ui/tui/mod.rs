@@ -4505,6 +4505,9 @@ mod tests {
                 PermissionMode::Default,
             ),
         });
+        let _ = app
+            .focus_manager
+            .focus(crate::ui::tui::FOCUS_ID_LAUNCH_PROMPT);
 
         with_rendered_frame(&app, 80, 24, |frame| {
             let dialog_width = frame.width().saturating_sub(8).min(100);
@@ -9413,6 +9416,9 @@ mod tests {
                         PermissionMode::Default,
                     ),
                 });
+                let _ = app
+                    .focus_manager
+                    .focus(crate::ui::tui::FOCUS_ID_LAUNCH_NAME);
 
                 ftui::Model::update(
                     &mut app,
