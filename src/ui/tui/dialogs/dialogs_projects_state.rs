@@ -135,5 +135,6 @@ impl GroveApp {
         };
         add_dialog.sync_focus();
         project_dialog.add_dialog = Some(add_dialog);
+        self.open_project_add_dialog_focus_trap(ProjectAddDialogField::Path);
     }
 }

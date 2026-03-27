@@ -464,8 +464,116 @@ impl GroveApp {
         let _ = self.focus_manager.focus(focus_id);
     }
 
+    fn sync_main_pane_state_from_focus_manager(&mut self) {
+        match self.focus_manager.current() {
+            Some(FOCUS_ID_WORKSPACE_LIST) => {
+                self.state.focus = PaneFocus::WorkspaceList;
+                self.state.mode = UiMode::List;
+            }
+            Some(FOCUS_ID_PREVIEW) => {
+                self.state.focus = PaneFocus::Preview;
+                self.state.mode = UiMode::Preview;
+            }
+            _ => {}
+        }
+    }
+
+    pub(super) fn workspace_list_focused(&self) -> bool {
+        !self.preview_focused()
+            && (self.focus_manager.current() == Some(FOCUS_ID_WORKSPACE_LIST)
+                || self.state.focus == PaneFocus::WorkspaceList)
+    }
+
+    pub(super) fn preview_focused(&self) -> bool {
+        self.focus_manager.current() == Some(FOCUS_ID_PREVIEW)
+            || self.state.focus == PaneFocus::Preview
+    }
+
+    pub(super) fn focus_main_pane(&mut self, focus_id: u64) -> bool {
+        let moved = self.focus_manager.current() != Some(focus_id);
+        let _ = self.focus_manager.focus(focus_id);
+        self.sync_main_pane_state_from_focus_manager();
+        moved
+    }
+
+    pub(super) fn navigate_main_panes(&mut self, dir: NavDirection) -> bool {
+        let moved = self.focus_manager.navigate(dir);
+        self.sync_main_pane_state_from_focus_manager();
+        moved
+    }
+
+    pub(super) fn sync_main_focus_nodes(&mut self) {
+        let (sidebar_rect, _, preview_rect) = self.effective_workspace_rects();
+        self.focus_manager.graph_mut().insert(
+            FocusNode::new(FOCUS_ID_WORKSPACE_LIST, sidebar_rect)
+                .with_tab_index(0)
+                .with_focusable(!self.sidebar_hidden && !sidebar_rect.is_empty()),
+        );
+        self.focus_manager.graph_mut().insert(
+            FocusNode::new(FOCUS_ID_PREVIEW, preview_rect)
+                .with_tab_index(1)
+                .with_focusable(!preview_rect.is_empty()),
+        );
+
+        if self.sidebar_hidden && self.state.focus == PaneFocus::WorkspaceList {
+            self.state.mode = UiMode::Preview;
+            self.state.focus = PaneFocus::Preview;
+        }
+
+        self.sync_focus_manager_to_state();
+        self.sync_main_pane_state_from_focus_manager();
+    }
+
+    pub(super) fn activate_focus_trap(&mut self, group_id: u32, members: &[u64], initial: u64) {
+        for (index, id) in members.iter().copied().enumerate() {
+            let Some(tab_index) = i32::try_from(index).ok() else {
+                continue;
+            };
+            self.focus_manager.graph_mut().insert(
+                FocusNode::new(id, Rect::new(0, 0, 1, 1))
+                    .with_tab_index(tab_index)
+                    .with_group(group_id),
+            );
+        }
+        self.focus_manager.create_group(group_id, members.to_vec());
+        self.focus_manager.push_trap(group_id);
+        let _ = self.focus_manager.focus(initial);
+    }
+
+    pub(super) fn deactivate_focus_trap(&mut self, members: &[u64]) {
+        let _ = self.focus_manager.pop_trap();
+        for id in members {
+            let _ = self.focus_manager.graph_mut().remove(*id);
+        }
+    }
+
     #[cfg(test)]
     pub(super) fn current_focus_id(&self) -> Option<u64> {
         self.focus_manager.current()
+    }
+
+    #[cfg(test)]
+    pub(super) fn focus_node_bounds(&self, id: u64) -> Option<Rect> {
+        self.focus_manager.graph().get(id).map(|node| node.bounds)
+    }
+
+    #[cfg(test)]
+    pub(super) fn focus_node_is_focusable(&self, id: u64) -> Option<bool> {
+        self.focus_manager.graph().get(id).map(|node| node.is_focusable)
+    }
+
+    #[cfg(test)]
+    pub(super) fn focus_is_trapped(&self) -> bool {
+        self.focus_manager.is_trapped()
+    }
+
+    #[cfg(test)]
+    pub(super) fn focus_next_for_test(&mut self) -> bool {
+        self.focus_manager.focus_next()
+    }
+
+    #[cfg(test)]
+    pub(super) fn focus_prev_for_test(&mut self) -> bool {
+        self.focus_manager.focus_prev()
     }
 }

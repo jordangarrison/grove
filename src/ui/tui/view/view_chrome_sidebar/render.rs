@@ -7,9 +7,7 @@ impl GroveApp {
         let block = Block::new()
             .title("Workspaces")
             .borders(Borders::ALL)
-            .border_style(self.pane_border_style(
-                self.state.focus == PaneFocus::WorkspaceList && !self.modal_open(),
-            ));
+            .border_style(self.pane_border_style(self.workspace_list_focused() && !self.modal_open()));
         let inner = block.inner(area);
         block.render(area, frame);
         let _ = frame.register_hit_region(area, HitId::new(HIT_ID_WORKSPACE_LIST));

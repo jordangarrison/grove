@@ -131,11 +131,11 @@ impl GroveApp {
             | UiCommand::CleanupSessions
             | UiCommand::OpenHelp
             | UiCommand::Quit => true,
-            UiCommand::OpenPreview => self.state.focus == PaneFocus::WorkspaceList,
+            UiCommand::OpenPreview => self.workspace_list_focused(),
             UiCommand::EnterInteractive => {
-                self.state.focus == PaneFocus::Preview && self.can_enter_interactive_session()
+                self.preview_focused() && self.can_enter_interactive_session()
             }
-            UiCommand::FocusList => self.state.focus == PaneFocus::Preview,
+            UiCommand::FocusList => self.preview_focused(),
             UiCommand::MoveSelectionUp | UiCommand::MoveSelectionDown => true,
             UiCommand::ScrollUp
             | UiCommand::ScrollDown
@@ -146,14 +146,13 @@ impl GroveApp {
                 self.state.selected_workspace().is_some()
             }
             UiCommand::MoveTabLeft | UiCommand::MoveTabRight => {
-                self.state.focus == PaneFocus::Preview
-                    && self.state.mode == UiMode::Preview
+                self.preview_focused()
                     && self
                         .selected_active_tab()
                         .is_some_and(|tab| tab.kind != WorkspaceTabKind::Home)
             }
             UiCommand::AddWorktree => {
-                self.state.focus == PaneFocus::WorkspaceList
+                self.workspace_list_focused()
                     && self
                         .state
                         .selected_task()
@@ -163,7 +162,7 @@ impl GroveApp {
                 !self.dialogs.start_in_flight
                     && !self.dialogs.restart_in_flight
                     && self.state.selected_workspace().is_some()
-                    && self.state.focus == PaneFocus::Preview
+                    && self.preview_focused()
             }
             UiCommand::StartParentAgent => {
                 !self.dialogs.start_in_flight
@@ -184,10 +183,10 @@ impl GroveApp {
                         .is_some_and(|tab| tab.kind != WorkspaceTabKind::Home)
             }
             UiCommand::DeleteWorkspace => self.state.selected_task().is_some_and(|task| {
-                self.state.focus == PaneFocus::WorkspaceList && !self.task_delete_requested(task)
+                self.workspace_list_focused() && !self.task_delete_requested(task)
             }),
             UiCommand::DeleteWorktree => self.state.selected_worktree().is_some_and(|worktree| {
-                self.state.focus == PaneFocus::WorkspaceList
+                self.workspace_list_focused()
                     && !self.workspace_delete_requested(worktree.path.as_path())
             }),
             UiCommand::DeleteProject => {

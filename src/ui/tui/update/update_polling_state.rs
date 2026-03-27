@@ -390,7 +390,7 @@ impl GroveApp {
         poll_interval(
             status,
             true,
-            self.state.focus == PaneFocus::Preview,
+            self.preview_focused(),
             self.session.interactive.is_some(),
             since_last_key,
             self.polling.output_changing,

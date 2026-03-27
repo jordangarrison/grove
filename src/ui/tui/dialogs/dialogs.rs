@@ -258,6 +258,45 @@ pub(super) fn modal_wrapped_hint_rows(
     )
 }
 
+fn confirm_dialog_focus_ids() -> [u64; 2] {
+    [
+        FOCUS_ID_CONFIRM_CONFIRM_BUTTON,
+        FOCUS_ID_CONFIRM_CANCEL_BUTTON,
+    ]
+}
+
+fn confirm_dialog_focus_id(field: ConfirmDialogField) -> u64 {
+    match field {
+        ConfirmDialogField::ConfirmButton => FOCUS_ID_CONFIRM_CONFIRM_BUTTON,
+        ConfirmDialogField::CancelButton => FOCUS_ID_CONFIRM_CANCEL_BUTTON,
+    }
+}
+
+fn project_dialog_focus_ids() -> [u64; 2] {
+    [
+        FOCUS_ID_PROJECT_DIALOG_FILTER_INPUT,
+        FOCUS_ID_PROJECT_DIALOG_LIST,
+    ]
+}
+
+fn project_add_dialog_focus_ids() -> [u64; 4] {
+    [
+        FOCUS_ID_PROJECT_ADD_PATH_INPUT,
+        FOCUS_ID_PROJECT_ADD_NAME_INPUT,
+        FOCUS_ID_PROJECT_ADD_ADD_BUTTON,
+        FOCUS_ID_PROJECT_ADD_CANCEL_BUTTON,
+    ]
+}
+
+fn project_add_dialog_focus_id(field: ProjectAddDialogField) -> u64 {
+    match field {
+        ProjectAddDialogField::Path => FOCUS_ID_PROJECT_ADD_PATH_INPUT,
+        ProjectAddDialogField::Name => FOCUS_ID_PROJECT_ADD_NAME_INPUT,
+        ProjectAddDialogField::AddButton => FOCUS_ID_PROJECT_ADD_ADD_BUTTON,
+        ProjectAddDialogField::CancelButton => FOCUS_ID_PROJECT_ADD_CANCEL_BUTTON,
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct ModalDialogSpec<'a> {
     pub(super) dialog_width: u16,
@@ -373,7 +412,9 @@ macro_rules! active_dialog_accessors {
         }
 
         pub(super) fn $set(&mut self, dialog: $ty) {
+            self.clear_active_dialog_focus_trap();
             self.dialogs.active_dialog = Some(ActiveDialog::$variant(dialog));
+            self.sync_active_dialog_focus_trap();
         }
     };
 }
@@ -383,7 +424,12 @@ macro_rules! active_dialog_take_accessor {
         pub(super) fn $take(&mut self) -> Option<$ty> {
             let active_dialog = self.dialogs.active_dialog.take()?;
             match active_dialog {
-                ActiveDialog::$variant(dialog) => Some(dialog),
+                ActiveDialog::$variant(dialog) => {
+                    self.close_focus_trap_for_active_dialog(&ActiveDialog::$variant(
+                        dialog.clone(),
+                    ));
+                    Some(dialog)
+                }
                 other => {
                     self.dialogs.active_dialog = Some(other);
                     None
@@ -394,7 +440,82 @@ macro_rules! active_dialog_take_accessor {
 }
 
 impl GroveApp {
+    fn open_focus_trap_for_active_dialog(&mut self, dialog: &ActiveDialog) {
+        match dialog {
+            ActiveDialog::Confirm(dialog) => {
+                let members = confirm_dialog_focus_ids();
+                self.activate_focus_trap(
+                    FOCUS_GROUP_CONFIRM_DIALOG,
+                    &members,
+                    confirm_dialog_focus_id(dialog.focused_field),
+                );
+            }
+            ActiveDialog::Project(dialog) => {
+                let members = project_dialog_focus_ids();
+                self.activate_focus_trap(
+                    FOCUS_GROUP_PROJECT_DIALOG,
+                    &members,
+                    FOCUS_ID_PROJECT_DIALOG_FILTER_INPUT,
+                );
+                if let Some(add_dialog) = dialog.add_dialog.as_ref() {
+                    let add_members = project_add_dialog_focus_ids();
+                    self.activate_focus_trap(
+                        FOCUS_GROUP_PROJECT_ADD_DIALOG,
+                        &add_members,
+                        project_add_dialog_focus_id(add_dialog.focused_field),
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn close_focus_trap_for_active_dialog(&mut self, dialog: &ActiveDialog) {
+        match dialog {
+            ActiveDialog::Confirm(_) => {
+                let members = confirm_dialog_focus_ids();
+                self.deactivate_focus_trap(&members);
+            }
+            ActiveDialog::Project(dialog) => {
+                if dialog.add_dialog.is_some() {
+                    let add_members = project_add_dialog_focus_ids();
+                    self.deactivate_focus_trap(&add_members);
+                }
+                let members = project_dialog_focus_ids();
+                self.deactivate_focus_trap(&members);
+            }
+            _ => {}
+        }
+    }
+
+    fn sync_active_dialog_focus_trap(&mut self) {
+        if let Some(dialog) = self.dialogs.active_dialog.clone() {
+            self.open_focus_trap_for_active_dialog(&dialog);
+        }
+    }
+
+    fn clear_active_dialog_focus_trap(&mut self) {
+        if let Some(dialog) = self.dialogs.active_dialog.clone() {
+            self.close_focus_trap_for_active_dialog(&dialog);
+        }
+    }
+
+    pub(super) fn open_project_add_dialog_focus_trap(&mut self, field: ProjectAddDialogField) {
+        let members = project_add_dialog_focus_ids();
+        self.activate_focus_trap(
+            FOCUS_GROUP_PROJECT_ADD_DIALOG,
+            &members,
+            project_add_dialog_focus_id(field),
+        );
+    }
+
+    pub(super) fn close_project_add_dialog_focus_trap(&mut self) {
+        let members = project_add_dialog_focus_ids();
+        self.deactivate_focus_trap(&members);
+    }
+
     pub(super) fn close_active_dialog(&mut self) {
+        self.clear_active_dialog_focus_trap();
         self.dialogs.active_dialog = None;
     }
 
@@ -525,6 +646,7 @@ impl GroveApp {
     }
 
     pub(super) fn set_performance_dialog(&mut self, dialog: PerformanceDialogState) {
+        self.clear_active_dialog_focus_trap();
         self.dialogs.active_dialog = Some(ActiveDialog::Performance(dialog));
     }
 
@@ -547,7 +669,9 @@ impl GroveApp {
     }
 
     pub(super) fn set_project_dialog(&mut self, dialog: ProjectDialogState) {
+        self.clear_active_dialog_focus_trap();
         self.dialogs.active_dialog = Some(ActiveDialog::Project(Box::new(dialog)));
+        self.sync_active_dialog_focus_trap();
     }
 
     pub(super) fn handle_keybind_help_key(&mut self, key_event: KeyEvent) {

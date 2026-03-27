@@ -279,6 +279,7 @@ impl GroveApp {
                 if let Some(project_dialog) = self.project_dialog_mut() {
                     project_dialog.add_dialog = None;
                 }
+                self.close_project_add_dialog_focus_trap();
             }
             PostAction::RefreshMatches => self.refresh_project_add_dialog_matches(),
             PostAction::AcceptSelectedPathMatch => self.accept_selected_project_add_path_match(),

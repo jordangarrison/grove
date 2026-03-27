@@ -49,9 +49,10 @@ impl GroveApp {
             return "Task Reorder".to_string();
         }
 
-        match self.state.focus {
-            PaneFocus::WorkspaceList => "List".to_string(),
-            PaneFocus::Preview => format!("Preview: {}", self.preview_tab.label()),
+        if self.preview_focused() {
+            format!("Preview: {}", self.preview_tab.label())
+        } else {
+            "List".to_string()
         }
     }
 

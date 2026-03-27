@@ -205,8 +205,7 @@ impl GroveApp {
     }
 
     fn non_interactive_command_for_key(&self, key_event: &KeyEvent) -> Option<UiCommand> {
-        let in_preview_focus =
-            self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview;
+        let in_preview_focus = self.preview_focused();
         let in_preview_scroll = in_preview_focus && self.active_tab_is_scrollable();
         let can_enter_interactive = self.can_enter_interactive_session();
 
@@ -251,7 +250,7 @@ impl GroveApp {
                         .is_some_and(|tab| tab.kind != WorkspaceTabKind::Home)
             }
             UiCommand::AddWorktree | UiCommand::DeleteWorkspace | UiCommand::DeleteWorktree => {
-                self.state.focus == PaneFocus::WorkspaceList
+                self.workspace_list_focused()
             }
             UiCommand::OpenDiffTab => in_preview_focus,
             UiCommand::RenameActiveTab
@@ -259,8 +258,7 @@ impl GroveApp {
             | UiCommand::RestartAgent
             | UiCommand::StartParentAgent
             | UiCommand::StartAgent => {
-                self.state.mode == UiMode::Preview
-                    && self.state.focus == PaneFocus::Preview
+                in_preview_focus
                     && match command {
                         UiCommand::StartAgent => self.state.selected_workspace().is_some(),
                         UiCommand::RenameActiveTab => self
@@ -279,9 +277,32 @@ impl GroveApp {
             | UiCommand::FocusPreview
             | UiCommand::DeleteProject => false,
             UiCommand::FocusAttentionInbox => !in_preview_focus,
-            UiCommand::ReorderTasks => self.state.focus == PaneFocus::WorkspaceList,
+            UiCommand::ReorderTasks => self.workspace_list_focused(),
             _ => true,
         }
+    }
+
+    fn handle_main_pane_arrow_key(&mut self, key_event: &KeyEvent) -> bool {
+        if !key_event.modifiers.is_empty() || self.modal_open() {
+            return false;
+        }
+
+        let dir = match key_event.code {
+            KeyCode::Left => NavDirection::Left,
+            KeyCode::Right => NavDirection::Right,
+            _ => return false,
+        };
+        let mode_before = self.state.mode;
+        let focus_before = self.state.focus;
+        let moved = self.navigate_main_panes(dir);
+        if moved
+            && (self.state.mode != mode_before || self.state.focus != focus_before)
+            && self.preview_focused()
+        {
+            self.acknowledge_selected_workspace_attention_for_preview_focus();
+            self.poll_preview();
+        }
+        moved
     }
 
     fn handle_non_interactive_key(&mut self, key_event: KeyEvent) -> bool {
@@ -432,6 +453,10 @@ impl GroveApp {
             return (false, self.handle_interactive_key(key_event));
         }
 
+        if self.handle_main_pane_arrow_key(&key_event) {
+            return (false, Cmd::None);
+        }
+
         if Self::is_ctrl_char_key(&key_event, 'c') && !self.modal_open() {
             self.open_quit_dialog();
             return (false, Cmd::None);
@@ -465,7 +490,7 @@ impl GroveApp {
     }
 
     fn preview_is_focused(&self) -> bool {
-        self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview
+        self.preview_focused()
     }
 
     pub(super) fn preview_scroll_tab_is_focused(&self) -> bool {

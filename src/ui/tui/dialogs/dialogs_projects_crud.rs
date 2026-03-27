@@ -225,6 +225,7 @@ impl GroveApp {
         if let Some(dialog) = self.project_dialog_mut() {
             dialog.add_dialog = None;
         }
+        self.close_project_add_dialog_focus_trap();
         self.refresh_project_dialog_filtered();
         self.refresh_workspaces(None);
         self.show_success_toast(format!("project '{}' added", project_name));

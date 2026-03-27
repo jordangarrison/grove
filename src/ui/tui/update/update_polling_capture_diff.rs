@@ -196,7 +196,7 @@ impl GroveApp {
         if self.preview_tab != PreviewTab::Diff {
             return;
         }
-        let focused = self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview;
+        let focused = self.preview_focused();
         let interval_ms = if focused {
             DIFF_POLL_INTERVAL_FOCUSED_MS
         } else {

@@ -273,7 +273,7 @@ impl GroveApp {
         app.rebuild_workspace_tabs_from_tmux_metadata();
         app.reconcile_workspace_attention_tracking();
         app.refresh_preview_summary();
-        app.sync_focus_manager_to_state();
+        app.sync_main_focus_nodes();
         app
     }
 

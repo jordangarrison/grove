@@ -11,7 +11,6 @@ use ftui::runtime::{StopSignal, SubId, Subscription};
 use serde_json::Value;
 
 use crate::infrastructure::event_log::Event as LogEvent;
-use crate::ui::state::{PaneFocus, UiMode};
 use crate::ui::tui::{
     CommandTmuxInput, GroveApp, LIVE_PREVIEW_FULL_SCROLLBACK_LINES, Msg, PreviewSessionGeometry,
     PreviewStreamConnected, PreviewStreamDisconnected, PreviewStreamEvent, PreviewStreamOutput,
@@ -67,7 +66,7 @@ impl GroveApp {
     }
 
     fn desired_preview_stream_session(&self) -> Option<String> {
-        if self.state.mode != UiMode::Preview || self.state.focus != PaneFocus::Preview {
+        if !self.preview_focused() {
             return None;
         }
         self.selected_live_preview_session_if_ready()

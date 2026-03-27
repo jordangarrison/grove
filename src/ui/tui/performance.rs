@@ -234,7 +234,7 @@ impl GroveApp {
         poll_interval(
             workspace.status,
             is_selected,
-            is_selected && self.state.focus == PaneFocus::Preview,
+            is_selected && self.preview_focused(),
             is_selected && self.session.interactive.is_some(),
             since_last_key,
             if is_selected {

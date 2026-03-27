@@ -18,10 +18,9 @@ impl GroveApp {
 
         if self.session.interactive.is_some() {
             self.exit_interactive_to_list();
-        } else {
-            reduce(&mut self.state, Action::EnterListMode);
+        } else if self.state.mode != UiMode::List || !self.workspace_list_focused() {
+            let _ = self.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
         }
-        self.sync_focus_manager_to_state();
         self.select_attention_item(0);
     }
 
@@ -75,6 +74,7 @@ impl GroveApp {
 
         self.sidebar_width_pct = clamped;
         let _ = self.panes.set_sidebar_ratio_pct(clamped);
+        self.sync_main_focus_nodes();
         self.persist_sidebar_ratio();
         self.sync_interactive_session_geometry();
     }
@@ -125,8 +125,12 @@ impl GroveApp {
             UiCommand::ToggleFocus => {
                 let mode_before = self.state.mode;
                 let focus_before = self.state.focus;
-                reduce(&mut self.state, Action::ToggleFocus);
-                self.sync_focus_manager_to_state();
+                let target = if self.preview_focused() {
+                    FOCUS_ID_WORKSPACE_LIST
+                } else {
+                    FOCUS_ID_PREVIEW
+                };
+                let _ = self.focus_main_pane(target);
                 if self.state.mode != mode_before || self.state.focus != focus_before {
                     self.acknowledge_selected_workspace_attention_for_preview_focus();
                 }
@@ -137,6 +141,7 @@ impl GroveApp {
                     let _ = self.divider_resize.force_cancel();
                     self.divider_resize_anchor_x = 0;
                 }
+                self.sync_main_focus_nodes();
             }
             UiCommand::OpenPreview => {
                 self.enter_preview_or_interactive();
@@ -147,16 +152,14 @@ impl GroveApp {
             UiCommand::FocusPreview => {
                 let mode_before = self.state.mode;
                 let focus_before = self.state.focus;
-                reduce(&mut self.state, Action::EnterPreviewMode);
-                self.sync_focus_manager_to_state();
+                let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
                 if self.state.mode != mode_before || self.state.focus != focus_before {
                     self.acknowledge_selected_workspace_attention_for_preview_focus();
                     self.poll_preview();
                 }
             }
             UiCommand::FocusList => {
-                reduce(&mut self.state, Action::EnterListMode);
-                self.sync_focus_manager_to_state();
+                let _ = self.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
             }
             UiCommand::MoveSelectionUp => {
                 self.move_selection(Action::MoveSelectionUp);
@@ -190,14 +193,14 @@ impl GroveApp {
                 }
             }
             UiCommand::PreviousTab => {
-                reduce(&mut self.state, Action::EnterPreviewMode);
-                if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
+                let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
+                if self.preview_focused() {
                     self.cycle_preview_tab(-1);
                 }
             }
             UiCommand::NextTab => {
-                reduce(&mut self.state, Action::EnterPreviewMode);
-                if self.state.mode == UiMode::Preview && self.state.focus == PaneFocus::Preview {
+                let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
+                if self.preview_focused() {
                     self.cycle_preview_tab(1);
                 }
             }

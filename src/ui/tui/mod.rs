@@ -231,22 +231,23 @@ mod tests {
         AppDependencies, AttentionItem, AttentionReason, ClipboardAccess, CommandTmuxInput,
         CreateDialogField, CreateDialogTab, CreateWorkspaceCompletion, CreateWorkspaceRequest,
         CreateWorkspaceResult, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
-        DeleteWorkspaceCompletion, EditDialogField, FOCUS_ID_PREVIEW, FOCUS_ID_WORKSPACE_LIST,
-        GroveApp, HIT_ID_CREATE_DIALOG_TAB, HIT_ID_HEADER, HIT_ID_PREVIEW,
-        HIT_ID_PROJECT_ADD_RESULTS_LIST, HIT_ID_PROJECT_DIALOG_LIST, HIT_ID_STATUS,
-        HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW, HelpHintContext,
-        LaunchDialogField, LaunchDialogState, LaunchDialogTarget, LazygitLaunchCompletion,
-        LivePreviewCapture, MergeDialogField, MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS,
-        PendingResizeVerification, PreviewPollCompletion, PreviewSessionGeometry,
-        PreviewStreamConnected, PreviewStreamDisconnected, PreviewStreamEvent, PreviewStreamOutput,
-        PreviewStreamSource, PreviewTab, ProjectAddDialogField, ProjectDefaultsDialogField,
-        PullUpstreamDialogField, RefreshWorkspacesCompletion, SettingsDialogField,
-        StartAgentCompletion, StartAgentConfigField, StartAgentConfigState, StopAgentCompletion,
-        StopDialogField, TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField,
-        WorkspaceAttention, WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceTab,
-        WorkspaceTabKind, WorkspaceTabRuntimeState, decode_create_dialog_tab_hit_data,
-        decode_workspace_pr_hit_data, packed, parse_cursor_metadata, ui_theme, ui_theme_for,
-        usize_to_u64,
+        DeleteWorkspaceCompletion, EditDialogField, FOCUS_ID_CONFIRM_CANCEL_BUTTON,
+        FOCUS_ID_CONFIRM_CONFIRM_BUTTON, FOCUS_ID_PREVIEW, FOCUS_ID_PROJECT_ADD_PATH_INPUT,
+        FOCUS_ID_PROJECT_DIALOG_FILTER_INPUT, FOCUS_ID_WORKSPACE_LIST, GroveApp,
+        HIT_ID_CREATE_DIALOG_TAB, HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_PROJECT_ADD_RESULTS_LIST,
+        HIT_ID_PROJECT_DIALOG_LIST, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK,
+        HIT_ID_WORKSPACE_ROW, HelpHintContext, LaunchDialogField, LaunchDialogState,
+        LaunchDialogTarget, LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField,
+        MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification,
+        PreviewPollCompletion, PreviewSessionGeometry, PreviewStreamConnected,
+        PreviewStreamDisconnected, PreviewStreamEvent, PreviewStreamOutput, PreviewStreamSource,
+        PreviewTab, ProjectAddDialogField, ProjectDefaultsDialogField, PullUpstreamDialogField,
+        RefreshWorkspacesCompletion, SettingsDialogField, StartAgentCompletion,
+        StartAgentConfigField, StartAgentConfigState, StopAgentCompletion, StopDialogField,
+        TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WorkspaceAttention,
+        WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind,
+        WorkspaceTabRuntimeState, decode_create_dialog_tab_hit_data, decode_workspace_pr_hit_data,
+        packed, parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
     };
     use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
     use crate::application::interactive::InteractiveState;
@@ -15782,6 +15783,178 @@ mod tests {
 
                 assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
                 assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
+            }
+
+            #[test]
+            fn focus_bounds_resize_updates_main_pane_nodes() {
+                let mut app = fixture_app();
+
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 140,
+                        height: 32,
+                    },
+                );
+
+                let (sidebar_rect, _, preview_rect) = app.effective_workspace_rects();
+                assert_eq!(
+                    app.focus_node_bounds(FOCUS_ID_WORKSPACE_LIST),
+                    Some(sidebar_rect)
+                );
+                assert_eq!(app.focus_node_bounds(FOCUS_ID_PREVIEW), Some(preview_rect));
+            }
+
+            #[test]
+            fn sidebar_hidden_focus_hides_workspace_list_node_and_moves_focus_to_preview() {
+                let mut app = fixture_app();
+
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
+
+                app.execute_ui_command(UiCommand::ToggleSidebar);
+
+                assert!(app.sidebar_hidden);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
+                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(
+                    app.focus_node_is_focusable(FOCUS_ID_WORKSPACE_LIST),
+                    Some(false)
+                );
+            }
+
+            #[test]
+            fn sidebar_hidden_focus_restores_workspace_list_focusability_when_sidebar_returns() {
+                let mut app = fixture_app();
+
+                app.execute_ui_command(UiCommand::ToggleSidebar);
+                app.execute_ui_command(UiCommand::ToggleSidebar);
+
+                assert!(!app.sidebar_hidden);
+                assert_eq!(
+                    app.focus_node_is_focusable(FOCUS_ID_WORKSPACE_LIST),
+                    Some(true)
+                );
+            }
+
+            #[test]
+            fn modal_focus_trap_confirm_dialog_traps_focus_and_restores_preview() {
+                let mut app = fixture_app();
+                app.execute_ui_command(UiCommand::FocusPreview);
+
+                app.open_quit_dialog();
+
+                assert!(app.focus_is_trapped());
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_CONFIRM_CANCEL_BUTTON));
+
+                app.close_active_dialog();
+
+                assert!(!app.focus_is_trapped());
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
+            }
+
+            #[test]
+            fn modal_focus_trap_confirm_dialog_tab_cycles_within_trap() {
+                let mut app = fixture_app();
+
+                app.open_quit_dialog();
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_CONFIRM_CANCEL_BUTTON));
+
+                assert!(app.focus_next_for_test());
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(FOCUS_ID_CONFIRM_CONFIRM_BUTTON)
+                );
+
+                assert!(app.focus_prev_for_test());
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_CONFIRM_CANCEL_BUTTON));
+            }
+
+            #[test]
+            fn project_dialog_focus_trap_nested_add_dialog_restores_outer_focus() {
+                let mut app = fixture_app();
+
+                app.open_project_dialog();
+                assert!(app.focus_is_trapped());
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(FOCUS_ID_PROJECT_DIALOG_FILTER_INPUT)
+                );
+
+                app.open_project_add_dialog();
+                assert!(app.focus_is_trapped());
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(FOCUS_ID_PROJECT_ADD_PATH_INPUT)
+                );
+
+                app.handle_project_dialog_key(key_press(KeyCode::Escape));
+
+                assert!(app.focus_is_trapped());
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(FOCUS_ID_PROJECT_DIALOG_FILTER_INPUT)
+                );
+            }
+
+            #[test]
+            fn pane_arrow_navigation_right_moves_focus_to_preview() {
+                let mut app = fixture_app();
+
+                let _ =
+                    app.handle_key(KeyEvent::new(KeyCode::Right).with_kind(KeyEventKind::Press));
+
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
+                assert_eq!(app.state.focus, PaneFocus::Preview);
+                assert_eq!(app.state.mode, UiMode::Preview);
+            }
+
+            #[test]
+            fn pane_arrow_navigation_left_moves_focus_to_workspace_list() {
+                let mut app = fixture_app();
+                app.execute_ui_command(UiCommand::FocusPreview);
+
+                let _ = app.handle_key(KeyEvent::new(KeyCode::Left).with_kind(KeyEventKind::Press));
+
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
+                assert_eq!(app.state.focus, PaneFocus::WorkspaceList);
+                assert_eq!(app.state.mode, UiMode::List);
+            }
+
+            #[test]
+            fn status_focus_preview_line_follows_focus_manager() {
+                let mut app = fixture_app();
+
+                let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
+
+                with_rendered_frame(&app, 120, 24, |frame| {
+                    let status_row = frame.height().saturating_sub(1);
+                    let status_text = row_text(frame, status_row, 0, frame.width());
+                    assert!(status_text.contains("[Preview: Home]"));
+                });
+            }
+
+            #[test]
+            fn command_palette_focus_preview_actions_follow_focus_manager() {
+                let mut app = fixture_app();
+                let palette_id = |command: UiCommand| -> String {
+                    command
+                        .palette_spec()
+                        .map(|spec| spec.id.to_string())
+                        .expect("command should be palette discoverable")
+                };
+
+                let _ = app.focus_manager.focus(FOCUS_ID_PREVIEW);
+
+                let ids: Vec<String> = app
+                    .build_command_palette_actions()
+                    .into_iter()
+                    .map(|action| action.id)
+                    .collect();
+                assert!(ids.iter().any(|id| id == &palette_id(UiCommand::FocusList)));
+                assert!(
+                    !ids.iter()
+                        .any(|id| id == &palette_id(UiCommand::OpenPreview))
+                );
             }
 
             #[test]

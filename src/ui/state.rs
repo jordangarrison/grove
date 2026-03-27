@@ -50,7 +50,6 @@ impl UiMode {
 pub enum Action {
     MoveSelectionUp,
     MoveSelectionDown,
-    ToggleFocus,
     EnterPreviewMode,
     EnterListMode,
 }
@@ -221,17 +220,6 @@ pub fn reduce(state: &mut AppState, action: Action) {
             }
             state.sync_selection_fields();
         }
-        Action::ToggleFocus => match state.focus {
-            PaneFocus::WorkspaceList => {
-                if state.selected_workspace().is_some() {
-                    state.mode = UiMode::Preview;
-                    state.focus = PaneFocus::Preview;
-                }
-            }
-            PaneFocus::Preview => {
-                state.focus = PaneFocus::WorkspaceList;
-            }
-        },
         Action::EnterPreviewMode => {
             if state.selected_workspace().is_some() {
                 state.mode = UiMode::Preview;
@@ -360,12 +348,8 @@ mod tests {
     }
 
     #[test]
-    fn reducer_toggles_focus_and_switches_modes() {
+    fn reducer_switches_modes() {
         let mut state = fixture_state();
-
-        reduce(&mut state, Action::ToggleFocus);
-        assert_eq!(state.focus, PaneFocus::Preview);
-        assert_eq!(state.mode, UiMode::Preview);
 
         reduce(&mut state, Action::EnterPreviewMode);
         assert_eq!(state.mode, UiMode::Preview);

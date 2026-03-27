@@ -6,7 +6,7 @@ impl GroveApp {
             return;
         }
 
-        let preview_focused = self.state.focus == PaneFocus::Preview && !self.modal_open();
+        let preview_focused = self.preview_focused() && !self.modal_open();
         let interactive_input_active = self.session.interactive.is_some() && !self.modal_open();
         let theme = self.active_ui_theme();
         let (title, border_style) = if interactive_input_active {

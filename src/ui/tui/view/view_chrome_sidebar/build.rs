@@ -67,7 +67,7 @@ impl GroveApp {
                 *selected_line = Some(lines.len());
             }
             let row_background = if is_selected {
-                if self.state.focus == PaneFocus::WorkspaceList && !self.modal_open() {
+                if self.workspace_list_focused() && !self.modal_open() {
                     Some(packed(theme.selection_bg))
                 } else {
                     Some(packed(theme.surface))
@@ -128,7 +128,7 @@ impl GroveApp {
             .workspace_attention_indicator(workspace.path.as_path())
             .unwrap_or((" ", packed(theme.border)));
         let row_background = if is_selected {
-            if self.state.focus == PaneFocus::WorkspaceList && !self.modal_open() {
+            if self.workspace_list_focused() && !self.modal_open() {
                 Some(packed(theme.selection_bg))
             } else {
                 Some(packed(theme.surface))

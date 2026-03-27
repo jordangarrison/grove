@@ -47,6 +47,7 @@ impl GroveApp {
             Msg::Resize { width, height } => {
                 self.viewport_width = width;
                 self.viewport_height = height;
+                self.sync_main_focus_nodes();
                 self.sync_interactive_session_geometry();
                 if self.session.interactive.is_some() {
                     self.poll_preview();
