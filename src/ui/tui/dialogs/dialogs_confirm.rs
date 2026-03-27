@@ -59,6 +59,7 @@ impl GroveApp {
     }
 
     pub(super) fn handle_confirm_dialog_key(&mut self, key_event: KeyEvent) {
+        self.sync_active_dialog_focus_field();
         let no_modifiers = key_event.modifiers.is_empty();
         let target = self
             .confirm_dialog()
@@ -86,7 +87,7 @@ impl GroveApp {
 
         let mut should_confirm = false;
         let mut should_cancel = false;
-        let Some(dialog) = self.confirm_dialog_mut() else {
+        let Some(focused_field) = self.confirm_dialog().map(|dialog| dialog.focused_field) else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -95,39 +96,40 @@ impl GroveApp {
             && matches!(key_event.code, KeyCode::Char('p') | KeyCode::Char('P'));
 
         match key_event.code {
-            KeyCode::Enter => match dialog.focused_field {
+            KeyCode::Enter => match focused_field {
                 ConfirmDialogField::ConfirmButton => should_confirm = true,
                 ConfirmDialogField::CancelButton => should_cancel = true,
             },
             KeyCode::Tab => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::BackTab => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Char(_) if ctrl_n => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::Char(_) if ctrl_p => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Up | KeyCode::Char('k') if no_modifiers => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Down | KeyCode::Char('j') if no_modifiers => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::Char(character) if no_modifiers => {
-                if (dialog.focused_field == ConfirmDialogField::ConfirmButton
-                    || dialog.focused_field == ConfirmDialogField::CancelButton)
+                if (focused_field == ConfirmDialogField::ConfirmButton
+                    || focused_field == ConfirmDialogField::CancelButton)
                     && (character == 'h' || character == 'l')
                 {
-                    dialog.focused_field =
-                        if dialog.focused_field == ConfirmDialogField::ConfirmButton {
-                            ConfirmDialogField::CancelButton
+                    self.focus_dialog_field(
+                        if focused_field == ConfirmDialogField::ConfirmButton {
+                            FOCUS_ID_CONFIRM_CANCEL_BUTTON
                         } else {
-                            ConfirmDialogField::ConfirmButton
-                        };
+                            FOCUS_ID_CONFIRM_CONFIRM_BUTTON
+                        },
+                    );
                 }
             }
             _ => {}

@@ -5,6 +5,7 @@ impl GroveApp {
         if self.dialogs.merge_in_flight {
             return;
         }
+        self.sync_active_dialog_focus_field();
         let no_modifiers = key_event.modifiers.is_empty();
         match key_event.code {
             KeyCode::Escape => {
@@ -26,7 +27,7 @@ impl GroveApp {
 
         let mut confirm_merge = false;
         let mut cancel_dialog = false;
-        let Some(dialog) = self.merge_dialog_mut() else {
+        let Some(focused_field) = self.merge_dialog().map(|dialog| dialog.focused_field) else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -35,12 +36,16 @@ impl GroveApp {
             && matches!(key_event.code, KeyCode::Char('p') | KeyCode::Char('P'));
 
         match key_event.code {
-            KeyCode::Enter => match dialog.focused_field {
+            KeyCode::Enter => match focused_field {
                 MergeDialogField::CleanupWorkspace => {
-                    dialog.cleanup_workspace = !dialog.cleanup_workspace;
+                    if let Some(dialog) = self.merge_dialog_mut() {
+                        dialog.cleanup_workspace = !dialog.cleanup_workspace;
+                    }
                 }
                 MergeDialogField::CleanupLocalBranch => {
-                    dialog.cleanup_local_branch = !dialog.cleanup_local_branch;
+                    if let Some(dialog) = self.merge_dialog_mut() {
+                        dialog.cleanup_local_branch = !dialog.cleanup_local_branch;
+                    }
                 }
                 MergeDialogField::MergeButton => {
                     confirm_merge = true;
@@ -50,43 +55,46 @@ impl GroveApp {
                 }
             },
             KeyCode::Tab => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::BackTab => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Char(_) if ctrl_n => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::Char(_) if ctrl_p => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Up | KeyCode::Char('k') if no_modifiers => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Down | KeyCode::Char('j') if no_modifiers => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
-            KeyCode::Char(' ') if no_modifiers => match dialog.focused_field {
+            KeyCode::Char(' ') if no_modifiers => match focused_field {
                 MergeDialogField::CleanupWorkspace => {
-                    dialog.cleanup_workspace = !dialog.cleanup_workspace;
+                    if let Some(dialog) = self.merge_dialog_mut() {
+                        dialog.cleanup_workspace = !dialog.cleanup_workspace;
+                    }
                 }
                 MergeDialogField::CleanupLocalBranch => {
-                    dialog.cleanup_local_branch = !dialog.cleanup_local_branch;
+                    if let Some(dialog) = self.merge_dialog_mut() {
+                        dialog.cleanup_local_branch = !dialog.cleanup_local_branch;
+                    }
                 }
                 MergeDialogField::MergeButton | MergeDialogField::CancelButton => {}
             },
             KeyCode::Char(character) if no_modifiers => {
-                if (dialog.focused_field == MergeDialogField::MergeButton
-                    || dialog.focused_field == MergeDialogField::CancelButton)
+                if (focused_field == MergeDialogField::MergeButton
+                    || focused_field == MergeDialogField::CancelButton)
                     && (character == 'h' || character == 'l')
                 {
-                    dialog.focused_field = if dialog.focused_field == MergeDialogField::MergeButton
-                    {
-                        MergeDialogField::CancelButton
+                    self.focus_dialog_field(if focused_field == MergeDialogField::MergeButton {
+                        FOCUS_ID_MERGE_CANCEL_BUTTON
                     } else {
-                        MergeDialogField::MergeButton
-                    };
+                        FOCUS_ID_MERGE_CONFIRM_BUTTON
+                    });
                 }
             }
             _ => {}

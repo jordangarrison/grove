@@ -217,22 +217,6 @@ pub(super) enum SessionCleanupDialogField {
     CancelButton,
 }
 
-cyclic_field_nav!(pub(super) StopDialogField {
-    StopButton, CancelButton,
-});
-
-cyclic_field_nav!(pub(super) ConfirmDialogField {
-    ConfirmButton, CancelButton,
-});
-
-cyclic_field_nav!(pub(super) SessionCleanupDialogField {
-    IncludeStale, IncludeAttached, ApplyButton, CancelButton,
-});
-
-cyclic_field_nav!(pub(super) DeleteDialogField {
-    DeleteLocalBranch, KillTmuxSessions, DeleteButton, CancelButton,
-});
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum MergeDialogField {
     CleanupWorkspace,
@@ -241,19 +225,11 @@ pub(super) enum MergeDialogField {
     CancelButton,
 }
 
-cyclic_field_nav!(pub(super) MergeDialogField {
-    CleanupWorkspace, CleanupLocalBranch, MergeButton, CancelButton,
-});
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum UpdateFromBaseDialogField {
     UpdateButton,
     CancelButton,
 }
-
-cyclic_field_nav!(pub(super) UpdateFromBaseDialogField {
-    UpdateButton, CancelButton,
-});
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct PullUpstreamDialogState {
@@ -272,10 +248,6 @@ pub(super) enum PullUpstreamDialogField {
     PullButton,
     CancelButton,
 }
-
-cyclic_field_nav!(pub(super) PullUpstreamDialogField {
-    PullButton, CancelButton,
-});
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum StartAgentConfigField {
@@ -709,10 +681,6 @@ pub(super) enum SettingsDialogField {
     SaveButton,
     CancelButton,
 }
-
-cyclic_field_nav!(pub(super) SettingsDialogField {
-    Theme, SaveButton, CancelButton,
-});
 
 #[cfg(test)]
 mod tests {

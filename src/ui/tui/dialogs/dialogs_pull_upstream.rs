@@ -5,6 +5,7 @@ impl GroveApp {
         if self.dialogs.pull_upstream_in_flight {
             return;
         }
+        self.sync_active_dialog_focus_field();
         let no_modifiers = key_event.modifiers.is_empty();
         match key_event.code {
             KeyCode::Escape => {
@@ -26,7 +27,10 @@ impl GroveApp {
 
         let mut confirm_pull = false;
         let mut cancel_dialog = false;
-        let Some(dialog) = self.pull_upstream_dialog_mut() else {
+        let Some(focused_field) = self
+            .pull_upstream_dialog()
+            .map(|dialog| dialog.focused_field)
+        else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -35,7 +39,7 @@ impl GroveApp {
             && matches!(key_event.code, KeyCode::Char('p') | KeyCode::Char('P'));
 
         match key_event.code {
-            KeyCode::Enter => match dialog.focused_field {
+            KeyCode::Enter => match focused_field {
                 PullUpstreamDialogField::PullButton => {
                     confirm_pull = true;
                 }
@@ -44,34 +48,35 @@ impl GroveApp {
                 }
             },
             KeyCode::Tab => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::BackTab => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Char(_) if ctrl_n => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::Char(_) if ctrl_p => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Up | KeyCode::Char('k') if no_modifiers => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Down | KeyCode::Char('j') if no_modifiers => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::Char(character) if no_modifiers => {
-                if (dialog.focused_field == PullUpstreamDialogField::PullButton
-                    || dialog.focused_field == PullUpstreamDialogField::CancelButton)
+                if (focused_field == PullUpstreamDialogField::PullButton
+                    || focused_field == PullUpstreamDialogField::CancelButton)
                     && (character == 'h' || character == 'l')
                 {
-                    dialog.focused_field =
-                        if dialog.focused_field == PullUpstreamDialogField::PullButton {
-                            PullUpstreamDialogField::CancelButton
+                    self.focus_dialog_field(
+                        if focused_field == PullUpstreamDialogField::PullButton {
+                            FOCUS_ID_PULL_UPSTREAM_CANCEL_BUTTON
                         } else {
-                            PullUpstreamDialogField::PullButton
-                        };
+                            FOCUS_ID_PULL_UPSTREAM_CONFIRM_BUTTON
+                        },
+                    );
                 }
             }
             _ => {}

@@ -14,9 +14,8 @@ impl GroveApp {
         let dialog_height = if has_propagate { 15u16 } else { 14u16 };
         let theme = self.active_ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
-        let focused = |field| dialog.focused_field == field;
-        let pull_focused = focused(PullUpstreamDialogField::PullButton);
-        let cancel_focused = focused(PullUpstreamDialogField::CancelButton);
+        let pull_focused = self.dialog_focus_is(FOCUS_ID_PULL_UPSTREAM_CONFIRM_BUTTON);
+        let cancel_focused = self.dialog_focus_is(FOCUS_ID_PULL_UPSTREAM_CANCEL_BUTTON);
         let path = dialog.workspace_path.display().to_string();
         let strategy = format!(
             "  Strategy: git pull --ff-only origin {}",

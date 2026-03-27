@@ -13,7 +13,6 @@ impl GroveApp {
         let dialog_height = 17u16;
         let theme = self.active_ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
-        let focused = |field| dialog.focused_field == field;
         let warning_lines =
             if matches!(dialog.target, DeleteDialogTarget::Task) && dialog.is_base_task {
                 (
@@ -43,7 +42,7 @@ impl GroveApp {
                     "  • Uncommitted changes in any worktree will be lost",
                 )
             };
-        let cleanup_focused = focused(DeleteDialogField::DeleteLocalBranch);
+        let cleanup_focused = self.dialog_focus_is(FOCUS_ID_DELETE_LOCAL_BRANCH);
         let cleanup_state = if !dialog.delete_local_branch_enabled() {
             "disabled, keep local branch".to_string()
         } else if dialog.delete_local_branch {
@@ -55,14 +54,14 @@ impl GroveApp {
         } else {
             "disabled, keep local branch".to_string()
         };
-        let kill_sessions_focused = focused(DeleteDialogField::KillTmuxSessions);
+        let kill_sessions_focused = self.dialog_focus_is(FOCUS_ID_DELETE_KILL_TMUX_SESSIONS);
         let kill_sessions_state = if dialog.kill_tmux_sessions {
             "enabled, kill Grove tmux sessions".to_string()
         } else {
             "disabled, keep tmux sessions running".to_string()
         };
-        let delete_focused = focused(DeleteDialogField::DeleteButton);
-        let cancel_focused = focused(DeleteDialogField::CancelButton);
+        let delete_focused = self.dialog_focus_is(FOCUS_ID_DELETE_CONFIRM_BUTTON);
+        let cancel_focused = self.dialog_focus_is(FOCUS_ID_DELETE_CANCEL_BUTTON);
         let (name, branch, path) = match &dialog.target {
             DeleteDialogTarget::Task => (
                 dialog.task.name.as_str(),

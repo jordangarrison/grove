@@ -272,11 +272,201 @@ fn confirm_dialog_focus_id(field: ConfirmDialogField) -> u64 {
     }
 }
 
+fn confirm_dialog_focus_field(focus_id: Option<u64>) -> Option<ConfirmDialogField> {
+    match focus_id {
+        Some(FOCUS_ID_CONFIRM_CONFIRM_BUTTON) => Some(ConfirmDialogField::ConfirmButton),
+        Some(FOCUS_ID_CONFIRM_CANCEL_BUTTON) => Some(ConfirmDialogField::CancelButton),
+        _ => None,
+    }
+}
+
+fn stop_dialog_focus_ids() -> [u64; 2] {
+    [FOCUS_ID_STOP_CONFIRM_BUTTON, FOCUS_ID_STOP_CANCEL_BUTTON]
+}
+
+fn stop_dialog_focus_id(field: StopDialogField) -> u64 {
+    match field {
+        StopDialogField::StopButton => FOCUS_ID_STOP_CONFIRM_BUTTON,
+        StopDialogField::CancelButton => FOCUS_ID_STOP_CANCEL_BUTTON,
+    }
+}
+
+fn stop_dialog_focus_field(focus_id: Option<u64>) -> Option<StopDialogField> {
+    match focus_id {
+        Some(FOCUS_ID_STOP_CONFIRM_BUTTON) => Some(StopDialogField::StopButton),
+        Some(FOCUS_ID_STOP_CANCEL_BUTTON) => Some(StopDialogField::CancelButton),
+        _ => None,
+    }
+}
+
 fn project_dialog_focus_ids() -> [u64; 2] {
     [
         FOCUS_ID_PROJECT_DIALOG_FILTER_INPUT,
         FOCUS_ID_PROJECT_DIALOG_LIST,
     ]
+}
+
+fn session_cleanup_dialog_focus_ids() -> [u64; 4] {
+    [
+        FOCUS_ID_SESSION_CLEANUP_INCLUDE_STALE,
+        FOCUS_ID_SESSION_CLEANUP_INCLUDE_ATTACHED,
+        FOCUS_ID_SESSION_CLEANUP_APPLY_BUTTON,
+        FOCUS_ID_SESSION_CLEANUP_CANCEL_BUTTON,
+    ]
+}
+
+fn session_cleanup_dialog_focus_id(field: SessionCleanupDialogField) -> u64 {
+    match field {
+        SessionCleanupDialogField::IncludeStale => FOCUS_ID_SESSION_CLEANUP_INCLUDE_STALE,
+        SessionCleanupDialogField::IncludeAttached => FOCUS_ID_SESSION_CLEANUP_INCLUDE_ATTACHED,
+        SessionCleanupDialogField::ApplyButton => FOCUS_ID_SESSION_CLEANUP_APPLY_BUTTON,
+        SessionCleanupDialogField::CancelButton => FOCUS_ID_SESSION_CLEANUP_CANCEL_BUTTON,
+    }
+}
+
+fn session_cleanup_dialog_focus_field(focus_id: Option<u64>) -> Option<SessionCleanupDialogField> {
+    match focus_id {
+        Some(FOCUS_ID_SESSION_CLEANUP_INCLUDE_STALE) => {
+            Some(SessionCleanupDialogField::IncludeStale)
+        }
+        Some(FOCUS_ID_SESSION_CLEANUP_INCLUDE_ATTACHED) => {
+            Some(SessionCleanupDialogField::IncludeAttached)
+        }
+        Some(FOCUS_ID_SESSION_CLEANUP_APPLY_BUTTON) => Some(SessionCleanupDialogField::ApplyButton),
+        Some(FOCUS_ID_SESSION_CLEANUP_CANCEL_BUTTON) => {
+            Some(SessionCleanupDialogField::CancelButton)
+        }
+        _ => None,
+    }
+}
+
+fn delete_dialog_focus_ids() -> [u64; 4] {
+    [
+        FOCUS_ID_DELETE_LOCAL_BRANCH,
+        FOCUS_ID_DELETE_KILL_TMUX_SESSIONS,
+        FOCUS_ID_DELETE_CONFIRM_BUTTON,
+        FOCUS_ID_DELETE_CANCEL_BUTTON,
+    ]
+}
+
+fn delete_dialog_focus_id(field: DeleteDialogField) -> u64 {
+    match field {
+        DeleteDialogField::DeleteLocalBranch => FOCUS_ID_DELETE_LOCAL_BRANCH,
+        DeleteDialogField::KillTmuxSessions => FOCUS_ID_DELETE_KILL_TMUX_SESSIONS,
+        DeleteDialogField::DeleteButton => FOCUS_ID_DELETE_CONFIRM_BUTTON,
+        DeleteDialogField::CancelButton => FOCUS_ID_DELETE_CANCEL_BUTTON,
+    }
+}
+
+fn delete_dialog_focus_field(focus_id: Option<u64>) -> Option<DeleteDialogField> {
+    match focus_id {
+        Some(FOCUS_ID_DELETE_LOCAL_BRANCH) => Some(DeleteDialogField::DeleteLocalBranch),
+        Some(FOCUS_ID_DELETE_KILL_TMUX_SESSIONS) => Some(DeleteDialogField::KillTmuxSessions),
+        Some(FOCUS_ID_DELETE_CONFIRM_BUTTON) => Some(DeleteDialogField::DeleteButton),
+        Some(FOCUS_ID_DELETE_CANCEL_BUTTON) => Some(DeleteDialogField::CancelButton),
+        _ => None,
+    }
+}
+
+fn merge_dialog_focus_ids() -> [u64; 4] {
+    [
+        FOCUS_ID_MERGE_CLEANUP_WORKSPACE,
+        FOCUS_ID_MERGE_CLEANUP_LOCAL_BRANCH,
+        FOCUS_ID_MERGE_CONFIRM_BUTTON,
+        FOCUS_ID_MERGE_CANCEL_BUTTON,
+    ]
+}
+
+fn merge_dialog_focus_id(field: MergeDialogField) -> u64 {
+    match field {
+        MergeDialogField::CleanupWorkspace => FOCUS_ID_MERGE_CLEANUP_WORKSPACE,
+        MergeDialogField::CleanupLocalBranch => FOCUS_ID_MERGE_CLEANUP_LOCAL_BRANCH,
+        MergeDialogField::MergeButton => FOCUS_ID_MERGE_CONFIRM_BUTTON,
+        MergeDialogField::CancelButton => FOCUS_ID_MERGE_CANCEL_BUTTON,
+    }
+}
+
+fn merge_dialog_focus_field(focus_id: Option<u64>) -> Option<MergeDialogField> {
+    match focus_id {
+        Some(FOCUS_ID_MERGE_CLEANUP_WORKSPACE) => Some(MergeDialogField::CleanupWorkspace),
+        Some(FOCUS_ID_MERGE_CLEANUP_LOCAL_BRANCH) => Some(MergeDialogField::CleanupLocalBranch),
+        Some(FOCUS_ID_MERGE_CONFIRM_BUTTON) => Some(MergeDialogField::MergeButton),
+        Some(FOCUS_ID_MERGE_CANCEL_BUTTON) => Some(MergeDialogField::CancelButton),
+        _ => None,
+    }
+}
+
+fn update_from_base_dialog_focus_ids() -> [u64; 2] {
+    [
+        FOCUS_ID_UPDATE_FROM_BASE_CONFIRM_BUTTON,
+        FOCUS_ID_UPDATE_FROM_BASE_CANCEL_BUTTON,
+    ]
+}
+
+fn update_from_base_dialog_focus_id(field: UpdateFromBaseDialogField) -> u64 {
+    match field {
+        UpdateFromBaseDialogField::UpdateButton => FOCUS_ID_UPDATE_FROM_BASE_CONFIRM_BUTTON,
+        UpdateFromBaseDialogField::CancelButton => FOCUS_ID_UPDATE_FROM_BASE_CANCEL_BUTTON,
+    }
+}
+
+fn update_from_base_dialog_focus_field(focus_id: Option<u64>) -> Option<UpdateFromBaseDialogField> {
+    match focus_id {
+        Some(FOCUS_ID_UPDATE_FROM_BASE_CONFIRM_BUTTON) => {
+            Some(UpdateFromBaseDialogField::UpdateButton)
+        }
+        Some(FOCUS_ID_UPDATE_FROM_BASE_CANCEL_BUTTON) => {
+            Some(UpdateFromBaseDialogField::CancelButton)
+        }
+        _ => None,
+    }
+}
+
+fn pull_upstream_dialog_focus_ids() -> [u64; 2] {
+    [
+        FOCUS_ID_PULL_UPSTREAM_CONFIRM_BUTTON,
+        FOCUS_ID_PULL_UPSTREAM_CANCEL_BUTTON,
+    ]
+}
+
+fn pull_upstream_dialog_focus_id(field: PullUpstreamDialogField) -> u64 {
+    match field {
+        PullUpstreamDialogField::PullButton => FOCUS_ID_PULL_UPSTREAM_CONFIRM_BUTTON,
+        PullUpstreamDialogField::CancelButton => FOCUS_ID_PULL_UPSTREAM_CANCEL_BUTTON,
+    }
+}
+
+fn pull_upstream_dialog_focus_field(focus_id: Option<u64>) -> Option<PullUpstreamDialogField> {
+    match focus_id {
+        Some(FOCUS_ID_PULL_UPSTREAM_CONFIRM_BUTTON) => Some(PullUpstreamDialogField::PullButton),
+        Some(FOCUS_ID_PULL_UPSTREAM_CANCEL_BUTTON) => Some(PullUpstreamDialogField::CancelButton),
+        _ => None,
+    }
+}
+
+fn settings_dialog_focus_ids() -> [u64; 3] {
+    [
+        FOCUS_ID_SETTINGS_THEME,
+        FOCUS_ID_SETTINGS_SAVE_BUTTON,
+        FOCUS_ID_SETTINGS_CANCEL_BUTTON,
+    ]
+}
+
+fn settings_dialog_focus_id(field: SettingsDialogField) -> u64 {
+    match field {
+        SettingsDialogField::Theme => FOCUS_ID_SETTINGS_THEME,
+        SettingsDialogField::SaveButton => FOCUS_ID_SETTINGS_SAVE_BUTTON,
+        SettingsDialogField::CancelButton => FOCUS_ID_SETTINGS_CANCEL_BUTTON,
+    }
+}
+
+fn settings_dialog_focus_field(focus_id: Option<u64>) -> Option<SettingsDialogField> {
+    match focus_id {
+        Some(FOCUS_ID_SETTINGS_THEME) => Some(SettingsDialogField::Theme),
+        Some(FOCUS_ID_SETTINGS_SAVE_BUTTON) => Some(SettingsDialogField::SaveButton),
+        Some(FOCUS_ID_SETTINGS_CANCEL_BUTTON) => Some(SettingsDialogField::CancelButton),
+        _ => None,
+    }
 }
 
 fn project_add_dialog_focus_ids() -> [u64; 4] {
@@ -439,9 +629,100 @@ macro_rules! active_dialog_take_accessor {
     };
 }
 
+macro_rules! active_dialog_read_accessors {
+    ($get:ident, $set:ident, $variant:ident, $ty:ty) => {
+        pub(super) fn $get(&self) -> Option<&$ty> {
+            match self.dialogs.active_dialog.as_ref() {
+                Some(ActiveDialog::$variant(dialog)) => Some(dialog),
+                _ => None,
+            }
+        }
+
+        pub(super) fn $set(&mut self, dialog: $ty) {
+            self.clear_active_dialog_focus_trap();
+            self.dialogs.active_dialog = Some(ActiveDialog::$variant(dialog));
+            self.sync_active_dialog_focus_trap();
+        }
+    };
+}
+
 impl GroveApp {
+    pub(super) fn dialog_focus_is(&self, focus_id: u64) -> bool {
+        self.focus_manager.current() == Some(focus_id)
+    }
+
+    pub(super) fn focus_dialog_field(&mut self, focus_id: u64) {
+        let _ = self.focus_manager.focus(focus_id);
+        self.sync_active_dialog_focus_field();
+    }
+
+    pub(super) fn focus_next_dialog_field(&mut self) {
+        let _ = self.focus_manager.focus_next();
+        self.sync_active_dialog_focus_field();
+    }
+
+    pub(super) fn focus_prev_dialog_field(&mut self) {
+        let _ = self.focus_manager.focus_prev();
+        self.sync_active_dialog_focus_field();
+    }
+
+    pub(super) fn sync_active_dialog_focus_field(&mut self) {
+        let focus_id = self.focus_manager.current();
+        match self.dialogs.active_dialog.as_mut() {
+            Some(ActiveDialog::Stop(dialog)) => {
+                if let Some(field) = stop_dialog_focus_field(focus_id) {
+                    dialog.focused_field = field;
+                }
+            }
+            Some(ActiveDialog::Confirm(dialog)) => {
+                if let Some(field) = confirm_dialog_focus_field(focus_id) {
+                    dialog.focused_field = field;
+                }
+            }
+            Some(ActiveDialog::SessionCleanup(dialog)) => {
+                if let Some(field) = session_cleanup_dialog_focus_field(focus_id) {
+                    dialog.focused_field = field;
+                }
+            }
+            Some(ActiveDialog::Delete(dialog)) => {
+                if let Some(field) = delete_dialog_focus_field(focus_id) {
+                    dialog.focused_field = field;
+                }
+            }
+            Some(ActiveDialog::Merge(dialog)) => {
+                if let Some(field) = merge_dialog_focus_field(focus_id) {
+                    dialog.focused_field = field;
+                }
+            }
+            Some(ActiveDialog::UpdateFromBase(dialog)) => {
+                if let Some(field) = update_from_base_dialog_focus_field(focus_id) {
+                    dialog.focused_field = field;
+                }
+            }
+            Some(ActiveDialog::PullUpstream(dialog)) => {
+                if let Some(field) = pull_upstream_dialog_focus_field(focus_id) {
+                    dialog.focused_field = field;
+                }
+            }
+            Some(ActiveDialog::Settings(dialog)) => {
+                if let Some(field) = settings_dialog_focus_field(focus_id) {
+                    dialog.focused_field = field;
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn open_focus_trap_for_active_dialog(&mut self, dialog: &ActiveDialog) {
         match dialog {
+            ActiveDialog::Stop(dialog) => {
+                let members = stop_dialog_focus_ids();
+                self.activate_focus_trap(
+                    FOCUS_GROUP_STOP_DIALOG,
+                    &members,
+                    stop_dialog_focus_id(dialog.focused_field),
+                );
+            }
             ActiveDialog::Confirm(dialog) => {
                 let members = confirm_dialog_focus_ids();
                 self.activate_focus_trap(
@@ -466,12 +747,64 @@ impl GroveApp {
                     );
                 }
             }
+            ActiveDialog::SessionCleanup(dialog) => {
+                let members = session_cleanup_dialog_focus_ids();
+                self.activate_focus_trap(
+                    FOCUS_GROUP_SESSION_CLEANUP_DIALOG,
+                    &members,
+                    session_cleanup_dialog_focus_id(dialog.focused_field),
+                );
+            }
+            ActiveDialog::Delete(dialog) => {
+                let members = delete_dialog_focus_ids();
+                self.activate_focus_trap(
+                    FOCUS_GROUP_DELETE_DIALOG,
+                    &members,
+                    delete_dialog_focus_id(dialog.focused_field),
+                );
+            }
+            ActiveDialog::Merge(dialog) => {
+                let members = merge_dialog_focus_ids();
+                self.activate_focus_trap(
+                    FOCUS_GROUP_MERGE_DIALOG,
+                    &members,
+                    merge_dialog_focus_id(dialog.focused_field),
+                );
+            }
+            ActiveDialog::UpdateFromBase(dialog) => {
+                let members = update_from_base_dialog_focus_ids();
+                self.activate_focus_trap(
+                    FOCUS_GROUP_UPDATE_FROM_BASE_DIALOG,
+                    &members,
+                    update_from_base_dialog_focus_id(dialog.focused_field),
+                );
+            }
+            ActiveDialog::PullUpstream(dialog) => {
+                let members = pull_upstream_dialog_focus_ids();
+                self.activate_focus_trap(
+                    FOCUS_GROUP_PULL_UPSTREAM_DIALOG,
+                    &members,
+                    pull_upstream_dialog_focus_id(dialog.focused_field),
+                );
+            }
+            ActiveDialog::Settings(dialog) => {
+                let members = settings_dialog_focus_ids();
+                self.activate_focus_trap(
+                    FOCUS_GROUP_SETTINGS_DIALOG,
+                    &members,
+                    settings_dialog_focus_id(dialog.focused_field),
+                );
+            }
             _ => {}
         }
     }
 
     fn close_focus_trap_for_active_dialog(&mut self, dialog: &ActiveDialog) {
         match dialog {
+            ActiveDialog::Stop(_) => {
+                let members = stop_dialog_focus_ids();
+                self.deactivate_focus_trap(&members);
+            }
             ActiveDialog::Confirm(_) => {
                 let members = confirm_dialog_focus_ids();
                 self.deactivate_focus_trap(&members);
@@ -484,6 +817,30 @@ impl GroveApp {
                 let members = project_dialog_focus_ids();
                 self.deactivate_focus_trap(&members);
             }
+            ActiveDialog::SessionCleanup(_) => {
+                let members = session_cleanup_dialog_focus_ids();
+                self.deactivate_focus_trap(&members);
+            }
+            ActiveDialog::Delete(_) => {
+                let members = delete_dialog_focus_ids();
+                self.deactivate_focus_trap(&members);
+            }
+            ActiveDialog::Merge(_) => {
+                let members = merge_dialog_focus_ids();
+                self.deactivate_focus_trap(&members);
+            }
+            ActiveDialog::UpdateFromBase(_) => {
+                let members = update_from_base_dialog_focus_ids();
+                self.deactivate_focus_trap(&members);
+            }
+            ActiveDialog::PullUpstream(_) => {
+                let members = pull_upstream_dialog_focus_ids();
+                self.deactivate_focus_trap(&members);
+            }
+            ActiveDialog::Settings(_) => {
+                let members = settings_dialog_focus_ids();
+                self.deactivate_focus_trap(&members);
+            }
             _ => {}
         }
     }
@@ -491,6 +848,7 @@ impl GroveApp {
     fn sync_active_dialog_focus_trap(&mut self) {
         if let Some(dialog) = self.dialogs.active_dialog.clone() {
             self.open_focus_trap_for_active_dialog(&dialog);
+            self.sync_active_dialog_focus_field();
         }
     }
 
@@ -547,17 +905,10 @@ impl GroveApp {
         LaunchDialogState
     );
     active_dialog_take_accessor!(take_launch_dialog, Launch, LaunchDialogState);
-    active_dialog_accessors!(
-        stop_dialog,
-        stop_dialog_mut,
-        set_stop_dialog,
-        Stop,
-        StopDialogState
-    );
+    active_dialog_read_accessors!(stop_dialog, set_stop_dialog, Stop, StopDialogState);
     active_dialog_take_accessor!(take_stop_dialog, Stop, StopDialogState);
-    active_dialog_accessors!(
+    active_dialog_read_accessors!(
         confirm_dialog,
-        confirm_dialog_mut,
         set_confirm_dialog,
         Confirm,
         ConfirmDialogState
@@ -586,9 +937,8 @@ impl GroveApp {
         MergeDialogState
     );
     active_dialog_take_accessor!(take_merge_dialog, Merge, MergeDialogState);
-    active_dialog_accessors!(
+    active_dialog_read_accessors!(
         update_from_base_dialog,
-        update_from_base_dialog_mut,
         set_update_from_base_dialog,
         UpdateFromBase,
         UpdateFromBaseDialogState
@@ -598,9 +948,8 @@ impl GroveApp {
         UpdateFromBase,
         UpdateFromBaseDialogState
     );
-    active_dialog_accessors!(
+    active_dialog_read_accessors!(
         pull_upstream_dialog,
-        pull_upstream_dialog_mut,
         set_pull_upstream_dialog,
         PullUpstream,
         PullUpstreamDialogState

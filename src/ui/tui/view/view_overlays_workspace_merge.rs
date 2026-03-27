@@ -13,21 +13,20 @@ impl GroveApp {
         let dialog_height = 17u16;
         let theme = self.active_ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
-        let focused = |field| dialog.focused_field == field;
-        let cleanup_workspace_focused = focused(MergeDialogField::CleanupWorkspace);
+        let cleanup_workspace_focused = self.dialog_focus_is(FOCUS_ID_MERGE_CLEANUP_WORKSPACE);
         let cleanup_workspace_state = if dialog.cleanup_workspace {
             "enabled, remove workspace directory".to_string()
         } else {
             "disabled, keep workspace directory".to_string()
         };
-        let cleanup_branch_focused = focused(MergeDialogField::CleanupLocalBranch);
+        let cleanup_branch_focused = self.dialog_focus_is(FOCUS_ID_MERGE_CLEANUP_LOCAL_BRANCH);
         let cleanup_branch_state = if dialog.cleanup_local_branch {
             format!("enabled, delete '{}' branch", dialog.workspace_branch)
         } else {
             "disabled, keep local branch".to_string()
         };
-        let merge_focused = focused(MergeDialogField::MergeButton);
-        let cancel_focused = focused(MergeDialogField::CancelButton);
+        let merge_focused = self.dialog_focus_is(FOCUS_ID_MERGE_CONFIRM_BUTTON);
+        let cancel_focused = self.dialog_focus_is(FOCUS_ID_MERGE_CANCEL_BUTTON);
         let path = dialog.workspace_path.display().to_string();
         let fit = |text: &str| {
             let text = ftui::text::truncate_with_ellipsis(text, content_width, "…");

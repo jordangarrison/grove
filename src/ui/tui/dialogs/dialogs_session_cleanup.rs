@@ -112,6 +112,7 @@ impl GroveApp {
     }
 
     pub(super) fn handle_session_cleanup_dialog_key(&mut self, key_event: KeyEvent) {
+        self.sync_active_dialog_focus_field();
         let no_modifiers = key_event.modifiers.is_empty();
         match key_event.code {
             KeyCode::Escape => {
@@ -134,7 +135,10 @@ impl GroveApp {
         let mut refresh_options = None;
         let mut confirm_cleanup = false;
         let mut cancel_dialog = false;
-        let Some(dialog) = self.session_cleanup_dialog_mut() else {
+        let Some(focused_field) = self
+            .session_cleanup_dialog()
+            .map(|dialog| dialog.focused_field)
+        else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -143,14 +147,18 @@ impl GroveApp {
             && matches!(key_event.code, KeyCode::Char('p') | KeyCode::Char('P'));
 
         match key_event.code {
-            KeyCode::Enter => match dialog.focused_field {
+            KeyCode::Enter => match focused_field {
                 SessionCleanupDialogField::IncludeStale => {
-                    dialog.options.include_stale = !dialog.options.include_stale;
-                    refresh_options = Some(dialog.options);
+                    if let Some(dialog) = self.session_cleanup_dialog_mut() {
+                        dialog.options.include_stale = !dialog.options.include_stale;
+                        refresh_options = Some(dialog.options);
+                    }
                 }
                 SessionCleanupDialogField::IncludeAttached => {
-                    dialog.options.include_attached = !dialog.options.include_attached;
-                    refresh_options = Some(dialog.options);
+                    if let Some(dialog) = self.session_cleanup_dialog_mut() {
+                        dialog.options.include_attached = !dialog.options.include_attached;
+                        refresh_options = Some(dialog.options);
+                    }
                 }
                 SessionCleanupDialogField::ApplyButton => {
                     confirm_cleanup = true;
@@ -160,43 +168,48 @@ impl GroveApp {
                 }
             },
             KeyCode::Tab => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::BackTab => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Char(_) if ctrl_n => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::Char(_) if ctrl_p => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Up | KeyCode::Char('k') if no_modifiers => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Down | KeyCode::Char('j') if no_modifiers => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::Char(' ') if no_modifiers => {
-                if dialog.focused_field == SessionCleanupDialogField::IncludeStale {
-                    dialog.options.include_stale = !dialog.options.include_stale;
-                    refresh_options = Some(dialog.options);
-                } else if dialog.focused_field == SessionCleanupDialogField::IncludeAttached {
+                if focused_field == SessionCleanupDialogField::IncludeStale {
+                    if let Some(dialog) = self.session_cleanup_dialog_mut() {
+                        dialog.options.include_stale = !dialog.options.include_stale;
+                        refresh_options = Some(dialog.options);
+                    }
+                } else if focused_field == SessionCleanupDialogField::IncludeAttached
+                    && let Some(dialog) = self.session_cleanup_dialog_mut()
+                {
                     dialog.options.include_attached = !dialog.options.include_attached;
                     refresh_options = Some(dialog.options);
                 }
             }
             KeyCode::Char(character) if no_modifiers => {
-                if (dialog.focused_field == SessionCleanupDialogField::ApplyButton
-                    || dialog.focused_field == SessionCleanupDialogField::CancelButton)
+                if (focused_field == SessionCleanupDialogField::ApplyButton
+                    || focused_field == SessionCleanupDialogField::CancelButton)
                     && (character == 'h' || character == 'l')
                 {
-                    dialog.focused_field =
-                        if dialog.focused_field == SessionCleanupDialogField::ApplyButton {
-                            SessionCleanupDialogField::CancelButton
+                    self.focus_dialog_field(
+                        if focused_field == SessionCleanupDialogField::ApplyButton {
+                            FOCUS_ID_SESSION_CLEANUP_CANCEL_BUTTON
                         } else {
-                            SessionCleanupDialogField::ApplyButton
-                        };
+                            FOCUS_ID_SESSION_CLEANUP_APPLY_BUTTON
+                        },
+                    );
                 }
             }
             _ => {}

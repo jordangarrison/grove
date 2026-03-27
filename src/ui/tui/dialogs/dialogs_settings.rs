@@ -58,6 +58,7 @@ impl GroveApp {
         if self.settings_dialog().is_none() {
             return;
         }
+        self.sync_active_dialog_focus_field();
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
             && matches!(key_event.code, KeyCode::Char('n') | KeyCode::Char('N'));
         let ctrl_p = key_event.modifiers == Modifiers::CTRL
@@ -75,24 +76,16 @@ impl GroveApp {
                 post_action = PostAction::Cancel;
             }
             KeyCode::Tab | KeyCode::Down | KeyCode::Char('j') => {
-                if let Some(dialog) = self.settings_dialog_mut() {
-                    dialog.focused_field = dialog.focused_field.next();
-                }
+                self.focus_next_dialog_field();
             }
             KeyCode::BackTab | KeyCode::Up | KeyCode::Char('k') => {
-                if let Some(dialog) = self.settings_dialog_mut() {
-                    dialog.focused_field = dialog.focused_field.previous();
-                }
+                self.focus_prev_dialog_field();
             }
             KeyCode::Char(_) if ctrl_n => {
-                if let Some(dialog) = self.settings_dialog_mut() {
-                    dialog.focused_field = dialog.focused_field.next();
-                }
+                self.focus_next_dialog_field();
             }
             KeyCode::Char(_) if ctrl_p => {
-                if let Some(dialog) = self.settings_dialog_mut() {
-                    dialog.focused_field = dialog.focused_field.previous();
-                }
+                self.focus_prev_dialog_field();
             }
             KeyCode::Left | KeyCode::Char('h') => self.cycle_settings_theme(false),
             KeyCode::Right | KeyCode::Char('l') | KeyCode::Char(' ') => {

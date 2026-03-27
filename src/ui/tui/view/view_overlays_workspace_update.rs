@@ -13,9 +13,8 @@ impl GroveApp {
         let dialog_height = 14u16;
         let theme = self.active_ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
-        let focused = |field| dialog.focused_field == field;
-        let update_focused = focused(UpdateFromBaseDialogField::UpdateButton);
-        let cancel_focused = focused(UpdateFromBaseDialogField::CancelButton);
+        let update_focused = self.dialog_focus_is(FOCUS_ID_UPDATE_FROM_BASE_CONFIRM_BUTTON);
+        let cancel_focused = self.dialog_focus_is(FOCUS_ID_UPDATE_FROM_BASE_CANCEL_BUTTON);
         let path = dialog.workspace_path.display().to_string();
         let (title, strategy, base_label, base_value) = if dialog.is_main_workspace {
             (

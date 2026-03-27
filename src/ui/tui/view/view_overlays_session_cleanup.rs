@@ -36,11 +36,11 @@ impl GroveApp {
         let dialog_height = area.height.saturating_sub(4).clamp(16, 26);
         let theme = self.active_ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
-        let focused = |field| dialog.focused_field == field;
-        let include_stale_focused = focused(SessionCleanupDialogField::IncludeStale);
-        let include_attached_focused = focused(SessionCleanupDialogField::IncludeAttached);
-        let apply_focused = focused(SessionCleanupDialogField::ApplyButton);
-        let cancel_focused = focused(SessionCleanupDialogField::CancelButton);
+        let include_stale_focused = self.dialog_focus_is(FOCUS_ID_SESSION_CLEANUP_INCLUDE_STALE);
+        let include_attached_focused =
+            self.dialog_focus_is(FOCUS_ID_SESSION_CLEANUP_INCLUDE_ATTACHED);
+        let apply_focused = self.dialog_focus_is(FOCUS_ID_SESSION_CLEANUP_APPLY_BUTTON);
+        let cancel_focused = self.dialog_focus_is(FOCUS_ID_SESSION_CLEANUP_CANCEL_BUTTON);
         let include_stale_state = if dialog.options.include_stale {
             "enabled, include stale -git/-shell sessions".to_string()
         } else {

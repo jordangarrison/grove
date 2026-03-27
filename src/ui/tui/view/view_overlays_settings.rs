@@ -13,10 +13,9 @@ impl GroveApp {
         let dialog_height = 15u16;
         let theme = self.active_ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
-        let focused = |field| dialog.focused_field == field;
-        let theme_focused = focused(SettingsDialogField::Theme);
-        let save_focused = focused(SettingsDialogField::SaveButton);
-        let cancel_focused = focused(SettingsDialogField::CancelButton);
+        let theme_focused = self.dialog_focus_is(FOCUS_ID_SETTINGS_THEME);
+        let save_focused = self.dialog_focus_is(FOCUS_ID_SETTINGS_SAVE_BUTTON);
+        let cancel_focused = self.dialog_focus_is(FOCUS_ID_SETTINGS_CANCEL_BUTTON);
         let theme_value = format!(
             "{} ({})",
             theme_display_name(dialog.theme),

@@ -5,6 +5,7 @@ impl GroveApp {
         if self.dialogs.stop_in_flight || self.dialogs.restart_in_flight {
             return;
         }
+        self.sync_active_dialog_focus_field();
 
         let no_modifiers = key_event.modifiers.is_empty();
         match key_event.code {
@@ -27,7 +28,7 @@ impl GroveApp {
 
         let mut confirm_stop = false;
         let mut cancel_dialog = false;
-        let Some(dialog) = self.stop_dialog_mut() else {
+        let Some(focused_field) = self.stop_dialog().map(|dialog| dialog.focused_field) else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -36,7 +37,7 @@ impl GroveApp {
             && matches!(key_event.code, KeyCode::Char('p') | KeyCode::Char('P'));
 
         match key_event.code {
-            KeyCode::Enter => match dialog.focused_field {
+            KeyCode::Enter => match focused_field {
                 StopDialogField::StopButton => {
                     confirm_stop = true;
                 }
@@ -45,33 +46,33 @@ impl GroveApp {
                 }
             },
             KeyCode::Tab => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::BackTab => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Char(_) if ctrl_n => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::Char(_) if ctrl_p => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Up | KeyCode::Char('k') if no_modifiers => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Down | KeyCode::Char('j') if no_modifiers => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::Char(character) if no_modifiers => {
-                if (dialog.focused_field == StopDialogField::StopButton
-                    || dialog.focused_field == StopDialogField::CancelButton)
+                if (focused_field == StopDialogField::StopButton
+                    || focused_field == StopDialogField::CancelButton)
                     && (character == 'h' || character == 'l')
                 {
-                    dialog.focused_field = if dialog.focused_field == StopDialogField::StopButton {
-                        StopDialogField::CancelButton
+                    self.focus_dialog_field(if focused_field == StopDialogField::StopButton {
+                        FOCUS_ID_STOP_CANCEL_BUTTON
                     } else {
-                        StopDialogField::StopButton
-                    };
+                        FOCUS_ID_STOP_CONFIRM_BUTTON
+                    });
                 }
             }
             _ => {}

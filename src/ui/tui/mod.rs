@@ -1020,6 +1020,16 @@ mod tests {
         }
     }
 
+    fn cmd_contains_quit(cmd: &Cmd<Msg>) -> bool {
+        match cmd {
+            Cmd::Quit => true,
+            Cmd::Batch(commands) | Cmd::Sequence(commands) => {
+                commands.iter().any(cmd_contains_quit)
+            }
+            _ => false,
+        }
+    }
+
     fn cmd_contains_mouse_capture_toggle(cmd: &Cmd<Msg>, enabled: bool) -> bool {
         match cmd {
             Cmd::SetMouseCapture(state) => *state == enabled,
@@ -15893,6 +15903,94 @@ mod tests {
                 assert_eq!(
                     app.current_focus_id(),
                     Some(FOCUS_ID_PROJECT_DIALOG_FILTER_INPUT)
+                );
+            }
+
+            #[test]
+            fn confirm_dialog_focus_enter_uses_ftui_focused_button() {
+                let mut app = fixture_app();
+
+                app.open_quit_dialog();
+                let _ = app.focus_manager.focus(FOCUS_ID_CONFIRM_CONFIRM_BUTTON);
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(FOCUS_ID_CONFIRM_CONFIRM_BUTTON)
+                );
+
+                let cmd = ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(cmd_contains_quit(&cmd));
+                assert!(app.confirm_dialog().is_none());
+            }
+
+            #[test]
+            fn delete_dialog_focus_enter_uses_ftui_focused_delete_button() {
+                let mut app = fixture_background_app(WorkspaceStatus::Idle);
+                select_workspace(&mut app, 1);
+                app.open_delete_dialog();
+
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(crate::ui::tui::FOCUS_ID_DELETE_LOCAL_BRANCH)
+                );
+                let _ = app
+                    .focus_manager
+                    .focus(crate::ui::tui::FOCUS_ID_DELETE_CONFIRM_BUTTON);
+
+                let cmd = ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(cmd_contains_task(&cmd));
+                assert!(app.delete_dialog().is_none());
+            }
+
+            #[test]
+            fn settings_dialog_focus_enter_uses_ftui_focused_save_button() {
+                let mut app = fixture_app();
+
+                app.open_settings_dialog();
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(crate::ui::tui::FOCUS_ID_SETTINGS_THEME)
+                );
+                let _ = app
+                    .focus_manager
+                    .focus(crate::ui::tui::FOCUS_ID_SETTINGS_SAVE_BUTTON);
+
+                let _ = ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(app.settings_dialog().is_none());
+            }
+
+            #[test]
+            fn session_cleanup_focus_space_uses_ftui_focused_toggle() {
+                let mut app = fixture_app();
+
+                app.open_session_cleanup_dialog();
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(crate::ui::tui::FOCUS_ID_SESSION_CLEANUP_INCLUDE_STALE)
+                );
+                let _ = app
+                    .focus_manager
+                    .focus(crate::ui::tui::FOCUS_ID_SESSION_CLEANUP_INCLUDE_ATTACHED);
+
+                let _ = ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Char(' ')).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(
+                    app.session_cleanup_dialog()
+                        .is_some_and(|dialog| dialog.options.include_attached)
                 );
             }
 

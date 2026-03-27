@@ -80,6 +80,7 @@ impl GroveApp {
     }
 
     pub(super) fn handle_delete_dialog_key(&mut self, key_event: KeyEvent) {
+        self.sync_active_dialog_focus_field();
         let no_modifiers = key_event.modifiers.is_empty();
         match key_event.code {
             KeyCode::Escape => {
@@ -101,7 +102,7 @@ impl GroveApp {
 
         let mut confirm_delete = false;
         let mut cancel_dialog = false;
-        let Some(dialog) = self.delete_dialog_mut() else {
+        let Some(focused_field) = self.delete_dialog().map(|dialog| dialog.focused_field) else {
             return;
         };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
@@ -110,14 +111,20 @@ impl GroveApp {
             && matches!(key_event.code, KeyCode::Char('p') | KeyCode::Char('P'));
 
         match key_event.code {
-            KeyCode::Enter => match dialog.focused_field {
+            KeyCode::Enter => match focused_field {
                 DeleteDialogField::DeleteLocalBranch => {
-                    if dialog.delete_local_branch_enabled() {
+                    if self
+                        .delete_dialog()
+                        .is_some_and(DeleteDialogState::delete_local_branch_enabled)
+                        && let Some(dialog) = self.delete_dialog_mut()
+                    {
                         dialog.delete_local_branch = !dialog.delete_local_branch;
                     }
                 }
                 DeleteDialogField::KillTmuxSessions => {
-                    dialog.kill_tmux_sessions = !dialog.kill_tmux_sessions;
+                    if let Some(dialog) = self.delete_dialog_mut() {
+                        dialog.kill_tmux_sessions = !dialog.kill_tmux_sessions;
+                    }
                 }
                 DeleteDialogField::DeleteButton => {
                     confirm_delete = true;
@@ -127,43 +134,48 @@ impl GroveApp {
                 }
             },
             KeyCode::Tab => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::BackTab => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Char(_) if ctrl_n => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::Char(_) if ctrl_p => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Up | KeyCode::Char('k') if no_modifiers => {
-                dialog.focused_field = dialog.focused_field.previous();
+                self.focus_prev_dialog_field();
             }
             KeyCode::Down | KeyCode::Char('j') if no_modifiers => {
-                dialog.focused_field = dialog.focused_field.next();
+                self.focus_next_dialog_field();
             }
             KeyCode::Char(' ') if no_modifiers => {
-                if dialog.focused_field == DeleteDialogField::DeleteLocalBranch
-                    && dialog.delete_local_branch_enabled()
+                if focused_field == DeleteDialogField::DeleteLocalBranch {
+                    if self
+                        .delete_dialog()
+                        .is_some_and(DeleteDialogState::delete_local_branch_enabled)
+                        && let Some(dialog) = self.delete_dialog_mut()
+                    {
+                        dialog.delete_local_branch = !dialog.delete_local_branch;
+                    }
+                } else if focused_field == DeleteDialogField::KillTmuxSessions
+                    && let Some(dialog) = self.delete_dialog_mut()
                 {
-                    dialog.delete_local_branch = !dialog.delete_local_branch;
-                } else if dialog.focused_field == DeleteDialogField::KillTmuxSessions {
                     dialog.kill_tmux_sessions = !dialog.kill_tmux_sessions;
                 }
             }
             KeyCode::Char(character) if no_modifiers => {
-                if (dialog.focused_field == DeleteDialogField::DeleteButton
-                    || dialog.focused_field == DeleteDialogField::CancelButton)
+                if (focused_field == DeleteDialogField::DeleteButton
+                    || focused_field == DeleteDialogField::CancelButton)
                     && (character == 'h' || character == 'l')
                 {
-                    dialog.focused_field =
-                        if dialog.focused_field == DeleteDialogField::DeleteButton {
-                            DeleteDialogField::CancelButton
-                        } else {
-                            DeleteDialogField::DeleteButton
-                        };
+                    self.focus_dialog_field(if focused_field == DeleteDialogField::DeleteButton {
+                        FOCUS_ID_DELETE_CANCEL_BUTTON
+                    } else {
+                        FOCUS_ID_DELETE_CONFIRM_BUTTON
+                    });
                 }
             }
             _ => {}

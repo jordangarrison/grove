@@ -13,9 +13,8 @@ impl GroveApp {
         let dialog_height = 14u16;
         let theme = self.active_ui_theme();
         let content_width = usize::from(dialog_width.saturating_sub(2));
-        let focused = |field| dialog.focused_field == field;
-        let stop_focused = focused(StopDialogField::StopButton);
-        let cancel_focused = focused(StopDialogField::CancelButton);
+        let stop_focused = self.dialog_focus_is(FOCUS_ID_STOP_CONFIRM_BUTTON);
+        let cancel_focused = self.dialog_focus_is(FOCUS_ID_STOP_CANCEL_BUTTON);
         let path = dialog.workspace.path.display().to_string();
         let fit = |text: &str| {
             let text = ftui::text::truncate_with_ellipsis(text, content_width, "…");
