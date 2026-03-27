@@ -13606,7 +13606,7 @@ mod tests {
                     Msg::Key(KeyEvent::new(KeyCode::Char('l')).with_kind(KeyEventKind::Press)),
                 );
                 assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
-                assert_eq!(app.state.mode, UiMode::Preview);
+                assert_eq!(app.state.mode, UiMode::List);
 
                 ftui::Model::update(
                     &mut app,
@@ -13620,7 +13620,7 @@ mod tests {
                     Msg::Key(KeyEvent::new(KeyCode::Char('h')).with_kind(KeyEventKind::Press)),
                 );
                 assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
-                assert_eq!(app.state.mode, UiMode::Preview);
+                assert_eq!(app.state.mode, UiMode::List);
             }
 
             #[test]
