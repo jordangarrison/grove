@@ -75,8 +75,9 @@ jobs:
       - name: Update Homebrew tap
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAG: ${{ inputs.tag }}
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION="${TAG#grove-v}"
 
           SHA_LINUX_X86_64=$(cat dist/grove-linux-x86_64.tar.gz.sha256 | cut -d' ' -f1)
           SHA_MACOS_ARM64=$(cat dist/grove-macos-arm64.tar.gz.sha256 | cut -d' ' -f1)
@@ -93,14 +94,14 @@ jobs:
 
             on_macos do
               on_arm do
-                url "https://github.com/MichaelVessia/grove/releases/download/v${VERSION}/grove-macos-arm64.tar.gz"
+                url "https://github.com/MichaelVessia/grove/releases/download/${TAG}/grove-macos-arm64.tar.gz"
                 sha256 "${SHA_MACOS_ARM64}"
               end
             end
 
             on_linux do
               on_intel do
-                url "https://github.com/MichaelVessia/grove/releases/download/v${VERSION}/grove-linux-x86_64.tar.gz"
+                url "https://github.com/MichaelVessia/grove/releases/download/${TAG}/grove-linux-x86_64.tar.gz"
                 sha256 "${SHA_LINUX_X86_64}"
               end
             end
