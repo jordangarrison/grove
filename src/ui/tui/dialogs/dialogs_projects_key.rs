@@ -39,8 +39,7 @@ impl GroveApp {
                 ProjectDefaultsDialogField::BaseBranch
                 | ProjectDefaultsDialogField::WorkspaceInitCommand
                 | ProjectDefaultsDialogField::ClaudeEnv
-                | ProjectDefaultsDialogField::CodexEnv
-                | ProjectDefaultsDialogField::OpenCodeEnv => {
+                | ProjectDefaultsDialogField::CodexEnv => {
                     self.focus_next_dialog_field();
                 }
             },
@@ -72,11 +71,6 @@ impl GroveApp {
                         ProjectDefaultsDialogField::CodexEnv => {
                             let _ = defaults_dialog
                                 .codex_env_input
-                                .handle_event(&Event::Key(key_event));
-                        }
-                        ProjectDefaultsDialogField::OpenCodeEnv => {
-                            let _ = defaults_dialog
-                                .opencode_env_input
                                 .handle_event(&Event::Key(key_event));
                         }
                         ProjectDefaultsDialogField::SaveButton
@@ -120,11 +114,6 @@ impl GroveApp {
                         ProjectDefaultsDialogField::CodexEnv => {
                             let _ = defaults_dialog
                                 .codex_env_input
-                                .handle_event(&Event::Key(key_event));
-                        }
-                        ProjectDefaultsDialogField::OpenCodeEnv => {
-                            let _ = defaults_dialog
-                                .opencode_env_input
                                 .handle_event(&Event::Key(key_event));
                         }
                         ProjectDefaultsDialogField::SaveButton

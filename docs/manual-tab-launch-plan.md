@@ -33,7 +33,7 @@ Replace workspace-level auto-start/locking with manual tab launching from a perm
 ## UX Contract
 
 - Every workspace has a permanent `Home` tab showing the current tree/home content.
-- `a` opens picker (Claude/Codex/OpenCode), selected option creates a new agent tab.
+- `a` opens picker (Claude/Codex), selected option creates a new agent tab.
 - `s` creates a new shell tab.
 - `g` opens/focuses the workspace git tab (single instance).
 - Repeated `a`/`s` creates additional tabs (adjacent to same-kind tabs).

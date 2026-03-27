@@ -5,8 +5,8 @@ use crate::infrastructure::config::ThemeName;
 
 use super::sessions::{session_name_for_task, session_name_for_workspace_in_project};
 use super::{
-    GROVE_LAUNCHER_SCRIPT_PATH, LaunchPlan, LaunchRequest, LauncherScript,
-    OPENCODE_UNSAFE_PERMISSION_JSON, ShellLaunchRequest, tmux_theme_commands,
+    GROVE_LAUNCHER_SCRIPT_PATH, LaunchPlan, LaunchRequest, LauncherScript, ShellLaunchRequest,
+    tmux_theme_commands,
 };
 
 pub fn launch_request_for_workspace(
@@ -332,10 +332,6 @@ pub(super) fn default_agent_command(agent: AgentType, permission_mode: Permissio
             "codex --dangerously-bypass-approvals-and-sandbox".to_string()
         }
         (AgentType::Codex, _) => "codex".to_string(),
-        (AgentType::OpenCode, PermissionMode::Unsafe) => {
-            format!("OPENCODE_PERMISSION='{OPENCODE_UNSAFE_PERMISSION_JSON}' opencode")
-        }
-        (AgentType::OpenCode, _) => "opencode".to_string(),
     }
 }
 
@@ -504,14 +500,6 @@ mod tests {
             default_agent_command(AgentType::Codex, PermissionMode::Auto),
             "codex",
             "auto mode falls back to default for non-Claude agents"
-        );
-        assert_eq!(
-            default_agent_command(AgentType::OpenCode, PermissionMode::Default),
-            "opencode"
-        );
-        assert_eq!(
-            default_agent_command(AgentType::OpenCode, PermissionMode::Unsafe),
-            "OPENCODE_PERMISSION='{\"*\":\"allow\"}' opencode"
         );
     }
 

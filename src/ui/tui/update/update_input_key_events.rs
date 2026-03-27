@@ -128,9 +128,6 @@ impl GroveApp {
                     Some(FOCUS_ID_PROJECT_DEFAULTS_CODEX_ENV_INPUT) => {
                         Self::paste_text_input(&mut defaults_dialog.codex_env_input, text)
                     }
-                    Some(FOCUS_ID_PROJECT_DEFAULTS_OPENCODE_ENV_INPUT) => {
-                        Self::paste_text_input(&mut defaults_dialog.opencode_env_input, text)
-                    }
                     Some(FOCUS_ID_PROJECT_DEFAULTS_SAVE_BUTTON)
                     | Some(FOCUS_ID_PROJECT_DEFAULTS_CANCEL_BUTTON) => false,
                     _ => false,

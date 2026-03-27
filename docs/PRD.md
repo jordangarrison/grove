@@ -18,7 +18,7 @@ workspace-era designs are obsolete.
 
 1. Make `task` the only first-class runtime model.
 2. Create and manage multi-repository tasks from a single TUI flow.
-3. Launch, monitor, and control Claude Code, Codex, and OpenCode via tmux.
+3. Launch, monitor, and control Claude Code and Codex via tmux.
 4. Support inline interactive control, live preview, mouse input, and replay.
 5. Keep the implementation small, explicit, and maintainable.
 
@@ -159,11 +159,10 @@ Behavior:
 
 ## Agent Lifecycle
 
-Grove supports three agents:
+Grove supports two agents:
 
 - Claude
 - Codex
-- OpenCode
 
 Per worktree, Grove can:
 

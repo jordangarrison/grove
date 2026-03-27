@@ -960,7 +960,6 @@ impl GroveApp {
         let entries = match agent {
             AgentType::Claude => &project.defaults.agent_env.claude,
             AgentType::Codex => &project.defaults.agent_env.codex,
-            AgentType::OpenCode => &project.defaults.agent_env.opencode,
         };
         parse_agent_env_vars_from_entries(entries).map(|vars| {
             vars.into_iter()

@@ -71,7 +71,6 @@ enum ReplayPullRequestStatus {
 enum ReplayAgentType {
     Claude,
     Codex,
-    Opencode,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -194,7 +193,6 @@ impl ReplayAgentType {
         match agent {
             AgentType::Claude => Self::Claude,
             AgentType::Codex => Self::Codex,
-            AgentType::OpenCode => Self::Opencode,
         }
     }
 
@@ -202,7 +200,6 @@ impl ReplayAgentType {
         match self {
             Self::Claude => AgentType::Claude,
             Self::Codex => AgentType::Codex,
-            Self::Opencode => AgentType::OpenCode,
         }
     }
 }

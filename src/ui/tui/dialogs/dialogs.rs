@@ -620,13 +620,12 @@ fn project_add_dialog_focus_field(focus_id: Option<u64>) -> Option<ProjectAddDia
     }
 }
 
-fn project_defaults_dialog_focus_ids() -> [u64; 7] {
+fn project_defaults_dialog_focus_ids() -> [u64; 6] {
     [
         FOCUS_ID_PROJECT_DEFAULTS_BASE_BRANCH_INPUT,
         FOCUS_ID_PROJECT_DEFAULTS_INIT_COMMAND_INPUT,
         FOCUS_ID_PROJECT_DEFAULTS_CLAUDE_ENV_INPUT,
         FOCUS_ID_PROJECT_DEFAULTS_CODEX_ENV_INPUT,
-        FOCUS_ID_PROJECT_DEFAULTS_OPENCODE_ENV_INPUT,
         FOCUS_ID_PROJECT_DEFAULTS_SAVE_BUTTON,
         FOCUS_ID_PROJECT_DEFAULTS_CANCEL_BUTTON,
     ]
@@ -640,7 +639,6 @@ pub(super) fn project_defaults_dialog_focus_id(field: ProjectDefaultsDialogField
         }
         ProjectDefaultsDialogField::ClaudeEnv => FOCUS_ID_PROJECT_DEFAULTS_CLAUDE_ENV_INPUT,
         ProjectDefaultsDialogField::CodexEnv => FOCUS_ID_PROJECT_DEFAULTS_CODEX_ENV_INPUT,
-        ProjectDefaultsDialogField::OpenCodeEnv => FOCUS_ID_PROJECT_DEFAULTS_OPENCODE_ENV_INPUT,
         ProjectDefaultsDialogField::SaveButton => FOCUS_ID_PROJECT_DEFAULTS_SAVE_BUTTON,
         ProjectDefaultsDialogField::CancelButton => FOCUS_ID_PROJECT_DEFAULTS_CANCEL_BUTTON,
     }
@@ -661,9 +659,6 @@ fn project_defaults_dialog_focus_field(
         }
         Some(FOCUS_ID_PROJECT_DEFAULTS_CODEX_ENV_INPUT) => {
             Some(ProjectDefaultsDialogField::CodexEnv)
-        }
-        Some(FOCUS_ID_PROJECT_DEFAULTS_OPENCODE_ENV_INPUT) => {
-            Some(ProjectDefaultsDialogField::OpenCodeEnv)
         }
         Some(FOCUS_ID_PROJECT_DEFAULTS_SAVE_BUTTON) => Some(ProjectDefaultsDialogField::SaveButton),
         Some(FOCUS_ID_PROJECT_DEFAULTS_CANCEL_BUTTON) => {

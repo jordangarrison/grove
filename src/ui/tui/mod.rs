@@ -2778,9 +2778,7 @@ mod tests {
                 "preview header should include workspace and branch, got: {preview_text}"
             );
             assert!(
-                !preview_text.contains("Claude")
-                    && !preview_text.contains("Codex")
-                    && !preview_text.contains("OpenCode"),
+                !preview_text.contains("Claude") && !preview_text.contains("Codex"),
                 "preview header should not include workspace agent label, got: {preview_text}"
             );
         });
@@ -9305,23 +9303,6 @@ mod tests {
                 select_workspace(&mut app, 1);
                 app.state.workspaces[1].agent = AgentType::Codex;
                 app.projects[0].defaults.agent_env.codex = vec!["INVALID-KEY=value".to_string()];
-
-                ftui::Model::update(
-                    &mut app,
-                    Msg::Key(KeyEvent::new(KeyCode::Char('r')).with_kind(KeyEventKind::Press)),
-                );
-
-                assert!(app.confirm_dialog().is_none());
-                assert!(commands.borrow().is_empty());
-            }
-
-            #[test]
-            fn restart_key_restarts_opencode_in_same_tmux_session() {
-                let (mut app, commands, _captures, _cursor_captures) =
-                    fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
-                focus_agent_preview_tab(&mut app);
-                select_workspace(&mut app, 1);
-                app.state.workspaces[1].agent = AgentType::OpenCode;
 
                 ftui::Model::update(
                     &mut app,
@@ -19209,24 +19190,6 @@ mod tests {
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
                 );
-                for character in [
-                    'O', 'P', 'E', 'N', 'C', 'O', 'D', 'E', '_', 'C', 'O', 'N', 'F', 'I', 'G', '_',
-                    'D', 'I', 'R', '=', '~', '/', '.', 'o', 'p', 'e', 'n', 'c', 'o', 'd', 'e', '-',
-                    'w', 'o', 'r', 'k',
-                ] {
-                    ftui::Model::update(
-                        &mut app,
-                        Msg::Key(
-                            KeyEvent::new(KeyCode::Char(character)).with_kind(KeyEventKind::Press),
-                        ),
-                    );
-                }
-                for _ in 0..1 {
-                    ftui::Model::update(
-                        &mut app,
-                        Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
-                    );
-                }
                 ftui::Model::update(
                     &mut app,
                     Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
@@ -19245,10 +19208,6 @@ mod tests {
                     app.projects[0].defaults.agent_env.codex,
                     vec!["CODEX_CONFIG_DIR=~/.codex-work".to_string()]
                 );
-                assert_eq!(
-                    app.projects[0].defaults.agent_env.opencode,
-                    vec!["OPENCODE_CONFIG_DIR=~/.opencode-work".to_string()]
-                );
 
                 let loaded = crate::infrastructure::config::load_from_path(&app.config_path)
                     .expect("config loads");
@@ -19264,10 +19223,6 @@ mod tests {
                 assert_eq!(
                     loaded.projects[0].defaults.agent_env.codex,
                     vec!["CODEX_CONFIG_DIR=~/.codex-work".to_string()]
-                );
-                assert_eq!(
-                    loaded.projects[0].defaults.agent_env.opencode,
-                    vec!["OPENCODE_CONFIG_DIR=~/.opencode-work".to_string()]
                 );
             }
 

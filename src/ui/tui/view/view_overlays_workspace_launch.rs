@@ -60,7 +60,6 @@ impl GroveApp {
             )]),
             agent_row(AgentType::Claude),
             agent_row(AgentType::Codex),
-            agent_row(AgentType::OpenCode),
             FtLine::raw(""),
             config_rows[0].clone(),
             config_rows[1].clone(),

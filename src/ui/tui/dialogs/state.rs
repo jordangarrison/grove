@@ -537,7 +537,6 @@ pub(super) struct ProjectDefaultsDialogState {
     pub(super) workspace_init_command_input: TextInput,
     pub(super) claude_env_input: TextInput,
     pub(super) codex_env_input: TextInput,
-    pub(super) opencode_env_input: TextInput,
 }
 
 impl ProjectDefaultsDialogState {
@@ -550,8 +549,6 @@ impl ProjectDefaultsDialogState {
             .set_focused(focused_field == Some(ProjectDefaultsDialogField::ClaudeEnv));
         self.codex_env_input
             .set_focused(focused_field == Some(ProjectDefaultsDialogField::CodexEnv));
-        self.opencode_env_input
-            .set_focused(focused_field == Some(ProjectDefaultsDialogField::OpenCodeEnv));
     }
 }
 
@@ -576,7 +573,6 @@ pub(super) enum ProjectDefaultsDialogField {
     WorkspaceInitCommand,
     ClaudeEnv,
     CodexEnv,
-    OpenCodeEnv,
     SaveButton,
     CancelButton,
 }

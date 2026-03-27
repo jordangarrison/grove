@@ -33,7 +33,6 @@ impl GroveApp {
         match agent {
             AgentType::Claude => packed(theme.accent),
             AgentType::Codex => packed(theme.text),
-            AgentType::OpenCode => packed(theme.text),
         }
     }
 

@@ -36,8 +36,7 @@ impl GroveApp {
                         .value()
                         .is_empty()
                     || !defaults_dialog.claude_env_input.value().is_empty()
-                    || !defaults_dialog.codex_env_input.value().is_empty()
-                    || !defaults_dialog.opencode_env_input.value().is_empty();
+                    || !defaults_dialog.codex_env_input.value().is_empty();
             }
         }
 

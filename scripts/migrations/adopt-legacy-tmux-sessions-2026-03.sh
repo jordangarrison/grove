@@ -55,7 +55,6 @@ session_workspace_path() {
 agent_label() {
   case "$1" in
     claude) echo "Claude" ;;
-    opencode) echo "OpenCode" ;;
     *) echo "Codex" ;;
   esac
 }
@@ -67,7 +66,7 @@ infer_agent_marker() {
   option_marker="$(tmux show-options -qv -t "$session" @grove_tab_agent 2>/dev/null || true)"
   option_marker="$(printf '%s' "$option_marker" | tr '[:upper:]' '[:lower:]')"
   case "$option_marker" in
-    claude|codex|opencode)
+    claude|codex)
       echo "$option_marker"
       return
       ;;
@@ -77,14 +76,12 @@ infer_agent_marker() {
   pane_command="$(tmux list-panes -t "$session" -F '#{pane_current_command}' 2>/dev/null | head -n 1 | tr '[:upper:]' '[:lower:]')"
   case "$pane_command" in
     *claude*) echo "claude"; return ;;
-    *opencode*) echo "opencode"; return ;;
     *codex*) echo "codex"; return ;;
   esac
 
   local capture
   capture="$(tmux capture-pane -p -t "$session" -S -200 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
   case "$capture" in
-    *"opencode"*) echo "opencode"; return ;;
     *"claude"*) echo "claude"; return ;;
     *"codex"*) echo "codex"; return ;;
   esac

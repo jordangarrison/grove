@@ -5,7 +5,7 @@ const PROJECT_DIALOG_MIN_WIDTH: u16 = 44;
 const PROJECT_DIALOG_WIDTH: u16 = 96;
 const PROJECT_LIST_DIALOG_HEIGHT: u16 = 20;
 const PROJECT_ADD_DIALOG_HEIGHT: u16 = 15;
-const PROJECT_DEFAULTS_DIALOG_HEIGHT: u16 = 20;
+const PROJECT_DEFAULTS_DIALOG_HEIGHT: u16 = 18;
 const MODAL_BUTTON_WIDTH: u16 = 12;
 const MODAL_BUTTON_GAP: u16 = 2;
 
@@ -37,8 +37,6 @@ pub(super) struct ProjectDefaultsDialogLayout {
     pub(super) claude_env_input: Rect,
     codex_env_label: Rect,
     pub(super) codex_env_input: Rect,
-    opencode_env_label: Rect,
-    pub(super) opencode_env_input: Rect,
     note: Rect,
     actions: Rect,
     pub(super) save_button: Rect,
@@ -160,12 +158,10 @@ fn project_defaults_dialog_layout(area: Rect) -> Option<ProjectDefaultsDialogLay
             Constraint::Fixed(1),
             Constraint::Fixed(1),
             Constraint::Fixed(1),
-            Constraint::Fixed(1),
-            Constraint::Fixed(1),
             Constraint::Fixed(2),
         ])
         .split(inner);
-    let (save_button, cancel_button) = modal_button_rects(rows[13]);
+    let (save_button, cancel_button) = modal_button_rects(rows[11]);
 
     Some(ProjectDefaultsDialogLayout {
         dialog_area,
@@ -179,13 +175,11 @@ fn project_defaults_dialog_layout(area: Rect) -> Option<ProjectDefaultsDialogLay
         claude_env_input: rows[7],
         codex_env_label: rows[8],
         codex_env_input: rows[9],
-        opencode_env_label: rows[10],
-        opencode_env_input: rows[11],
-        note: rows[12],
-        actions: rows[13],
+        note: rows[10],
+        actions: rows[11],
         save_button,
         cancel_button,
-        hints: rows[14],
+        hints: rows[12],
     })
 }
 
@@ -579,10 +573,6 @@ impl Widget for ProjectDefaultsModalContent<'_> {
         Paragraph::new("Codex env")
             .style(label_style)
             .render(layout.codex_env_label, frame);
-        Paragraph::new("OpenCode env")
-            .style(label_style)
-            .render(layout.opencode_env_label, frame);
-
         let base_branch_input = self
             .dialog
             .base_branch_input
@@ -623,22 +613,10 @@ impl Widget for ProjectDefaultsModalContent<'_> {
             .with_placeholder_style(modal_input_placeholder_style(self.theme))
             .with_cursor_style(modal_input_cursor_style(self.theme))
             .with_selection_style(modal_input_selection_style(self.theme));
-        let opencode_env_input = self
-            .dialog
-            .opencode_env_input
-            .clone()
-            .with_focused(self.focused_id == Some(FOCUS_ID_PROJECT_DEFAULTS_OPENCODE_ENV_INPUT))
-            .with_style(modal_input_style(self.theme))
-            .with_placeholder("KEY=VALUE; KEY2=VALUE")
-            .with_placeholder_style(modal_input_placeholder_style(self.theme))
-            .with_cursor_style(modal_input_cursor_style(self.theme))
-            .with_selection_style(modal_input_selection_style(self.theme));
-
         Widget::render(&base_branch_input, layout.base_branch_input, frame);
         Widget::render(&init_command_input, layout.init_command_input, frame);
         Widget::render(&claude_env_input, layout.claude_env_input, frame);
         Widget::render(&codex_env_input, layout.codex_env_input, frame);
-        Widget::render(&opencode_env_input, layout.opencode_env_input, frame);
 
         match self.focused_id {
             Some(FOCUS_ID_PROJECT_DEFAULTS_BASE_BRANCH_INPUT) => {
@@ -662,12 +640,6 @@ impl Widget for ProjectDefaultsModalContent<'_> {
             Some(FOCUS_ID_PROJECT_DEFAULTS_CODEX_ENV_INPUT) => {
                 frame.set_cursor(Some(
                     codex_env_input.cursor_position(layout.codex_env_input),
-                ));
-                frame.set_cursor_visible(true);
-            }
-            Some(FOCUS_ID_PROJECT_DEFAULTS_OPENCODE_ENV_INPUT) => {
-                frame.set_cursor(Some(
-                    opencode_env_input.cursor_position(layout.opencode_env_input),
                 ));
                 frame.set_cursor_visible(true);
             }

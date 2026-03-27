@@ -115,8 +115,6 @@ pub struct AgentEnvDefaults {
     pub claude: Vec<String>,
     #[serde(default)]
     pub codex: Vec<String>,
-    #[serde(default)]
-    pub opencode: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -365,7 +363,6 @@ mod tests {
                     agent_env: AgentEnvDefaults {
                         claude: vec!["CLAUDE_CONFIG_DIR=~/.claude-work".to_string()],
                         codex: vec!["CODEX_CONFIG_DIR=~/.codex-work".to_string()],
-                        opencode: Vec::new(),
                     },
                 },
             }],

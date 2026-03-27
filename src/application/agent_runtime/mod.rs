@@ -72,7 +72,6 @@ const STATUS_TAIL_LINES: usize = 60;
 const SESSION_STATUS_TAIL_BYTES: usize = 256 * 1024;
 const SESSION_ACTIVITY_THRESHOLD: Duration = Duration::from_secs(30);
 const CODEX_SESSION_LOOKUP_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
-const OPENCODE_SESSION_LOOKUP_REFRESH_INTERVAL: Duration = Duration::from_millis(500);
 const SESSION_LOOKUP_CACHE_MAX_ENTRIES: usize = 1024;
 const SESSION_LOOKUP_EVICTION_TTL: Duration = Duration::from_secs(300);
 const MESSAGE_STATUS_CACHE_MAX_ENTRIES: usize = 1024;
@@ -84,7 +83,6 @@ const RESTART_RESUME_ERROR_MAX_CHARS: usize = 320;
 const RESTART_RESUME_RETRY_DELAY: Duration = Duration::from_millis(0);
 #[cfg(not(test))]
 const RESTART_RESUME_RETRY_DELAY: Duration = Duration::from_millis(120);
-const OPENCODE_UNSAFE_PERMISSION_JSON: &str = r#"{"*":"allow"}"#;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SessionActivity {
     Idle,

@@ -19,7 +19,7 @@ impl PermissionMode {
                 Self::Auto => Self::Unsafe,
                 Self::Unsafe => Self::Default,
             },
-            AgentType::Codex | AgentType::OpenCode => match self {
+            AgentType::Codex => match self {
                 Self::Default => Self::Unsafe,
                 Self::Auto | Self::Unsafe => Self::Default,
             },
@@ -72,11 +72,10 @@ impl PermissionMode {
 pub enum AgentType {
     Claude,
     Codex,
-    OpenCode,
 }
 
 impl AgentType {
-    pub const ALL: [Self; 3] = [Self::Claude, Self::Codex, Self::OpenCode];
+    pub const ALL: [Self; 2] = [Self::Claude, Self::Codex];
 
     pub const fn all() -> &'static [Self] {
         &Self::ALL
@@ -86,7 +85,6 @@ impl AgentType {
         match self {
             Self::Claude => "Claude",
             Self::Codex => "Codex",
-            Self::OpenCode => "OpenCode",
         }
     }
 
@@ -94,7 +92,6 @@ impl AgentType {
         match self {
             Self::Claude => "claude",
             Self::Codex => "codex",
-            Self::OpenCode => "opencode",
         }
     }
 
@@ -102,7 +99,6 @@ impl AgentType {
         match self {
             Self::Claude => "GROVE_CLAUDE_CMD",
             Self::Codex => "GROVE_CODEX_CMD",
-            Self::OpenCode => "GROVE_OPENCODE_CMD",
         }
     }
 
@@ -110,7 +106,6 @@ impl AgentType {
         match value {
             "claude" => Some(Self::Claude),
             "codex" => Some(Self::Codex),
-            "opencode" => Some(Self::OpenCode),
             _ => None,
         }
     }
@@ -118,16 +113,14 @@ impl AgentType {
     pub const fn next(self) -> Self {
         match self {
             Self::Claude => Self::Codex,
-            Self::Codex => Self::OpenCode,
-            Self::OpenCode => Self::Claude,
+            Self::Codex => Self::Claude,
         }
     }
 
     pub const fn previous(self) -> Self {
         match self {
-            Self::Claude => Self::OpenCode,
+            Self::Claude => Self::Codex,
             Self::Codex => Self::Claude,
-            Self::OpenCode => Self::Codex,
         }
     }
 }
@@ -698,15 +691,6 @@ mod tests {
         mode = mode.next_for_agent(AgentType::Codex);
         assert_eq!(mode, PermissionMode::Unsafe);
         mode = mode.next_for_agent(AgentType::Codex);
-        assert_eq!(mode, PermissionMode::Default);
-    }
-
-    #[test]
-    fn permission_mode_cycles_opencode_through_two_states() {
-        let mut mode = PermissionMode::Default;
-        mode = mode.next_for_agent(AgentType::OpenCode);
-        assert_eq!(mode, PermissionMode::Unsafe);
-        mode = mode.next_for_agent(AgentType::OpenCode);
         assert_eq!(mode, PermissionMode::Default);
     }
 

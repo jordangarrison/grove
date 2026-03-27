@@ -491,14 +491,6 @@ impl GroveApp {
                             return;
                         }
                         if Self::rect_contains_point(
-                            layout.opencode_env_input,
-                            mouse_event.x,
-                            mouse_event.y,
-                        ) {
-                            self.focus_dialog_field(FOCUS_ID_PROJECT_DEFAULTS_OPENCODE_ENV_INPUT);
-                            return;
-                        }
-                        if Self::rect_contains_point(
                             layout.save_button,
                             mouse_event.x,
                             mouse_event.y,

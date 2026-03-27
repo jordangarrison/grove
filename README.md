@@ -21,7 +21,7 @@ monitor output live, and clean up safely.
 
 - Git worktree lifecycle, create, edit, merge, update-from-base, delete
 - Agent runtime per workspace via tmux sessions (persistent across TUI restarts)
-- Supported agents, Claude Code, Codex, and OpenCode
+- Supported agents, Claude Code and Codex
 - Interactive mode inside the TUI (send keys directly to running sessions)
 - Live output preview with ANSI rendering and cursor-aware display
 - Git preview tab via `lazygit`
@@ -113,7 +113,7 @@ Use with Home Manager:
 ```
 
 Available environment overrides: `GROVE_CLAUDE_CMD`, `GROVE_CODEX_CMD`,
-`GROVE_OPENCODE_CMD`, `GROVE_LAZYGIT_CMD`.
+`GROVE_LAZYGIT_CMD`.
 
 ### Option 2, Devbox
 
@@ -269,7 +269,7 @@ Grove behavior:
 - `theme` (`monokai`, `catppuccin-latte`, `catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-mocha`)
 
 `launch_skip_permissions` behavior:
-- Controls default unsafe-mode launch behavior for Claude/Codex/OpenCode
+- Controls default unsafe-mode launch behavior for Claude/Codex
 - Workspace-specific `.grove/skip_permissions` marker overrides it
 - Agent session inference can override it when marker is absent
 
@@ -300,7 +300,6 @@ workspace_init_command = "direnv allow"
 [projects.defaults.agent_env]
 claude = ["CLAUDE_CONFIG_DIR=~/.claude-work"]
 codex = ["CODEX_CONFIG_DIR=~/.codex-work"]
-opencode = []
 ```
 
 ## Credits

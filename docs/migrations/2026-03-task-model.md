@@ -107,7 +107,6 @@ Allowed agent strings:
 
 - `"claude"`
 - `"codex"`
-- `"opencode"`
 
 Allowed status strings include:
 
@@ -335,7 +334,7 @@ If Grove still does not show a migrated task, check:
 
 - the manifest path is exactly `~/.grove/tasks/<task-slug>/.grove/task.toml`
 - `slug`, `branch`, and `repository_name` are non-empty
-- `agent` is one of `claude`, `codex`, `opencode`
+- `agent` is one of `claude`, `codex`
 - `status` is a supported value, usually `idle`
 
 ## Tmux Sessions

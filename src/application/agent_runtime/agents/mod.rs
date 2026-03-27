@@ -1,6 +1,5 @@
 mod claude;
 mod codex;
-mod opencode;
 mod shared;
 
 use std::path::Path;
@@ -15,7 +14,6 @@ pub(super) fn restart_exit_input(agent: AgentType) -> Option<super::RestartExitI
     match agent {
         AgentType::Claude => Some(super::RestartExitInput::Literal("/exit")),
         AgentType::Codex => Some(super::RestartExitInput::Named("C-c")),
-        AgentType::OpenCode => Some(super::RestartExitInput::Named("C-c")),
     }
 }
 
@@ -57,15 +55,6 @@ pub(super) fn resume_command_with_permission_mode(
                 }
                 command.to_string()
             }
-            AgentType::OpenCode => {
-                if command.contains("OPENCODE_PERMISSION=") {
-                    return command.to_string();
-                }
-                format!(
-                    "OPENCODE_PERMISSION='{}' {command}",
-                    super::OPENCODE_UNSAFE_PERMISSION_JSON
-                )
-            }
         },
     }
 }
@@ -74,7 +63,6 @@ pub(super) fn extract_resume_command(agent: AgentType, output: &str) -> Option<S
     match agent {
         AgentType::Claude => claude::extract_resume_command(output),
         AgentType::Codex => codex::extract_resume_command(output),
-        AgentType::OpenCode => opencode::extract_resume_command(output),
     }
 }
 
@@ -86,7 +74,6 @@ pub(super) fn infer_permission_mode_in_home(
     match agent {
         AgentType::Claude => claude::infer_permission_mode_in_home(workspace_path, home_dir),
         AgentType::Codex => codex::infer_permission_mode_in_home(workspace_path, home_dir),
-        AgentType::OpenCode => opencode::infer_permission_mode_in_home(workspace_path, home_dir),
     }
 }
 
@@ -103,9 +90,6 @@ pub(super) fn detect_session_status_in_home(
         AgentType::Codex => {
             codex::detect_session_status_in_home(workspace_path, home_dir, activity_threshold)
         }
-        AgentType::OpenCode => {
-            opencode::detect_session_status_in_home(workspace_path, home_dir, activity_threshold)
-        }
     }
 }
 
@@ -117,18 +101,6 @@ pub(super) fn latest_attention_marker_in_home(
     match agent {
         AgentType::Claude => claude::latest_attention_marker_in_home(workspace_path, home_dir),
         AgentType::Codex => codex::latest_attention_marker_in_home(workspace_path, home_dir),
-        AgentType::OpenCode => opencode::latest_attention_marker_in_home(workspace_path, home_dir),
-    }
-}
-
-pub(super) fn infer_resume_command_in_home(
-    agent: AgentType,
-    workspace_path: &Path,
-    home_dir: &Path,
-) -> Option<String> {
-    match agent {
-        AgentType::OpenCode => opencode::infer_resume_command_in_home(workspace_path, home_dir),
-        _ => None,
     }
 }
 

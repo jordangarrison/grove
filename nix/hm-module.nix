@@ -30,7 +30,6 @@ in
         Grove supports the following overrides:
         - GROVE_CLAUDE_CMD
         - GROVE_CODEX_CMD
-        - GROVE_OPENCODE_CMD
         - GROVE_LAZYGIT_CMD
       '';
     };

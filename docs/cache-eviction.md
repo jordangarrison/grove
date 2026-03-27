@@ -10,14 +10,13 @@ accumulate stale entries. Bounding them is cheap insurance.
 
 1. **Add cache constants in `mod.rs`**
    (`src/application/agent_runtime/mod.rs`)
-   - `SESSION_LOOKUP_CACHE_MAX_ENTRIES: usize` (size cap for both codex +
-     opencode session-lookup caches)
+   - `SESSION_LOOKUP_CACHE_MAX_ENTRIES: usize` (size cap for codex
+     session-lookup cache)
    - `SESSION_LOOKUP_EVICTION_TTL: Duration` (eviction TTL for session-lookup
      entries, separate from read-hit freshness)
    - `MESSAGE_STATUS_CACHE_MAX_ENTRIES: usize` (size cap only, no TTL)
    - Keep existing read-hit refresh constants unchanged:
      - `CODEX_SESSION_LOOKUP_REFRESH_INTERVAL` (30s)
-     - `OPENCODE_SESSION_LOOKUP_REFRESH_INTERVAL` (500ms)
 
 2. **Add a shared `prune_by_oldest` helper** (in `shared.rs` or `mod.rs`, next
    to constants)
@@ -32,14 +31,12 @@ accumulate stale entries. Bounding them is cheap insurance.
 
 3. **Use existing timestamps in entries, do not add extra fields**
    - Codex `SessionLookupCacheEntry` already has `checked_at` (use that).
-   - OpenCode `SessionLookupCacheEntry` already has `checked_at` (use that).
    - `MessageStatusCacheEntry` uses `modified_at` for oldest-first size pruning.
    - **No TTL for `MessageStatusCacheEntry`**. It already invalidates by file
      mtime, TTL would force re-parsing unchanged files for no benefit.
 
 4. **Call prune on write paths only**
-   - Session-lookup caches (codex + opencode): prune with TTL + size cap after
-     inserting.
+   - Session-lookup cache (codex): prune with TTL + size cap after inserting.
    - Message-status cache (codex): prune with size cap only (oldest
      `modified_at` first) after inserting.
    - No read-path pruning. Reads already skip stale entries via existing
@@ -48,9 +45,9 @@ accumulate stale entries. Bounding them is cheap insurance.
 5. **Keep all prune+mutate operations under existing mutex locks, no lock model
    change.**
 
-6. **Add focused tests** in `codex.rs` and `opencode.rs`:
+6. **Add focused tests** in `codex.rs`:
    - Size cap prunes oldest entries when over limit.
-   - TTL expiry removes stale session-lookup entries (codex + opencode only).
+   - TTL expiry removes stale session-lookup entries.
    - Message-status cache retains entries within size cap regardless of age.
    - Post-eviction lookup recomputes correctly.
    - Add test-only cache reset helpers and call them at test start to avoid
@@ -64,8 +61,7 @@ accumulate stale entries. Bounding them is cheap insurance.
 
 ## Scope
 
-- **In scope**: codex session-lookup cache, codex message-status cache,
-  opencode session-lookup cache.
+- **In scope**: codex session-lookup cache, codex message-status cache.
 - **Out of scope**: generic cache type, cross-module refactor, LRU data
   structures.
 

@@ -146,25 +146,6 @@ pub fn restart_workspace_in_pane_with_io(
     mut execute: impl FnMut(&[String]) -> std::io::Result<()>,
     mut capture_output: impl FnMut(&str, usize, bool) -> std::io::Result<String>,
 ) -> Result<(), String> {
-    let home_dir = dirs::home_dir();
-    restart_workspace_in_pane_with_io_in_home(
-        workspace,
-        permission_mode,
-        agent_env,
-        &mut execute,
-        &mut capture_output,
-        home_dir.as_deref(),
-    )
-}
-
-pub(super) fn restart_workspace_in_pane_with_io_in_home(
-    workspace: &Workspace,
-    permission_mode: PermissionMode,
-    agent_env: &[(String, String)],
-    mut execute: impl FnMut(&[String]) -> std::io::Result<()>,
-    mut capture_output: impl FnMut(&str, usize, bool) -> std::io::Result<String>,
-    home_dir: Option<&Path>,
-) -> Result<(), String> {
     let Some(exit_input) = restart_exit_input(workspace.agent) else {
         return Err(format!(
             "in-pane restart unsupported for {}",
@@ -180,15 +161,7 @@ pub(super) fn restart_workspace_in_pane_with_io_in_home(
     }
 
     let resume_command =
-        wait_for_resume_command(workspace.agent, &session_name, &mut capture_output).or_else(
-            |error| {
-                let Some(home_dir) = home_dir else {
-                    return Err(error);
-                };
-                agents::infer_resume_command_in_home(workspace.agent, &workspace.path, home_dir)
-                    .ok_or(error)
-            },
-        )?;
+        wait_for_resume_command(workspace.agent, &session_name, &mut capture_output)?;
     if let Some(command) = restart_agent_env_command(&session_name, agent_env) {
         execute_command_with(command.as_slice(), |command| execute(command))
             .map_err(|error| format!("restart env apply failed for '{session_name}': {error}"))?;
@@ -277,19 +250,14 @@ mod tests {
     use std::path::PathBuf;
     use std::time::Duration;
 
-    use rusqlite::Connection;
-
     use crate::domain::{AgentType, PermissionMode, WorkspaceStatus};
     use crate::test_support::unique_test_dir;
 
     use super::super::status::{
         codex_session_permission_mode, infer_claude_permission_mode_in_home,
-        infer_codex_permission_mode_in_home, infer_opencode_permission_mode_in_home,
+        infer_codex_permission_mode_in_home,
     };
-    use super::{
-        execute_restart_workspace_in_pane_with_result, extract_agent_resume_command,
-        restart_workspace_in_pane_with_io, restart_workspace_in_pane_with_io_in_home,
-    };
+    use super::{extract_agent_resume_command, restart_workspace_in_pane_with_io};
 
     fn fixture_workspace(name: &str, is_main: bool) -> crate::domain::Workspace {
         crate::domain::Workspace::try_new(
@@ -565,84 +533,6 @@ mod tests {
     }
 
     #[test]
-    fn infer_opencode_permission_mode_in_home_uses_message_data() {
-        let root = unique_test_dir("grove-opencode-skip-infer");
-        let home = root.join("home");
-        let workspace_path = root.join("ws").join("feature-eta");
-        fs::create_dir_all(&home).expect("home directory should exist");
-        fs::create_dir_all(&workspace_path).expect("workspace directory should exist");
-
-        let data_dir = home.join(".local").join("share").join("opencode");
-        fs::create_dir_all(&data_dir).expect("opencode data directory should exist");
-        let database_path = data_dir.join("opencode.db");
-        let connection = Connection::open(&database_path).expect("database should open");
-        connection
-            .execute_batch(
-                "CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT NOT NULL, time_updated INTEGER NOT NULL);
-                     CREATE TABLE message (
-                       id TEXT PRIMARY KEY,
-                       session_id TEXT NOT NULL,
-                       time_created INTEGER NOT NULL,
-                       time_updated INTEGER NOT NULL,
-                       data TEXT NOT NULL
-                     );",
-            )
-            .expect("schema should be created");
-        connection
-            .execute(
-                "INSERT INTO session (id, directory, time_updated) VALUES (?1, ?2, ?3)",
-                (
-                    "session-skip",
-                    workspace_path.to_string_lossy().to_string(),
-                    1_i64,
-                ),
-            )
-            .expect("session row should be inserted");
-        connection
-            .execute(
-                "INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?1, ?2, ?3, ?4, ?5)",
-                (
-                    "message-skip",
-                    "session-skip",
-                    1_i64,
-                    1_i64,
-                    "{\"role\":\"user\",\"text\":\"Approval policy is currently never.\"}",
-                ),
-            )
-            .expect("message row should be inserted");
-
-        assert_eq!(
-            infer_opencode_permission_mode_in_home(&workspace_path, &home),
-            Some(PermissionMode::Unsafe)
-        );
-
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn extract_agent_resume_command_parses_real_opencode_banner_output() {
-        let output = "opencode -s ses_36d243142ffeYteys2MXS86Nnt";
-        let resume = extract_agent_resume_command(AgentType::OpenCode, output);
-        assert_eq!(
-            resume.as_deref(),
-            Some("opencode -s ses_36d243142ffeYteys2MXS86Nnt")
-        );
-    }
-
-    #[test]
-    fn extract_agent_resume_command_parses_opencode_continue_output() {
-        let output = "To continue this session, run opencode --continue";
-        let resume = extract_agent_resume_command(AgentType::OpenCode, output);
-        assert_eq!(resume.as_deref(), Some("opencode --continue"));
-    }
-
-    #[test]
-    fn extract_agent_resume_command_ignores_unrelated_output() {
-        let output = "claude --resume abc123xyz";
-        assert!(extract_agent_resume_command(AgentType::OpenCode, output).is_none());
-    }
-
-    #[test]
     fn restart_workspace_in_pane_with_io_sends_exit_and_resume_commands() {
         let workspace = fixture_workspace("feature-a", false);
         let mut commands = Vec::new();
@@ -753,115 +643,6 @@ mod tests {
     }
 
     #[test]
-    fn restart_workspace_in_pane_with_io_sends_ctrl_c_for_opencode() {
-        let mut workspace = fixture_workspace("feature-a", false);
-        workspace.agent = AgentType::OpenCode;
-        let mut commands = Vec::new();
-        let mut captures = vec!["opencode -s ses_36d243142ffeYteys2MXS86Nnt".to_string()];
-
-        let result = restart_workspace_in_pane_with_io(
-            &workspace,
-            PermissionMode::Default,
-            &[],
-            |command| {
-                commands.push(command.to_vec());
-                Ok(())
-            },
-            |_session_name, _scrollback_lines, _include_escape_sequences| {
-                if captures.is_empty() {
-                    return Ok(String::new());
-                }
-                Ok(captures.remove(0))
-            },
-        );
-
-        assert!(result.is_ok());
-        assert_eq!(
-            commands,
-            vec![
-                vec![
-                    "tmux".to_string(),
-                    "send-keys".to_string(),
-                    "-t".to_string(),
-                    "grove-ws-feature-a".to_string(),
-                    "C-c".to_string(),
-                ],
-                vec![
-                    "tmux".to_string(),
-                    "send-keys".to_string(),
-                    "-t".to_string(),
-                    "grove-ws-feature-a".to_string(),
-                    "opencode -s ses_36d243142ffeYteys2MXS86Nnt".to_string(),
-                    "Enter".to_string(),
-                ],
-            ]
-        );
-    }
-
-    #[test]
-    fn restart_workspace_in_pane_with_io_uses_opencode_db_resume_when_output_missing() {
-        let root = unique_test_dir("grove-opencode-restart-resume-fallback");
-        let home = root.join("home");
-        let workspace_path = root.join("ws").join("feature-opencode");
-        fs::create_dir_all(&home).expect("home directory should exist");
-        fs::create_dir_all(&workspace_path).expect("workspace directory should exist");
-
-        let data_dir = home.join(".local").join("share").join("opencode");
-        fs::create_dir_all(&data_dir).expect("opencode data directory should exist");
-        let database_path = data_dir.join("opencode.db");
-        let connection = Connection::open(&database_path).expect("database should open");
-        connection
-            .execute_batch(
-                "CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT NOT NULL, time_updated INTEGER NOT NULL);",
-            )
-            .expect("schema should be created");
-        connection
-            .execute(
-                "INSERT INTO session (id, directory, time_updated) VALUES (?1, ?2, ?3)",
-                (
-                    "session-fallback",
-                    workspace_path.to_string_lossy().to_string(),
-                    1_i64,
-                ),
-            )
-            .expect("session row should be inserted");
-
-        let mut workspace = fixture_workspace("feature-a", false);
-        workspace.agent = AgentType::OpenCode;
-        workspace.path = workspace_path.clone();
-        let mut commands = Vec::new();
-
-        let result = restart_workspace_in_pane_with_io_in_home(
-            &workspace,
-            PermissionMode::Default,
-            &[],
-            |command| {
-                commands.push(command.to_vec());
-                Ok(())
-            },
-            |_session_name, _scrollback_lines, _include_escape_sequences| {
-                Ok("no resume command in output".to_string())
-            },
-            Some(home.as_path()),
-        );
-
-        assert!(result.is_ok());
-        assert_eq!(
-            commands[1],
-            vec![
-                "tmux".to_string(),
-                "send-keys".to_string(),
-                "-t".to_string(),
-                "grove-ws-feature-a".to_string(),
-                "opencode -s session-fallback".to_string(),
-                "Enter".to_string(),
-            ]
-        );
-
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
     fn restart_workspace_in_pane_with_io_sends_ctrl_c_for_codex() {
         let mut workspace = fixture_workspace("feature-a", false);
         workspace.agent = AgentType::Codex;
@@ -956,25 +737,6 @@ mod tests {
                 "Enter".to_string(),
             ]
         );
-    }
-
-    #[test]
-    fn execute_restart_workspace_in_pane_with_result_returns_workspace_context() {
-        let mut workspace = fixture_workspace("feature-a", false);
-        workspace.agent = AgentType::OpenCode;
-
-        let result = execute_restart_workspace_in_pane_with_result(
-            &workspace,
-            PermissionMode::Default,
-            Vec::new(),
-        );
-        assert_eq!(result.workspace_name, "feature-a");
-        assert_eq!(
-            result.workspace_path,
-            PathBuf::from("/repos/grove-feature-a")
-        );
-        assert_eq!(result.session_name, "grove-ws-feature-a");
-        assert!(result.result.is_err());
     }
 
     #[test]
@@ -1082,44 +844,6 @@ mod tests {
                 "-t".to_string(),
                 "grove-ws-feature-a".to_string(),
                 "codex --dangerously-bypass-approvals-and-sandbox resume run-1234".to_string(),
-                "Enter".to_string(),
-            ]
-        );
-    }
-
-    #[test]
-    fn restart_workspace_in_pane_with_io_adds_permission_mode_for_opencode_resume() {
-        let mut workspace = fixture_workspace("feature-a", false);
-        workspace.agent = AgentType::OpenCode;
-        let mut commands = Vec::new();
-        let mut captures = vec!["opencode -s ses_36d243142ffeYteys2MXS86Nnt".to_string()];
-
-        let result = restart_workspace_in_pane_with_io(
-            &workspace,
-            PermissionMode::Unsafe,
-            &[],
-            |command| {
-                commands.push(command.to_vec());
-                Ok(())
-            },
-            |_session_name, _scrollback_lines, _include_escape_sequences| {
-                if captures.is_empty() {
-                    return Ok(String::new());
-                }
-                Ok(captures.remove(0))
-            },
-        );
-
-        assert!(result.is_ok());
-        assert_eq!(
-            commands[1],
-            vec![
-                "tmux".to_string(),
-                "send-keys".to_string(),
-                "-t".to_string(),
-                "grove-ws-feature-a".to_string(),
-                "OPENCODE_PERMISSION='{\"*\":\"allow\"}' opencode -s ses_36d243142ffeYteys2MXS86Nnt"
-                    .to_string(),
                 "Enter".to_string(),
             ]
         );
