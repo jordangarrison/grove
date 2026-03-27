@@ -257,10 +257,6 @@ pub(super) enum StartAgentConfigField {
     Unsafe,
 }
 
-cyclic_field_nav!(pub(super) StartAgentConfigField {
-    Name, Prompt, InitCommand, Unsafe,
-});
-
 impl StartAgentConfigField {
     #[cfg(test)]
     pub(super) fn label(self) -> &'static str {
@@ -281,17 +277,21 @@ pub(super) enum LaunchDialogField {
     CancelButton,
 }
 
+#[cfg(test)]
 impl LaunchDialogField {
     pub(super) fn next(self) -> Self {
         match self {
             Self::Agent => Self::StartConfig(StartAgentConfigField::Name),
-            Self::StartConfig(field) => {
-                if field == StartAgentConfigField::Unsafe {
-                    Self::StartButton
-                } else {
-                    Self::StartConfig(field.next())
-                }
+            Self::StartConfig(StartAgentConfigField::Name) => {
+                Self::StartConfig(StartAgentConfigField::Prompt)
             }
+            Self::StartConfig(StartAgentConfigField::Prompt) => {
+                Self::StartConfig(StartAgentConfigField::InitCommand)
+            }
+            Self::StartConfig(StartAgentConfigField::InitCommand) => {
+                Self::StartConfig(StartAgentConfigField::Unsafe)
+            }
+            Self::StartConfig(StartAgentConfigField::Unsafe) => Self::StartButton,
             Self::StartButton => Self::CancelButton,
             Self::CancelButton => Self::Agent,
         }
@@ -299,12 +299,15 @@ impl LaunchDialogField {
 
     pub(super) fn previous(self) -> Self {
         match self {
-            Self::StartConfig(field) => {
-                if field == StartAgentConfigField::Name {
-                    Self::Agent
-                } else {
-                    Self::StartConfig(field.previous())
-                }
+            Self::StartConfig(StartAgentConfigField::Name) => Self::Agent,
+            Self::StartConfig(StartAgentConfigField::Prompt) => {
+                Self::StartConfig(StartAgentConfigField::Name)
+            }
+            Self::StartConfig(StartAgentConfigField::InitCommand) => {
+                Self::StartConfig(StartAgentConfigField::Prompt)
+            }
+            Self::StartConfig(StartAgentConfigField::Unsafe) => {
+                Self::StartConfig(StartAgentConfigField::InitCommand)
             }
             Self::StartButton => Self::StartConfig(StartAgentConfigField::Unsafe),
             Self::CancelButton => Self::StartButton,

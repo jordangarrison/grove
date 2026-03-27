@@ -519,6 +519,53 @@ fn edit_dialog_focus_field(focus_id: Option<u64>) -> Option<EditDialogField> {
     }
 }
 
+fn launch_dialog_focus_ids() -> [u64; 7] {
+    [
+        FOCUS_ID_LAUNCH_AGENT,
+        FOCUS_ID_LAUNCH_NAME,
+        FOCUS_ID_LAUNCH_PROMPT,
+        FOCUS_ID_LAUNCH_INIT_COMMAND,
+        FOCUS_ID_LAUNCH_UNSAFE,
+        FOCUS_ID_LAUNCH_START_BUTTON,
+        FOCUS_ID_LAUNCH_CANCEL_BUTTON,
+    ]
+}
+
+pub(super) fn launch_dialog_focus_id(field: LaunchDialogField) -> u64 {
+    match field {
+        LaunchDialogField::Agent => FOCUS_ID_LAUNCH_AGENT,
+        LaunchDialogField::StartConfig(StartAgentConfigField::Name) => FOCUS_ID_LAUNCH_NAME,
+        LaunchDialogField::StartConfig(StartAgentConfigField::Prompt) => FOCUS_ID_LAUNCH_PROMPT,
+        LaunchDialogField::StartConfig(StartAgentConfigField::InitCommand) => {
+            FOCUS_ID_LAUNCH_INIT_COMMAND
+        }
+        LaunchDialogField::StartConfig(StartAgentConfigField::Unsafe) => FOCUS_ID_LAUNCH_UNSAFE,
+        LaunchDialogField::StartButton => FOCUS_ID_LAUNCH_START_BUTTON,
+        LaunchDialogField::CancelButton => FOCUS_ID_LAUNCH_CANCEL_BUTTON,
+    }
+}
+
+fn launch_dialog_focus_field(focus_id: Option<u64>) -> Option<LaunchDialogField> {
+    match focus_id {
+        Some(FOCUS_ID_LAUNCH_AGENT) => Some(LaunchDialogField::Agent),
+        Some(FOCUS_ID_LAUNCH_NAME) => {
+            Some(LaunchDialogField::StartConfig(StartAgentConfigField::Name))
+        }
+        Some(FOCUS_ID_LAUNCH_PROMPT) => Some(LaunchDialogField::StartConfig(
+            StartAgentConfigField::Prompt,
+        )),
+        Some(FOCUS_ID_LAUNCH_INIT_COMMAND) => Some(LaunchDialogField::StartConfig(
+            StartAgentConfigField::InitCommand,
+        )),
+        Some(FOCUS_ID_LAUNCH_UNSAFE) => Some(LaunchDialogField::StartConfig(
+            StartAgentConfigField::Unsafe,
+        )),
+        Some(FOCUS_ID_LAUNCH_START_BUTTON) => Some(LaunchDialogField::StartButton),
+        Some(FOCUS_ID_LAUNCH_CANCEL_BUTTON) => Some(LaunchDialogField::CancelButton),
+        _ => None,
+    }
+}
+
 fn project_add_dialog_focus_ids() -> [u64; 4] {
     [
         FOCUS_ID_PROJECT_ADD_PATH_INPUT,
@@ -719,6 +766,11 @@ impl GroveApp {
     pub(super) fn sync_active_dialog_focus_field(&mut self) {
         let focus_id = self.focus_manager.current();
         match self.dialogs.active_dialog.as_mut() {
+            Some(ActiveDialog::Launch(dialog)) => {
+                if let Some(field) = launch_dialog_focus_field(focus_id) {
+                    dialog.focused_field = field;
+                }
+            }
             Some(ActiveDialog::Stop(dialog)) => {
                 if let Some(field) = stop_dialog_focus_field(focus_id) {
                     dialog.focused_field = field;
@@ -775,6 +827,14 @@ impl GroveApp {
 
     fn open_focus_trap_for_active_dialog(&mut self, dialog: &ActiveDialog) {
         match dialog {
+            ActiveDialog::Launch(dialog) => {
+                let members = launch_dialog_focus_ids();
+                self.activate_focus_trap(
+                    FOCUS_GROUP_LAUNCH_DIALOG,
+                    &members,
+                    launch_dialog_focus_id(dialog.focused_field),
+                );
+            }
             ActiveDialog::Stop(dialog) => {
                 let members = stop_dialog_focus_ids();
                 self.activate_focus_trap(
@@ -877,6 +937,10 @@ impl GroveApp {
 
     fn close_focus_trap_for_active_dialog(&mut self, dialog: &ActiveDialog) {
         match dialog {
+            ActiveDialog::Launch(_) => {
+                let members = launch_dialog_focus_ids();
+                self.deactivate_focus_trap(&members);
+            }
             ActiveDialog::Stop(_) => {
                 let members = stop_dialog_focus_ids();
                 self.deactivate_focus_trap(&members);

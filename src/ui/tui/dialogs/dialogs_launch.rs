@@ -55,6 +55,10 @@ impl GroveApp {
         if self.dialogs.start_in_flight || self.dialogs.restart_in_flight {
             return;
         }
+        self.sync_active_dialog_focus_field();
+        let Some(focused_field) = self.launch_dialog().map(|dialog| dialog.focused_field) else {
+            return;
+        };
         let ctrl_n = key_event.modifiers == Modifiers::CTRL
             && matches!(key_event.code, KeyCode::Char('n') | KeyCode::Char('N'));
         let ctrl_p = key_event.modifiers == Modifiers::CTRL
@@ -71,80 +75,69 @@ impl GroveApp {
                     CancelDialog,
                 }
 
-                let action = self
-                    .launch_dialog()
-                    .map(|dialog| match dialog.focused_field {
-                        LaunchDialogField::Agent => EnterAction::ConfirmStart,
-                        LaunchDialogField::StartButton => EnterAction::ConfirmStart,
-                        LaunchDialogField::CancelButton => EnterAction::CancelDialog,
-                        LaunchDialogField::StartConfig(_) => EnterAction::ConfirmStart,
-                    });
+                let action = match focused_field {
+                    LaunchDialogField::Agent => EnterAction::ConfirmStart,
+                    LaunchDialogField::StartButton => EnterAction::ConfirmStart,
+                    LaunchDialogField::CancelButton => EnterAction::CancelDialog,
+                    LaunchDialogField::StartConfig(_) => EnterAction::ConfirmStart,
+                };
 
                 match action {
-                    Some(EnterAction::ConfirmStart) => self.confirm_start_dialog(),
-                    Some(EnterAction::CancelDialog) => {
+                    EnterAction::ConfirmStart => self.confirm_start_dialog(),
+                    EnterAction::CancelDialog => {
                         self.log_dialog_event("launch", "dialog_cancelled");
                         self.close_active_dialog();
                     }
-                    None => {}
                 }
             }
             KeyCode::Tab => {
-                if let Some(dialog) = self.launch_dialog_mut() {
-                    dialog.focused_field = dialog.focused_field.next();
-                }
+                self.focus_next_dialog_field();
             }
             KeyCode::BackTab => {
-                if let Some(dialog) = self.launch_dialog_mut() {
-                    dialog.focused_field = dialog.focused_field.previous();
-                }
+                self.focus_prev_dialog_field();
             }
             KeyCode::Char(_) if ctrl_n => {
-                if let Some(dialog) = self.launch_dialog_mut() {
-                    dialog.focused_field = dialog.focused_field.next();
-                }
+                self.focus_next_dialog_field();
             }
             KeyCode::Char(_) if ctrl_p => {
-                if let Some(dialog) = self.launch_dialog_mut() {
-                    dialog.focused_field = dialog.focused_field.previous();
-                }
+                self.focus_prev_dialog_field();
             }
             KeyCode::Backspace => {
                 if let Some(dialog) = self.launch_dialog_mut()
-                    && let LaunchDialogField::StartConfig(field) = dialog.focused_field
+                    && let LaunchDialogField::StartConfig(field) = focused_field
                 {
                     dialog.start_config.backspace(field);
                 }
             }
             KeyCode::Left => {
                 if let Some(dialog) = self.launch_dialog_mut()
-                    && dialog.focused_field == LaunchDialogField::Agent
+                    && focused_field == LaunchDialogField::Agent
                 {
                     dialog.agent = dialog.agent.previous();
                 }
             }
             KeyCode::Right => {
                 if let Some(dialog) = self.launch_dialog_mut()
-                    && dialog.focused_field == LaunchDialogField::Agent
+                    && focused_field == LaunchDialogField::Agent
                 {
                     dialog.agent = dialog.agent.next();
                 }
             }
             KeyCode::Char(character) if Self::allows_text_input_modifiers(key_event.modifiers) => {
+                if (focused_field == LaunchDialogField::StartButton
+                    || focused_field == LaunchDialogField::CancelButton)
+                    && (character == 'h' || character == 'l')
+                {
+                    self.focus_dialog_field(if focused_field == LaunchDialogField::StartButton {
+                        FOCUS_ID_LAUNCH_CANCEL_BUTTON
+                    } else {
+                        FOCUS_ID_LAUNCH_START_BUTTON
+                    });
+                    return;
+                }
+
                 if let Some(dialog) = self.launch_dialog_mut() {
-                    if (dialog.focused_field == LaunchDialogField::StartButton
-                        || dialog.focused_field == LaunchDialogField::CancelButton)
-                        && (character == 'h' || character == 'l')
-                    {
-                        dialog.focused_field =
-                            if dialog.focused_field == LaunchDialogField::StartButton {
-                                LaunchDialogField::CancelButton
-                            } else {
-                                LaunchDialogField::StartButton
-                            };
-                        return;
-                    }
-                    match dialog.focused_field {
+                    match focused_field {
                         LaunchDialogField::Agent => {
                             if character == 'j' || character == 'l' {
                                 dialog.agent = dialog.agent.next();

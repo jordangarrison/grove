@@ -16062,6 +16062,68 @@ mod tests {
             }
 
             #[test]
+            fn launch_dialog_focus_trap_restores_preview_focus() {
+                let mut app = fixture_app();
+                select_workspace(&mut app, 1);
+                app.execute_ui_command(UiCommand::FocusPreview);
+
+                app.open_start_dialog();
+
+                assert!(app.focus_is_trapped());
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(crate::ui::tui::FOCUS_ID_LAUNCH_AGENT)
+                );
+
+                app.close_active_dialog();
+
+                assert!(!app.focus_is_trapped());
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
+            }
+
+            #[test]
+            fn launch_dialog_focus_tab_traverses_ftui_fields() {
+                let mut app = fixture_app();
+                select_workspace(&mut app, 1);
+
+                app.open_start_dialog();
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(crate::ui::tui::FOCUS_ID_LAUNCH_AGENT)
+                );
+
+                let _ = ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Tab).with_kind(KeyEventKind::Press)),
+                );
+
+                assert_eq!(
+                    app.current_focus_id(),
+                    Some(crate::ui::tui::FOCUS_ID_LAUNCH_NAME)
+                );
+            }
+
+            #[test]
+            fn launch_dialog_focus_enter_uses_ftui_focused_cancel_button() {
+                let (mut app, commands, _captures, _cursor_captures) =
+                    fixture_app_with_tmux(WorkspaceStatus::Idle, Vec::new());
+                select_workspace(&mut app, 1);
+
+                app.open_start_dialog();
+                let _ = app
+                    .focus_manager
+                    .focus(crate::ui::tui::FOCUS_ID_LAUNCH_CANCEL_BUTTON);
+
+                let _ = ftui::Model::update(
+                    &mut app,
+                    Msg::Key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press)),
+                );
+
+                assert!(app.launch_dialog().is_none());
+                assert!(commands.borrow().is_empty());
+            }
+
+            #[test]
             fn session_cleanup_focus_space_uses_ftui_focused_toggle() {
                 let mut app = fixture_app();
 

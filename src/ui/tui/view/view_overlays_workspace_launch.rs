@@ -17,9 +17,8 @@ impl GroveApp {
             LaunchDialogTarget::WorkspaceTab => "New Agent Tab",
             LaunchDialogTarget::ParentTask(_) => "Start Parent Agent",
         };
-        let focused = |field| dialog.focused_field == field;
-        let start_focused = focused(LaunchDialogField::StartButton);
-        let cancel_focused = focused(LaunchDialogField::CancelButton);
+        let start_focused = self.dialog_focus_is(FOCUS_ID_LAUNCH_START_BUTTON);
+        let cancel_focused = self.dialog_focus_is(FOCUS_ID_LAUNCH_CANCEL_BUTTON);
         let fit = |text: &str| {
             let text = ftui::text::truncate_with_ellipsis(text, content_width, "…");
             format!(
@@ -29,7 +28,7 @@ impl GroveApp {
         };
         let agent_row = |agent: AgentType| {
             let mut style = Style::new().fg(packed(theme.border));
-            if dialog.focused_field == LaunchDialogField::Agent {
+            if self.dialog_focus_is(FOCUS_ID_LAUNCH_AGENT) {
                 style = style.bg(packed(theme.surface));
             }
             let marker = if dialog.agent == agent { "●" } else { "○" };
@@ -45,7 +44,9 @@ impl GroveApp {
         };
         let config_rows =
             modal_start_agent_config_rows(content_width, theme, &dialog.start_config, |field| {
-                focused(LaunchDialogField::StartConfig(field))
+                self.dialog_focus_is(launch_dialog_focus_id(LaunchDialogField::StartConfig(
+                    field,
+                )))
             });
         let mut lines = vec![
             FtLine::from_spans(vec![FtSpan::styled(
