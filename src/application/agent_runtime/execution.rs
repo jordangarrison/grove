@@ -560,6 +560,11 @@ mod tests {
                     "-t".to_string(),
                     "grove-ws-project-one-feature-auth-v2".to_string(),
                 ],
+                vec![
+                    "rm".to_string(),
+                    "-f".to_string(),
+                    "/tmp/grove-exit-grove-ws-project-one-feature-auth-v2".to_string(),
+                ],
             ]
         );
     }

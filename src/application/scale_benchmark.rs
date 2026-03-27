@@ -182,6 +182,7 @@ fn run_scale_benchmarks() -> io::Result<ScaleBenchmarkReport> {
                     workspace.supported_agent,
                     workspace.agent,
                     workspace.path.as_path(),
+                    "",
                 );
                 workspace.is_orphaned = false;
             }

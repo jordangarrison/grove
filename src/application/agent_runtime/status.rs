@@ -6,11 +6,9 @@ use crate::domain::PermissionMode;
 use crate::domain::{AgentType, WorkspaceStatus};
 
 use super::agents;
-use super::{
-    SESSION_ACTIVITY_THRESHOLD, STATUS_TAIL_LINES, SessionActivity, WAITING_PATTERNS,
-    WAITING_TAIL_LINES,
-};
+use super::{SESSION_ACTIVITY_THRESHOLD, SessionActivity, WAITING_PATTERNS, WAITING_TAIL_LINES};
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn detect_status_with_session_override(
     output: &str,
     session_activity: SessionActivity,
@@ -19,6 +17,7 @@ pub(crate) fn detect_status_with_session_override(
     supported_agent: bool,
     agent: AgentType,
     workspace_path: &Path,
+    session_name: &str,
 ) -> WorkspaceStatus {
     let home_dir = dirs::home_dir();
     detect_status_with_session_override_in_home(StatusOverrideContext {
@@ -31,6 +30,7 @@ pub(crate) fn detect_status_with_session_override(
         workspace_path,
         home_dir: home_dir.as_deref(),
         activity_threshold: SESSION_ACTIVITY_THRESHOLD,
+        session_name,
     })
 }
 
@@ -75,6 +75,7 @@ pub(crate) fn detect_status(
     is_main: bool,
     has_live_session: bool,
     supported_agent: bool,
+    session_name: &str,
 ) -> WorkspaceStatus {
     if is_main && !has_live_session {
         return WorkspaceStatus::Main;
@@ -88,14 +89,19 @@ pub(crate) fn detect_status(
         return WorkspaceStatus::Idle;
     }
 
+    if let Some(exit_code) = read_session_exit_code(session_name) {
+        return if exit_code == 0 {
+            WorkspaceStatus::Done
+        } else {
+            WorkspaceStatus::Error
+        };
+    }
+
     if detect_waiting_prompt(output).is_some() {
         return WorkspaceStatus::Waiting;
     }
 
-    let lines: Vec<&str> = output.lines().collect();
-    let start = lines.len().saturating_sub(STATUS_TAIL_LINES);
-    let tail_text = lines[start..].join("\n");
-    let tail_lower = tail_text.to_ascii_lowercase();
+    let tail_lower = output.to_ascii_lowercase();
 
     if has_unclosed_tag(&tail_lower, "<thinking>", "</thinking>")
         || has_unclosed_tag(&tail_lower, "<internal_monologue>", "</internal_monologue>")
@@ -103,21 +109,6 @@ pub(crate) fn detect_status(
         || tail_lower.contains("reasoning about")
     {
         return WorkspaceStatus::Thinking;
-    }
-
-    if lines[start..].iter().any(|line| {
-        let normalized = normalize_status_line(line);
-        normalized == "done" || normalized == "done."
-    }) {
-        return WorkspaceStatus::Done;
-    }
-
-    if lines[start..].iter().any(|line| is_done_line(line)) {
-        return WorkspaceStatus::Done;
-    }
-
-    if lines[start..].iter().any(|line| is_error_line(line)) {
-        return WorkspaceStatus::Error;
     }
 
     match session_activity {
@@ -136,6 +127,7 @@ pub(crate) struct StatusOverrideContext<'a> {
     pub(crate) workspace_path: &'a Path,
     pub(crate) home_dir: Option<&'a Path>,
     pub(crate) activity_threshold: Duration,
+    pub(crate) session_name: &'a str,
 }
 
 pub(crate) fn detect_status_with_session_override_in_home(
@@ -147,6 +139,7 @@ pub(crate) fn detect_status_with_session_override_in_home(
         context.is_main,
         context.has_live_session,
         context.supported_agent,
+        context.session_name,
     );
     if !matches!(detected, WorkspaceStatus::Active | WorkspaceStatus::Waiting) {
         return detected;
@@ -226,6 +219,16 @@ pub(super) fn latest_codex_assistant_attention_marker_in_home(
     agents::latest_attention_marker_in_home(AgentType::Codex, workspace_path, home_dir)
 }
 
+pub(crate) fn exit_code_file_path(session_name: &str) -> std::path::PathBuf {
+    std::path::PathBuf::from(format!("/tmp/grove-exit-{session_name}"))
+}
+
+fn read_session_exit_code(session_name: &str) -> Option<i32> {
+    let path = exit_code_file_path(session_name);
+    let content = std::fs::read_to_string(path).ok()?;
+    content.trim().parse::<i32>().ok()
+}
+
 fn has_unclosed_tag(text: &str, open_tag: &str, close_tag: &str) -> bool {
     let Some(open_index) = text.rfind(open_tag) else {
         return false;
@@ -235,33 +238,6 @@ fn has_unclosed_tag(text: &str, open_tag: &str, close_tag: &str) -> bool {
         Some(close_index) => close_index < open_index,
         None => true,
     }
-}
-
-fn normalize_status_line(line: &str) -> String {
-    line.trim()
-        .trim_start_matches(['•', '-', '*', '·', '✓', '✔', '☑'])
-        .trim()
-        .to_ascii_lowercase()
-}
-
-fn is_error_line(line: &str) -> bool {
-    let normalized = normalize_status_line(line);
-    normalized.starts_with("error:")
-        || normalized.starts_with("panic:")
-        || normalized.starts_with("exception:")
-        || normalized.starts_with("traceback")
-        || normalized.contains("exited with code 1")
-}
-
-fn is_done_line(line: &str) -> bool {
-    let normalized = normalize_status_line(line);
-    matches!(
-        normalized.as_str(),
-        "done" | "done." | "finished" | "finished."
-    ) || normalized.starts_with("task completed")
-        || normalized.starts_with("all done")
-        || normalized.starts_with("goodbye")
-        || normalized.starts_with("exited with code 0")
 }
 
 #[cfg(test)]
@@ -276,9 +252,9 @@ mod tests {
     use super::super::agents::claude_project_dir_name;
     use super::{
         StatusOverrideContext, detect_agent_session_status_in_home, detect_status,
-        detect_status_with_session_override_in_home, detect_waiting_prompt,
+        detect_status_with_session_override_in_home, detect_waiting_prompt, exit_code_file_path,
         latest_claude_assistant_attention_marker_in_home,
-        latest_codex_assistant_attention_marker_in_home,
+        latest_codex_assistant_attention_marker_in_home, read_session_exit_code,
     };
 
     #[test]
@@ -310,7 +286,14 @@ mod tests {
             Some("› Try \"how does adapters.rs work?\"".to_string())
         );
         assert_eq!(
-            detect_status(output, SessionActivity::Active, false, true, true),
+            detect_status(
+                output,
+                SessionActivity::Active,
+                false,
+                true,
+                true,
+                "no-session"
+            ),
             WorkspaceStatus::Waiting
         );
     }
@@ -464,6 +447,7 @@ mod tests {
             workspace_path: &workspace_path,
             home_dir: Some(&home),
             activity_threshold: Duration::from_secs(0),
+            session_name: "no-session",
         });
         assert_eq!(status, WorkspaceStatus::Waiting);
 
@@ -471,23 +455,16 @@ mod tests {
     }
 
     #[test]
-    fn status_resolution_uses_recent_tail_and_waiting_prompt_before_error() {
-        assert_eq!(
-            detect_status("panic: bad", SessionActivity::Active, false, true, true),
-            WorkspaceStatus::Error
-        );
+    fn status_resolution_core_priority_order() {
         assert_eq!(
             detect_status(
-                "task completed successfully",
+                "thinking...",
                 SessionActivity::Active,
                 false,
                 true,
-                true
+                true,
+                "no-session"
             ),
-            WorkspaceStatus::Done
-        );
-        assert_eq!(
-            detect_status("thinking...", SessionActivity::Active, false, true, true),
             WorkspaceStatus::Thinking
         );
         assert_eq!(
@@ -496,30 +473,38 @@ mod tests {
                 SessionActivity::Active,
                 false,
                 true,
-                true
+                true,
+                "no-session"
             ),
             WorkspaceStatus::Waiting
         );
         assert_eq!(
-            detect_status("", SessionActivity::Active, false, true, true),
+            detect_status("", SessionActivity::Active, false, true, true, "no-session"),
             WorkspaceStatus::Active
         );
         assert_eq!(
-            detect_status("", SessionActivity::Idle, false, false, true),
+            detect_status("", SessionActivity::Idle, false, false, true, "no-session"),
             WorkspaceStatus::Idle
         );
         assert_eq!(
-            detect_status("", SessionActivity::Active, false, true, false),
+            detect_status(
+                "",
+                SessionActivity::Active,
+                false,
+                true,
+                false,
+                "no-session"
+            ),
             WorkspaceStatus::Unsupported
         );
-
         assert_eq!(
             detect_status(
                 "warning: failed to login mcp\nline\nline\n> Implement {feature}\n? for shortcuts\n",
                 SessionActivity::Active,
                 false,
                 true,
-                true
+                true,
+                "no-session"
             ),
             WorkspaceStatus::Waiting
         );
@@ -529,132 +514,170 @@ mod tests {
                 SessionActivity::Active,
                 false,
                 true,
-                true
+                true,
+                "no-session"
             ),
             WorkspaceStatus::Waiting
         );
         assert_eq!(
-            detect_status("", SessionActivity::Active, true, true, true),
+            detect_status("", SessionActivity::Active, true, true, true, "no-session"),
             WorkspaceStatus::Active
         );
         assert_eq!(
-            detect_status("", SessionActivity::Idle, true, false, true),
+            detect_status("", SessionActivity::Idle, true, false, true, "no-session"),
             WorkspaceStatus::Main
         );
-        assert_eq!(
-            detect_status(
-                "task output\n• Done.\n› Use /skills to list available skills\n",
-                SessionActivity::Active,
-                false,
-                true,
-                true
-            ),
-            WorkspaceStatus::Done
-        );
     }
 
     #[test]
-    fn status_resolution_detects_done_marker_beyond_last_twelve_lines() {
-        let mut lines = vec!["header".to_string(), "• Done.".to_string()];
-        lines.extend((0..20).map(|index| format!("detail line {index}")));
-        let output = lines.join("\n");
-        assert_eq!(
-            detect_status(&output, SessionActivity::Active, false, true, true),
-            WorkspaceStatus::Done
-        );
+    fn exit_code_file_determines_done_status() {
+        let session = "grove-test-exit-done";
+        let path = exit_code_file_path(session);
+        fs::write(&path, "0\n").expect("exit code file should be written");
+
+        let status = detect_status("", SessionActivity::Active, false, true, true, session);
+        assert_eq!(status, WorkspaceStatus::Done);
+
+        let _ = fs::remove_file(&path);
     }
 
     #[test]
-    fn status_resolution_does_not_treat_inline_finished_text_as_done() {
+    fn exit_code_file_determines_error_status() {
+        let session = "grove-test-exit-error";
+        let path = exit_code_file_path(session);
+        fs::write(&path, "1\n").expect("exit code file should be written");
+
+        let status = detect_status("", SessionActivity::Active, false, true, true, session);
+        assert_eq!(status, WorkspaceStatus::Error);
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn exit_code_file_nonzero_is_error_regardless_of_code() {
+        let session = "grove-test-exit-signal";
+        let path = exit_code_file_path(session);
+        fs::write(&path, "130\n").expect("exit code file should be written");
+
+        let status = detect_status("", SessionActivity::Active, false, true, true, session);
+        assert_eq!(status, WorkspaceStatus::Error);
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn missing_exit_code_file_falls_through_to_heuristics() {
+        let status = detect_status(
+            "allow edit? [y/n]",
+            SessionActivity::Active,
+            false,
+            true,
+            true,
+            "grove-test-no-such-session",
+        );
+        assert_eq!(status, WorkspaceStatus::Waiting);
+    }
+
+    #[test]
+    fn invalid_exit_code_file_falls_through_to_heuristics() {
+        let session = "grove-test-exit-invalid";
+        let path = exit_code_file_path(session);
+        fs::write(&path, "not-a-number\n").expect("exit code file should be written");
+
+        let status = detect_status(
+            "thinking...",
+            SessionActivity::Active,
+            false,
+            true,
+            true,
+            session,
+        );
+        assert_eq!(status, WorkspaceStatus::Thinking);
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn exit_code_file_takes_priority_over_text_content() {
+        let session = "grove-test-exit-priority";
+        let path = exit_code_file_path(session);
+        fs::write(&path, "0\n").expect("exit code file should be written");
+
+        let status = detect_status(
+            "allow edit? [y/n]",
+            SessionActivity::Active,
+            false,
+            true,
+            true,
+            session,
+        );
+        assert_eq!(status, WorkspaceStatus::Done);
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn text_based_done_error_patterns_no_longer_trigger_without_exit_file() {
         assert_eq!(
             detect_status(
-                "Based on the planning summary, the risky migration is not finished yet.\nContinuing implementation now.\n",
+                "panic: bad",
                 SessionActivity::Active,
                 false,
                 true,
-                true
+                true,
+                "no-session"
             ),
             WorkspaceStatus::Active
         );
         assert_eq!(
             detect_status(
-                "build finished successfully, now running the next step\n",
+                "task completed successfully",
                 SessionActivity::Active,
                 false,
                 true,
-                true
-            ),
-            WorkspaceStatus::Active
-        );
-    }
-
-    #[test]
-    fn status_resolution_ignores_old_non_tail_errors() {
-        let mut lines = vec!["failed: transient startup warning".to_string()];
-        lines.extend((0..70).map(|index| format!("line {index}")));
-        let output = lines.join("\n");
-        assert_eq!(
-            detect_status(&output, SessionActivity::Active, false, true, true),
-            WorkspaceStatus::Active
-        );
-    }
-
-    #[test]
-    fn status_resolution_ignores_benign_failed_lines_without_error_markers() {
-        assert_eq!(
-            detect_status(
-                "warning: failed to login mcp\nretrying with cached credentials\n",
-                SessionActivity::Active,
-                false,
                 true,
-                true
+                "no-session"
             ),
             WorkspaceStatus::Active
         );
-        assert_eq!(
-            detect_status(
-                "The previous approach failed, trying a different implementation.\n",
-                SessionActivity::Active,
-                false,
-                true,
-                true
-            ),
-            WorkspaceStatus::Active
-        );
-    }
-
-    #[test]
-    fn status_resolution_detects_line_anchored_error_markers() {
         assert_eq!(
             detect_status(
                 "error: permission denied\n",
                 SessionActivity::Active,
                 false,
                 true,
-                true
-            ),
-            WorkspaceStatus::Error
-        );
-        assert_eq!(
-            detect_status(
-                "Traceback (most recent call last):\n",
-                SessionActivity::Active,
-                false,
                 true,
-                true
+                "no-session"
             ),
-            WorkspaceStatus::Error
+            WorkspaceStatus::Active
         );
-        assert_eq!(
-            detect_status(
-                "tool exited with code 1\n",
-                SessionActivity::Active,
-                false,
-                true,
-                true
-            ),
-            WorkspaceStatus::Error
-        );
+    }
+
+    #[test]
+    fn read_session_exit_code_parses_valid_file() {
+        let session = "grove-test-read-exit";
+        let path = exit_code_file_path(session);
+        fs::write(&path, "42\n").expect("exit code file should be written");
+
+        assert_eq!(read_session_exit_code(session), Some(42));
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn read_session_exit_code_returns_none_for_missing_file() {
+        assert_eq!(read_session_exit_code("grove-test-nonexistent"), None);
+    }
+
+    #[test]
+    fn read_session_exit_code_returns_none_for_invalid_content() {
+        let session = "grove-test-read-exit-bad";
+        let path = exit_code_file_path(session);
+        fs::write(&path, "garbage").expect("exit code file should be written");
+
+        assert_eq!(read_session_exit_code(session), None);
+
+        let _ = fs::remove_file(&path);
     }
 
     #[test]
@@ -665,7 +688,8 @@ mod tests {
                 SessionActivity::Active,
                 false,
                 true,
-                true
+                true,
+                "no-session"
             ),
             WorkspaceStatus::Active
         );
@@ -675,7 +699,8 @@ mod tests {
                 SessionActivity::Active,
                 false,
                 true,
-                true
+                true,
+                "no-session"
             ),
             WorkspaceStatus::Thinking
         );
@@ -685,7 +710,8 @@ mod tests {
                 SessionActivity::Active,
                 false,
                 true,
-                true
+                true,
+                "no-session"
             ),
             WorkspaceStatus::Thinking
         );

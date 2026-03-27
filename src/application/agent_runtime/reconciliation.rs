@@ -20,13 +20,14 @@ pub fn reconcile_with_sessions(
         );
         let has_live_session = running_sessions.contains(&session_name);
         if has_live_session {
-            matched_sessions.insert(session_name);
+            matched_sessions.insert(session_name.clone());
             workspace.status = detect_status(
                 "",
                 SessionActivity::Active,
                 workspace.is_main,
                 true,
                 workspace.supported_agent,
+                &session_name,
             );
             workspace.is_orphaned = false;
         } else {
@@ -36,6 +37,7 @@ pub fn reconcile_with_sessions(
                 workspace.is_main,
                 false,
                 workspace.supported_agent,
+                &session_name,
             );
             workspace.is_orphaned = if workspace.is_main {
                 false

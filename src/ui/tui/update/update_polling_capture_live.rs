@@ -253,6 +253,7 @@ impl GroveApp {
                         supported_agent,
                         workspace_agent,
                         &workspace_path,
+                        session_name,
                     );
                     status_detect_ms = Self::duration_millis(
                         Instant::now().saturating_duration_since(status_detect_started_at),

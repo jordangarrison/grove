@@ -219,6 +219,14 @@ fn tmux_launch_plan(
             "Enter".to_string(),
         ]);
     }
+    pre_launch_cmds.push(vec![
+        "tmux".to_string(),
+        "send-keys".to_string(),
+        "-t".to_string(),
+        session_name.clone(),
+        build_exit_code_hook_command(&session_name),
+        "Enter".to_string(),
+    ]);
     let pane_lookup_cmd = vec![
         "tmux".to_string(),
         "list-panes".to_string(),
@@ -268,6 +276,17 @@ fn tmux_launch_plan(
     }
 }
 
+fn build_exit_code_hook_command(session_name: &str) -> String {
+    let exit_file = super::status::exit_code_file_path(session_name);
+    let exit_file_str = exit_file.to_string_lossy();
+    format!(
+        "grove_prompt_hook() {{ echo $? > {exit_file_str}; }}; \
+         if [ -n \"$ZSH_VERSION\" ]; then precmd_functions+=(grove_prompt_hook); \
+         else PROMPT_COMMAND=\"grove_prompt_hook;${{PROMPT_COMMAND:-}}\"; fi; \
+         rm -f {exit_file_str}"
+    )
+}
+
 pub(super) fn build_agent_env_command(agent_env: &[(String, String)]) -> Option<String> {
     if agent_env.is_empty() {
         return None;
@@ -304,6 +323,7 @@ fn launch_resize_window_command(
 }
 
 pub fn stop_plan(session_name: &str) -> Vec<Vec<String>> {
+    let exit_file = super::status::exit_code_file_path(session_name);
     vec![
         vec![
             "tmux".to_string(),
@@ -317,6 +337,11 @@ pub fn stop_plan(session_name: &str) -> Vec<Vec<String>> {
             "kill-session".to_string(),
             "-t".to_string(),
             session_name.to_string(),
+        ],
+        vec![
+            "rm".to_string(),
+            "-f".to_string(),
+            exit_file.to_string_lossy().to_string(),
         ],
     ]
 }
@@ -769,18 +794,18 @@ mod tests {
 
         let plan = build_launch_plan(&request);
 
-        assert_eq!(
-            plan.pre_launch_cmds.last(),
-            Some(&vec![
-                "tmux".to_string(),
-                "send-keys".to_string(),
-                "-t".to_string(),
-                "grove-ws-auth-flow".to_string(),
-                "export CLAUDE_CONFIG_DIR='~/.claude-work' OPENAI_API_BASE='https://api.example.com/v1'"
-                    .to_string(),
-                "Enter".to_string(),
-            ])
-        );
+        assert!(plan.pre_launch_cmds.iter().any(|command| {
+            command
+                == &vec![
+                    "tmux".to_string(),
+                    "send-keys".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-auth-flow".to_string(),
+                    "export CLAUDE_CONFIG_DIR='~/.claude-work' OPENAI_API_BASE='https://api.example.com/v1'"
+                        .to_string(),
+                    "Enter".to_string(),
+                ]
+        }));
     }
 
     #[test]
@@ -821,9 +846,9 @@ mod tests {
     }
 
     #[test]
-    fn stop_plan_uses_ctrl_c_then_kill_session() {
+    fn stop_plan_uses_ctrl_c_then_kill_session_then_cleanup() {
         let plan = stop_plan("grove-ws-auth-flow");
-        assert_eq!(plan.len(), 2);
+        assert_eq!(plan.len(), 3);
         assert_eq!(
             plan[0],
             vec!["tmux", "send-keys", "-t", "grove-ws-auth-flow", "C-c"]
@@ -832,6 +857,47 @@ mod tests {
             plan[1],
             vec!["tmux", "kill-session", "-t", "grove-ws-auth-flow"]
         );
+        assert_eq!(
+            plan[2],
+            vec!["rm", "-f", "/tmp/grove-exit-grove-ws-auth-flow"]
+        );
+    }
+
+    #[test]
+    fn launch_plan_includes_exit_code_hook() {
+        let request = LaunchRequest {
+            session_name: None,
+            task_slug: None,
+            project_name: None,
+            workspace_name: "auth-flow".to_string(),
+            workspace_path: PathBuf::from("/repos/grove-auth-flow"),
+            agent: AgentType::Claude,
+            theme_name: crate::infrastructure::config::ThemeName::default(),
+            prompt: None,
+            workspace_init_command: None,
+            permission_mode: PermissionMode::Default,
+            agent_env: Vec::new(),
+            capture_cols: None,
+            capture_rows: None,
+        };
+
+        let plan = build_launch_plan(&request);
+
+        let hook_cmd = plan
+            .pre_launch_cmds
+            .iter()
+            .find(|cmd| {
+                cmd.len() == 6
+                    && cmd[0] == "tmux"
+                    && cmd[1] == "send-keys"
+                    && cmd[4].contains("grove_prompt_hook")
+            })
+            .expect("exit-code hook command should be in pre_launch_cmds");
+
+        assert!(hook_cmd[4].contains("/tmp/grove-exit-grove-ws-auth-flow"));
+        assert!(hook_cmd[4].contains("precmd_functions"));
+        assert!(hook_cmd[4].contains("PROMPT_COMMAND"));
+        assert!(hook_cmd[4].contains("rm -f"));
     }
 
     #[test]
