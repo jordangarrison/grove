@@ -1,6 +1,18 @@
 name: Release
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      release_name:
+        required: true
+        type: string
+      unstable:
+        required: true
+        type: boolean
+
   workflow_run:
     workflows:
       - CI
@@ -13,42 +25,84 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-master
+  group: release-${{ inputs.tag || 'unstable' }}
   cancel-in-progress: true
 
 jobs:
-  release:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ubuntu-latest
+  build:
+    if: >-
+      (github.event_name == 'workflow_call') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: grove-linux-x86_64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            artifact: grove-macos-arm64
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ inputs.tag || github.event.workflow_run.head_sha }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - name: Build release binary
-        run: cargo build --release --locked
+        run: cargo build --release --locked --target ${{ matrix.target }}
 
-      - name: Package artifacts
+      - name: Package artifact
         run: |
           mkdir -p dist
-          cp target/release/grove dist/grove-linux-x86_64
-          tar -C dist -czf dist/grove-linux-x86_64.tar.gz grove-linux-x86_64
-          sha256sum dist/grove-linux-x86_64.tar.gz > dist/grove-linux-x86_64.tar.gz.sha256
+          cp target/${{ matrix.target }}/release/grove dist/${{ matrix.artifact }}
+          tar -C dist -czf dist/${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
+          shasum -a 256 dist/${{ matrix.artifact }}.tar.gz > dist/${{ matrix.artifact }}.tar.gz.sha256
 
-      - name: Publish rolling latest release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.tar.gz*
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish unstable release
+        if: >-
+          (github.event_name == 'workflow_run') ||
+          (inputs.unstable)
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          if gh release view latest >/dev/null 2>&1; then
-            gh release delete latest --cleanup-tag --yes
+          if gh release view unstable >/dev/null 2>&1; then
+            gh release delete unstable --cleanup-tag --yes
           fi
 
-          gh release create latest \
-            dist/grove-linux-x86_64.tar.gz \
-            dist/grove-linux-x86_64.tar.gz.sha256 \
-            --title "Latest" \
-            --notes "Automated release from master at commit ${{ github.event.workflow_run.head_sha }}."
+          gh release create unstable \
+            dist/* \
+            --title "Unstable" \
+            --notes "Automated build from master at $(date -u +%Y-%m-%dT%H:%M:%SZ)." \
+            --prerelease
+
+      - name: Upload assets to versioned release
+        if: >-
+          (github.event_name == 'workflow_call') &&
+          (!inputs.unstable)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "${{ inputs.tag }}" dist/* --clobber
