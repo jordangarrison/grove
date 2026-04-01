@@ -10026,7 +10026,7 @@ second row\n",
 
                 assert!(calls.borrow().iter().any(|call| {
                     call == &format!(
-                        "capture-joined:{}:{}:true",
+                        "capture:{}:{}:true",
                         feature_workspace_session(),
                         crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES
                     )
@@ -10040,7 +10040,7 @@ second row\n",
             }
 
             #[test]
-            fn interactive_preview_poll_uses_joined_capture_for_live_session() {
+            fn interactive_preview_poll_uses_unjoined_capture_for_live_session() {
                 let (mut app, _commands, _captures, _cursor_captures, calls) =
                     fixture_app_with_tmux_and_calls(
                         WorkspaceStatus::Active,
@@ -10056,14 +10056,14 @@ second row\n",
 
                 assert!(calls.borrow().iter().any(|call| {
                     call == &format!(
-                        "capture-joined:{}:{}:true",
+                        "capture:{}:{}:true",
                         feature_workspace_session(),
                         crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES
                     )
                 }));
                 assert!(!calls.borrow().iter().any(|call| {
                     call == &format!(
-                        "capture:{}:{}:true",
+                        "capture-joined:{}:{}:true",
                         feature_workspace_session(),
                         crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES
                     )
@@ -10745,7 +10745,7 @@ second row\n",
                     calls.borrow().as_slice(),
                     &[
                         format!(
-                            "capture-joined:{}:{}:true",
+                            "capture:{}:{}:true",
                             feature_workspace_session(),
                             crate::ui::tui::LIVE_PREVIEW_FULL_SCROLLBACK_LINES
                         ),
@@ -11395,6 +11395,69 @@ second row\n",
                     assert_eq!(
                         frame.cursor_position,
                         Some((x_start.saturating_add(1), output_y.saturating_add(1)))
+                    );
+                    assert!(frame.cursor_visible);
+                });
+            }
+
+            #[test]
+            fn interactive_shell_preview_keeps_wrapped_rows_split_for_cursor_mapping() {
+                let mut app = fixture_app();
+                ftui::Model::update(
+                    &mut app,
+                    Msg::Resize {
+                        width: 100,
+                        height: 40,
+                    },
+                );
+                select_workspace(&mut app, 1);
+                app.preview_tab = PreviewTab::Shell;
+                app.preview.apply_capture(
+                    "infra-base-services on | infra-6723 [$?]\non Debian > fasdfasdfasdfasdf\n",
+                );
+                app.session.interactive = Some(InteractiveState::new(
+                    "%0".to_string(),
+                    "grove-ws-feature-a-shell-1".to_string(),
+                    Instant::now(),
+                    34,
+                    78,
+                ));
+                if let Some(interactive) = app.session.interactive.as_mut() {
+                    let _ = interactive.update_cursor(1, 12, true, 34, 78);
+                }
+
+                assert_eq!(
+                    app.preview.lines,
+                    vec![
+                        "infra-base-services on | infra-6723 [$?]".to_string(),
+                        "on Debian > fasdfasdfasdfasdf".to_string(),
+                    ]
+                );
+
+                let layout = app.panes.test_rects(100, 40);
+                let preview_inner = Block::new().borders(Borders::ALL).inner(layout.preview);
+                let output_y = preview_inner.y.saturating_add(PREVIEW_METADATA_ROWS);
+                let x_start = layout.preview.x.saturating_add(1);
+                let x_end = layout.preview.right().saturating_sub(1);
+
+                with_rendered_frame(&app, 100, 40, |frame| {
+                    let rows = (output_y..preview_inner.bottom())
+                        .map(|row| row_text(frame, row, x_start, x_end))
+                        .collect::<Vec<_>>();
+                    assert!(
+                        rows.iter().any(|row| row.contains("infra-base-services")),
+                        "{}",
+                        rows.join("\n")
+                    );
+                    assert!(
+                        rows.iter()
+                            .any(|row| row.contains("on Debian > fasdfasdfasdfasdf")),
+                        "{}",
+                        rows.join("\n")
+                    );
+                    assert_eq!(
+                        frame.cursor_position,
+                        Some((x_start.saturating_add(12), output_y.saturating_add(1)))
                     );
                     assert!(frame.cursor_visible);
                 });
