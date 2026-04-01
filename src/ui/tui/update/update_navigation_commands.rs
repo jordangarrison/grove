@@ -7,8 +7,8 @@ impl GroveApp {
         if !self.startup_attention_focus_pending || self.attention_items.is_empty() {
             return;
         }
-        self.focus_attention_inbox();
         self.startup_attention_focus_pending = false;
+        self.focus_attention_inbox();
     }
 
     fn focus_attention_inbox(&mut self) {

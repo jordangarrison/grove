@@ -573,7 +573,7 @@ impl GroveApp {
                         self.preview_tab_id_at_pointer(mouse_event.x, mouse_event.y)
                     {
                         if self.session.interactive.is_some() {
-                            self.exit_interactive_to_list();
+                            self.exit_interactive_to_preview();
                         }
                         let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
                         self.acknowledge_selected_workspace_attention_for_preview_focus();

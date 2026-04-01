@@ -2789,8 +2789,14 @@ mod tests {
     fn preview_working_workspace_header_uses_theme_accent_color() {
         let mut app = fixture_app();
         select_workspace(&mut app, 1);
-        app.polling.output_changing = true;
-        app.polling.agent_output_changing = true;
+        app.record_workspace_status_observation(
+            feature_workspace_path().as_path(),
+            &WorkspaceStatusObservation {
+                status: WorkspaceStatus::Active,
+                recent_activity: true,
+                waiting_excerpt: None,
+            },
+        );
         focus_agent_preview_tab(&mut app);
 
         let layout = app.panes.test_rects(140, 24);
@@ -12033,6 +12039,50 @@ second row\n",
                 assert!(app.session.interactive.is_some());
                 assert_eq!(app.state.mode, UiMode::Preview);
                 assert_eq!(app.current_focus_id(), Some(FOCUS_ID_PREVIEW));
+            }
+
+            #[test]
+            fn startup_attention_focus_does_not_reenter_preview_poll() {
+                let workspace_path = feature_workspace_path();
+                let (mut app, _commands, _captures, _cursor_captures) = fixture_app_with_tmux(
+                    WorkspaceStatus::Active,
+                    vec![Ok("plain active output".to_string())],
+                );
+                select_workspace(&mut app, 0);
+                app.state.workspaces[1].status = WorkspaceStatus::Waiting;
+                app.attention_marker_overrides
+                    .insert(workspace_path.clone(), Some("marker".to_string()));
+                app.polling.workspace_status_observation_overrides.insert(
+                    workspace_path.clone(),
+                    WorkspaceStatusObservation {
+                        status: WorkspaceStatus::Waiting,
+                        recent_activity: false,
+                        waiting_excerpt: Some("approve command".to_string()),
+                    },
+                );
+
+                app.track_workspace_status_transition(
+                    workspace_path.as_path(),
+                    WorkspaceStatus::Active,
+                    WorkspaceStatus::Waiting,
+                    false,
+                    false,
+                );
+                assert!(app.selected_attention_item.is_none());
+
+                app.track_workspace_status_transition(
+                    workspace_path.as_path(),
+                    WorkspaceStatus::Waiting,
+                    WorkspaceStatus::Waiting,
+                    false,
+                    false,
+                );
+
+                assert_eq!(app.selected_attention_item, Some(0));
+                assert_eq!(app.state.selected_index, 1);
+                assert_eq!(app.current_focus_id(), Some(FOCUS_ID_WORKSPACE_LIST));
+                assert_eq!(app.state.workspaces[1].status, WorkspaceStatus::Waiting);
+                assert!(!app.startup_attention_focus_pending);
             }
 
             #[test]
