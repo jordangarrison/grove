@@ -405,7 +405,7 @@ impl GroveApp {
                         (false, Cmd::None)
                     }
                     PaletteAction::Execute(id) => {
-                        let handled = self.execute_command_palette_action(id.as_str());
+                        let handled = self.execute_visible_palette_action(id.as_str());
                         self.dialogs.palette_mode = None;
                         (handled, Cmd::None)
                     }

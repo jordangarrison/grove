@@ -5592,6 +5592,84 @@ mod tests {
 
         assert!(app.dialogs.command_palette.is_visible());
         assert_eq!(app.dialogs.palette_mode, Some(PaletteMode::WorkspaceJump));
+        assert_eq!(
+            app.dialogs.command_palette.action_count(),
+            app.state.workspaces.len()
+        );
+    }
+
+    #[test]
+    fn workspace_jump_finds_feature_workspace_by_task_slug() {
+        let mut app = fixture_app();
+        app.open_workspace_jump_palette();
+        assert_eq!(
+            app.dialogs.command_palette.action_count(),
+            app.state.workspaces.len()
+        );
+
+        app.dialogs.command_palette.set_query("feature");
+
+        let expected_id = format!("workspace:{}", feature_workspace_path().display());
+        assert_eq!(app.dialogs.command_palette.result_count(), 1);
+        assert_eq!(
+            app.dialogs
+                .command_palette
+                .selected_action()
+                .map(|action| action.id.as_str()),
+            Some(expected_id.as_str())
+        );
+    }
+
+    #[test]
+    fn workspace_jump_finds_main_workspace_by_branch_fragment() {
+        let mut app = fixture_app();
+        app.open_workspace_jump_palette();
+        app.dialogs.command_palette.set_query("mai");
+
+        let expected_id = format!("workspace:{}", main_workspace_path().display());
+        assert_eq!(app.dialogs.command_palette.result_count(), 1);
+        assert_eq!(
+            app.dialogs
+                .command_palette
+                .selected_action()
+                .map(|action| action.id.as_str()),
+            Some(expected_id.as_str())
+        );
+    }
+
+    #[test]
+    fn workspace_jump_enter_selects_workspace_preserves_tab_and_focuses_preview() {
+        let mut app = fixture_app();
+        let shell_tab_id = insert_shell_tab(
+            &mut app,
+            1,
+            feature_shell_session().as_str(),
+            "Feature shell",
+            WorkspaceTabRuntimeState::Running,
+        );
+        if let Some(tabs) = app
+            .workspace_tabs
+            .get_mut(feature_workspace_path().as_path())
+        {
+            tabs.active_tab_id = shell_tab_id;
+        }
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('/')).with_kind(KeyEventKind::Press));
+        app.dialogs.command_palette.set_query("feature");
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
+
+        assert!(!app.dialogs.command_palette.is_visible());
+        assert!(app.dialogs.palette_mode.is_none());
+        assert_eq!(
+            app.state.selected_workspace().map(|workspace| workspace.path.clone()),
+            Some(feature_workspace_path())
+        );
+        assert_eq!(
+            app.selected_active_tab().map(|tab| tab.kind),
+            Some(WorkspaceTabKind::Shell)
+        );
+        assert!(app.preview_focused());
+        assert_eq!(app.state.mode, UiMode::Preview);
     }
 
     #[test]

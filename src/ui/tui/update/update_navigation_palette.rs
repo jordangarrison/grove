@@ -48,16 +48,66 @@ impl GroveApp {
     }
 
     fn palette_action(
-        id: &'static str,
-        title: &'static str,
-        description: &'static str,
+        id: impl Into<String>,
+        title: impl Into<String>,
+        description: impl Into<String>,
         tags: &[&str],
-        category: &'static str,
+        category: impl Into<String>,
     ) -> PaletteActionItem {
         PaletteActionItem::new(id, title)
             .with_description(description)
             .with_tags(tags)
             .with_category(category)
+    }
+
+    fn workspace_jump_action_id(workspace: &Workspace) -> String {
+        format!("workspace:{}", workspace.path.display())
+    }
+
+    fn workspace_jump_action_title(&self, workspace: &Workspace) -> String {
+        let task = workspace.task_slug.as_deref().and_then(|task_slug| {
+            self.state.tasks.iter().find(|task| task.slug == task_slug)
+        });
+        let mut terms = Vec::new();
+
+        for term in [
+            workspace.task_slug.as_deref(),
+            task.map(|task| task.name.as_str()),
+            Some(workspace.name.as_str()),
+            workspace.project_name.as_deref(),
+            workspace
+                .path
+                .file_name()
+                .and_then(|file_name| file_name.to_str()),
+            Some(workspace.branch.as_str()),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let term = term.to_string();
+            if !terms.iter().any(|existing| existing == &term) {
+                terms.push(term);
+            }
+        }
+
+        terms.join(" ")
+    }
+
+    fn build_workspace_jump_actions(&self) -> Vec<PaletteActionItem> {
+        self.state
+            .workspaces
+            .iter()
+            .map(|workspace| {
+                let title = self.workspace_jump_action_title(workspace);
+                Self::palette_action(
+                    Self::workspace_jump_action_id(workspace),
+                    title,
+                    workspace.path.display().to_string(),
+                    &["jump", "workspace", "switch", "path", "branch"],
+                    "Workspace",
+                )
+            })
+            .collect()
     }
 
     pub(super) fn build_command_palette_actions(&self) -> Vec<PaletteActionItem> {
@@ -117,7 +167,10 @@ impl GroveApp {
     }
 
     pub(super) fn open_workspace_jump_palette(&mut self) {
-        self.open_shared_palette(PaletteMode::WorkspaceJump, Vec::new());
+        self.open_shared_palette(
+            PaletteMode::WorkspaceJump,
+            self.build_workspace_jump_actions(),
+        );
     }
 
     fn palette_command_enabled(&self, command: UiCommand) -> bool {
@@ -245,6 +298,27 @@ impl GroveApp {
             return false;
         };
         self.execute_ui_command(command)
+    }
+
+    pub(super) fn execute_workspace_jump_action(&mut self, id: &str) -> bool {
+        let Some(workspace_path) = id.strip_prefix("workspace:") else {
+            return false;
+        };
+        let workspace_path = PathBuf::from(workspace_path);
+        if !self.state.select_workspace_path(workspace_path.as_path()) {
+            return false;
+        }
+
+        self.handle_workspace_selection_changed();
+        let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
+        true
+    }
+
+    pub(super) fn execute_visible_palette_action(&mut self, id: &str) -> bool {
+        match self.dialogs.palette_mode {
+            Some(PaletteMode::WorkspaceJump) => self.execute_workspace_jump_action(id),
+            Some(PaletteMode::Command) | None => self.execute_command_palette_action(id),
+        }
     }
 
     pub(super) fn modal_open(&self) -> bool {
