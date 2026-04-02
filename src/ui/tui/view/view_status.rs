@@ -28,7 +28,7 @@ impl GroveApp {
         }
 
         if self.dialogs.command_palette.is_visible() {
-            return "Palette".to_string();
+            return self.active_palette_label().to_string();
         }
 
         if self.dialogs.keybind_help_open {

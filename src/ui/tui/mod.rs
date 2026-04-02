@@ -1489,6 +1489,27 @@ mod tests {
         }
 
         #[test]
+        fn header_shows_jump_badge_when_workspace_jump_is_open() {
+            let mut app = fixture_app();
+            app.open_workspace_jump_palette();
+
+            let (width, height) = (80, 24);
+            let mut pool = GraphemePool::new();
+            let mut frame = Frame::new(width, height, &mut pool);
+            ftui::Model::view(&app, &mut frame);
+
+            let header_text = row_text(&frame, 0, 0, width);
+            assert!(
+                header_text.contains("[Jump]"),
+                "header should show bracketed jump indicator, got: {header_text}"
+            );
+            assert!(
+                !header_text.contains("[Palette]"),
+                "header should not show palette label while workspace jump is open: {header_text}"
+            );
+        }
+
+        #[test]
         fn status_renders_in_status_pane_rect() {
             let app = fixture_app();
             let (width, height) = (80, 24);
@@ -1509,6 +1530,21 @@ mod tests {
                 !status_text.trim().is_empty(),
                 "status row should have content"
             );
+        }
+
+        #[test]
+        fn status_row_shows_jump_state_when_workspace_jump_is_open() {
+            let mut app = fixture_app();
+            app.open_workspace_jump_palette();
+
+            with_rendered_frame(&app, 120, 24, |frame| {
+                let status_row = frame.height().saturating_sub(1);
+                let status_text = row_text(frame, status_row, 0, frame.width());
+                assert!(
+                    status_text.contains("[Jump]"),
+                    "status row should identify the workspace jump palette: {status_text}"
+                );
+            });
         }
 
         #[test]
@@ -7208,7 +7244,24 @@ mod tests {
                 text.contains("Ctrl+K command palette"),
                 "help overlay should render command action text: {text}"
             );
+            assert!(
+                text.contains("/ open workspace jump"),
+                "help overlay should render workspace jump entry: {text}"
+            );
         });
+    }
+
+    #[test]
+    fn help_catalog_lists_workspace_jump_shortcut() {
+        let app = fixture_app();
+        let entries = app.help_catalog_entries();
+
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.action.contains("/ open workspace jump")),
+            "help catalog should include the workspace jump shortcut"
+        );
     }
 
     #[test]

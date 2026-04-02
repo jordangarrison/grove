@@ -16,7 +16,7 @@ impl GroveApp {
             .left(StatusItem::text("[Grove]"))
             .left(StatusItem::text(self.repo_name.as_str()));
         if self.dialogs.command_palette.is_visible() {
-            line = line.left(StatusItem::text("[Palette]"));
+            line = line.left(StatusItem::text(self.active_palette_badge_label()));
         }
 
         line.render(area, frame);

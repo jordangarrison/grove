@@ -57,6 +57,18 @@ impl GroveApp {
             .collect()
     }
 
+    fn command_help_labels_for(
+        &self,
+        context: HelpHintContext,
+        commands: &[UiCommand],
+    ) -> Vec<String> {
+        commands
+            .iter()
+            .filter_map(|command| command.help_hint(context))
+            .map(format_help_hint)
+            .collect()
+    }
+
     fn join_help_labels(labels: &[String], indexes: &[usize]) -> String {
         indexes
             .iter()
@@ -94,7 +106,16 @@ impl GroveApp {
             HelpCatalogEntry::new(
                 HelpSection::Global,
                 "Workspace nav",
-                Self::join_help_labels(&global, &[4, 8, 9, 13]),
+                self.command_help_labels_for(
+                    HelpHintContext::Global,
+                    &[
+                        UiCommand::MoveSelectionDown,
+                        UiCommand::PreviousTab,
+                        UiCommand::NextTab,
+                        UiCommand::OpenWorkspaceJump,
+                    ],
+                )
+                .join(", "),
             ),
             HelpCatalogEntry::new(
                 HelpSection::Global,

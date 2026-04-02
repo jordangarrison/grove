@@ -47,6 +47,20 @@ impl GroveApp {
             && self.session.interactive.is_none()
     }
 
+    pub(super) fn active_palette_label(&self) -> &'static str {
+        match self.dialogs.palette_mode {
+            Some(PaletteMode::WorkspaceJump) => "Jump",
+            _ => "Palette",
+        }
+    }
+
+    pub(super) fn active_palette_badge_label(&self) -> &'static str {
+        match self.dialogs.palette_mode {
+            Some(PaletteMode::WorkspaceJump) => "[Jump]",
+            _ => "[Palette]",
+        }
+    }
+
     fn palette_action(
         id: impl Into<String>,
         title: impl Into<String>,
