@@ -373,7 +373,7 @@ impl GroveApp {
         if already_selected {
             let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
             self.poll_preview();
-            return true;
+            return false;
         }
 
         if !self.state.select_workspace_path(workspace_path.as_path()) {
@@ -382,7 +382,7 @@ impl GroveApp {
 
         self.handle_workspace_selection_changed();
         let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
-        true
+        false
     }
 
     pub(super) fn execute_visible_palette_action(&mut self, id: &str) -> bool {

@@ -5805,8 +5805,10 @@ mod tests {
 
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('/')).with_kind(KeyEventKind::Press));
         app.dialogs.command_palette.set_query("feature");
-        let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
+        let (quit, _) =
+            app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
 
+        assert!(!quit);
         assert!(!app.dialogs.command_palette.is_visible());
         assert!(app.dialogs.palette_mode.is_none());
         assert_eq!(
@@ -5907,7 +5909,7 @@ mod tests {
             .selected_action()
             .expect("feature workspace should match");
         let selected_action_id = selected_action.id.clone();
-        assert!(app.execute_visible_palette_action(selected_action_id.as_str()));
+        assert!(!app.execute_visible_palette_action(selected_action_id.as_str()));
 
         assert_eq!(
             app.state
