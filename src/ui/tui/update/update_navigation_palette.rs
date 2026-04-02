@@ -79,11 +79,14 @@ impl GroveApp {
     }
 
     fn workspace_jump_action_title(&self, workspace: &Workspace) -> String {
-        let task = workspace.task_slug.as_deref().and_then(|task_slug| {
-            self.state.tasks.iter().find(|task| task.slug == task_slug)
-        });
+        let task = workspace
+            .task_slug
+            .as_deref()
+            .and_then(|task_slug| self.state.tasks.iter().find(|task| task.slug == task_slug));
         let mut terms = Vec::new();
 
+        // ftui's command palette scorer indexes `title`, so keep every
+        // searchable workspace term in the title, not just the description.
         for term in [
             workspace.task_slug.as_deref(),
             task.map(|task| task.name.as_str()),
@@ -159,11 +162,7 @@ impl GroveApp {
         Self::command_palette_max_visible_for_height(self.viewport_height)
     }
 
-    fn open_shared_palette(
-        &mut self,
-        palette_mode: PaletteMode,
-        actions: Vec<PaletteActionItem>,
-    ) {
+    fn open_shared_palette(&mut self, palette_mode: PaletteMode, actions: Vec<PaletteActionItem>) {
         if !self.can_open_palette() {
             return;
         }
@@ -324,9 +323,8 @@ impl GroveApp {
         });
         self.selected_attention_item = None;
         if already_selected {
-            if !self.preview_focused() {
-                let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
-            }
+            let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
+            self.poll_preview();
             return true;
         }
 

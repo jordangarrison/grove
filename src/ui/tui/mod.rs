@@ -229,29 +229,28 @@ mod tests {
     use self::support::logging::{RecordedEvents, RecordingEventLogger};
     use super::{
         AppDependencies, AttentionItem, AttentionReason, ClipboardAccess, CommandTmuxInput,
-        CreateDialogField, CreateDialogTab, CreateWorkspaceCompletion, CreateWorkspaceRequest,
-        CreateWorkspaceResult, CursorCapture, DeleteDialogField, DeleteProjectCompletion,
-        DeleteWorkspaceCompletion, EditDialogField, FOCUS_ID_CONFIRM_CANCEL_BUTTON,
-        FOCUS_ID_CONFIRM_CONFIRM_BUTTON, FOCUS_ID_PREVIEW, FOCUS_ID_PROJECT_ADD_CANCEL_BUTTON,
-        FOCUS_ID_PROJECT_ADD_NAME_INPUT, FOCUS_ID_PROJECT_ADD_PATH_INPUT,
-        FOCUS_ID_PROJECT_DEFAULTS_BASE_BRANCH_INPUT, FOCUS_ID_PROJECT_DEFAULTS_CANCEL_BUTTON,
-        FOCUS_ID_PROJECT_DEFAULTS_CODEX_ENV_INPUT, FOCUS_ID_PROJECT_DEFAULTS_INIT_COMMAND_INPUT,
-        FOCUS_ID_PROJECT_DIALOG_FILTER_INPUT, FOCUS_ID_WORKSPACE_LIST, GroveApp,
-        HIT_ID_CREATE_DIALOG_TAB, HIT_ID_HEADER, HIT_ID_PREVIEW, HIT_ID_PROJECT_ADD_RESULTS_LIST,
-        HIT_ID_PROJECT_DIALOG_LIST, HIT_ID_STATUS, HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK,
-        HIT_ID_WORKSPACE_ROW, HelpHintContext, LaunchDialogState, LaunchDialogTarget,
-        LazygitLaunchCompletion, LivePreviewCapture, MergeDialogField, MergeWorkspaceCompletion,
-        Msg, PREVIEW_METADATA_ROWS, PendingResizeVerification, PreviewPollCompletion,
-        PreviewSessionGeometry, PreviewStreamConnected, PreviewStreamDisconnected,
-        PreviewStreamEvent, PreviewStreamOutput, PreviewStreamSource, PreviewTab,
-        ProjectAddDialogField, ProjectDefaultsDialogField, PullUpstreamDialogField,
-        RefreshWorkspacesCompletion, SettingsDialogField, StartAgentCompletion,
-        StartAgentConfigState, StopAgentCompletion, StopDialogField, TextSelectionPoint, TmuxInput,
-        UiCommand, UpdateFromBaseDialogField, WorkspaceAttention, WorkspaceShellLaunchCompletion,
-        WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind, WorkspaceTabRuntimeState,
-        decode_create_dialog_tab_hit_data, decode_workspace_pr_hit_data, packed,
-        parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
-        PaletteMode, CreateDialogMode, CreateDialogState,
+        CreateDialogField, CreateDialogMode, CreateDialogState, CreateDialogTab,
+        CreateWorkspaceCompletion, CreateWorkspaceRequest, CreateWorkspaceResult, CursorCapture,
+        DeleteDialogField, DeleteProjectCompletion, DeleteWorkspaceCompletion, EditDialogField,
+        FOCUS_ID_CONFIRM_CANCEL_BUTTON, FOCUS_ID_CONFIRM_CONFIRM_BUTTON, FOCUS_ID_PREVIEW,
+        FOCUS_ID_PROJECT_ADD_CANCEL_BUTTON, FOCUS_ID_PROJECT_ADD_NAME_INPUT,
+        FOCUS_ID_PROJECT_ADD_PATH_INPUT, FOCUS_ID_PROJECT_DEFAULTS_BASE_BRANCH_INPUT,
+        FOCUS_ID_PROJECT_DEFAULTS_CANCEL_BUTTON, FOCUS_ID_PROJECT_DEFAULTS_CODEX_ENV_INPUT,
+        FOCUS_ID_PROJECT_DEFAULTS_INIT_COMMAND_INPUT, FOCUS_ID_PROJECT_DIALOG_FILTER_INPUT,
+        FOCUS_ID_WORKSPACE_LIST, GroveApp, HIT_ID_CREATE_DIALOG_TAB, HIT_ID_HEADER, HIT_ID_PREVIEW,
+        HIT_ID_PROJECT_ADD_RESULTS_LIST, HIT_ID_PROJECT_DIALOG_LIST, HIT_ID_STATUS,
+        HIT_ID_WORKSPACE_LIST, HIT_ID_WORKSPACE_PR_LINK, HIT_ID_WORKSPACE_ROW, HelpHintContext,
+        LaunchDialogState, LaunchDialogTarget, LazygitLaunchCompletion, LivePreviewCapture,
+        MergeDialogField, MergeWorkspaceCompletion, Msg, PREVIEW_METADATA_ROWS, PaletteMode,
+        PendingResizeVerification, PreviewPollCompletion, PreviewSessionGeometry,
+        PreviewStreamConnected, PreviewStreamDisconnected, PreviewStreamEvent, PreviewStreamOutput,
+        PreviewStreamSource, PreviewTab, ProjectAddDialogField, ProjectDefaultsDialogField,
+        PullUpstreamDialogField, RefreshWorkspacesCompletion, SettingsDialogField,
+        StartAgentCompletion, StartAgentConfigState, StopAgentCompletion, StopDialogField,
+        TextSelectionPoint, TmuxInput, UiCommand, UpdateFromBaseDialogField, WorkspaceAttention,
+        WorkspaceShellLaunchCompletion, WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind,
+        WorkspaceTabRuntimeState, decode_create_dialog_tab_hit_data, decode_workspace_pr_hit_data,
+        packed, parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
     };
     use crate::application::agent_runtime::status::WorkspaceStatusObservation;
     use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
@@ -5699,6 +5698,30 @@ mod tests {
     }
 
     #[test]
+    fn workspace_jump_title_keeps_search_terms_searchable() {
+        let mut app = fixture_task_app();
+        app.open_workspace_jump_palette();
+        app.dialogs.command_palette.set_query("terraform-fastly");
+        let selected = app
+            .dialogs
+            .command_palette
+            .selected_action()
+            .expect("workspace should match title search");
+
+        assert!(
+            selected.title.contains("terraform-fastly"),
+            "ftui indexes titles only, so the searchable project name must stay in the title: {}",
+            selected.title
+        );
+        assert!(
+            selected.title.contains("flohome-launch"),
+            "workspace jump title should keep the task label searchable: {}",
+            selected.title
+        );
+        assert_eq!(app.dialogs.command_palette.result_count(), 1);
+    }
+
+    #[test]
     fn workspace_jump_finds_unique_worktree_basename() {
         let mut app = fixture_app();
         app.state = crate::ui::state::AppState::new(vec![task_with_worktrees(
@@ -5751,21 +5774,30 @@ mod tests {
         assert!(!app.dialogs.command_palette.is_visible());
         assert!(app.dialogs.palette_mode.is_none());
         assert_eq!(
-            app.state.selected_workspace().map(|workspace| workspace.path.clone()),
+            app.state
+                .selected_workspace()
+                .map(|workspace| workspace.path.clone()),
             Some(feature_workspace_path())
         );
         assert_eq!(
             app.selected_active_tab().map(|tab| tab.kind),
             Some(WorkspaceTabKind::Shell)
         );
-        assert_eq!(app.selected_active_tab().map(|tab| tab.id), Some(shell_tab_id));
+        assert_eq!(
+            app.selected_active_tab().map(|tab| tab.id),
+            Some(shell_tab_id)
+        );
         assert!(app.preview_focused());
         assert_eq!(app.state.mode, UiMode::Preview);
     }
 
     #[test]
-    fn workspace_jump_to_selected_workspace_preserves_preview_context() {
+    fn workspace_jump_to_selected_workspace_from_list_refreshes_preview_without_resetting_context()
+    {
         let mut app = fixture_app();
+        app.tmux_input = Box::new(BackgroundOnlyTmuxInput);
+        app.state.mode = UiMode::List;
+        let _ = app.focus_main_pane(FOCUS_ID_WORKSPACE_LIST);
         select_workspace(&mut app, 1);
         let shell_tab_id = insert_shell_tab(
             &mut app,
@@ -5781,25 +5813,52 @@ mod tests {
             tabs.active_tab_id = shell_tab_id;
         }
         app.sync_preview_tab_from_active_workspace_tab();
-        app.preview.lines = vec!["alpha".to_string(), "beta".to_string()];
+        app.preview.lines = (0..48).map(|line| format!("line {line}")).collect();
         app.preview.render_lines = app.preview.lines.clone();
         app.preview_selection
             .prepare_drag(TextSelectionPoint { line: 0, col: 0 });
         app.preview_selection
             .handle_drag(TextSelectionPoint { line: 0, col: 4 });
         app.preview_selection.finish_drag();
-        let selection_before = app.selected_preview_text_lines();
+        let preview_height = preview_output_height(&app);
+        assert!(app.preview_scroll_by(-1, preview_height));
+        let selection_before = app.preview_selection.bounds();
+        let auto_scroll_before = preview_auto_scroll(&app);
+        assert!(!auto_scroll_before);
 
-        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('/')).with_kind(KeyEventKind::Press));
-        app.dialogs.command_palette.set_query("feature");
-        let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
+        let preview_session = feature_shell_session();
+        app.polling.preview_stream.target_session = Some(preview_session.clone());
+        app.polling.preview_stream.connected_session = Some(preview_session);
+        app.polling.preview_stream.source = PreviewStreamSource::Stream;
+        app.polling.preview_stream.bootstrap_completed = true;
+        app.session
+            .shell_sessions
+            .mark_ready(feature_shell_session());
+        app.polling.preview_poll_in_flight = true;
+        app.polling.output_changing = true;
+        app.polling.agent_output_changing = true;
+
+        app.open_workspace_jump_palette();
+        assert!(app.execute_visible_palette_action(
+            format!("workspace:{}", feature_workspace_path().display()).as_str()
+        ));
 
         assert_eq!(
-            app.state.selected_workspace().map(|workspace| workspace.path.clone()),
+            app.state
+                .selected_workspace()
+                .map(|workspace| workspace.path.clone()),
             Some(feature_workspace_path())
         );
-        assert_eq!(app.selected_active_tab().map(|tab| tab.id), Some(shell_tab_id));
-        assert_eq!(app.selected_preview_text_lines(), selection_before);
+        assert_eq!(
+            app.selected_active_tab().map(|tab| tab.id),
+            Some(shell_tab_id)
+        );
+        assert_eq!(app.state.mode, UiMode::Preview);
+        assert_eq!(app.preview_selection.bounds(), selection_before);
+        assert_eq!(preview_auto_scroll(&app), auto_scroll_before);
+        assert!(app.polling.preview_poll_requested);
+        assert!(app.polling.output_changing);
+        assert!(app.polling.agent_output_changing);
         assert!(app.preview_focused());
     }
 
@@ -5820,18 +5879,17 @@ mod tests {
 
         assert!(app.selected_attention_item().is_none());
         assert_eq!(
-            app.state.selected_workspace().map(|workspace| workspace.path.clone()),
+            app.state
+                .selected_workspace()
+                .map(|workspace| workspace.path.clone()),
             Some(feature_workspace_path())
         );
     }
 
     #[test]
     fn slash_is_forwarded_in_interactive_mode() {
-        let (mut app, commands, _, _, _) = fixture_app_with_tmux_and_calls(
-            WorkspaceStatus::Idle,
-            Vec::new(),
-            Vec::new(),
-        );
+        let (mut app, commands, _, _, _) =
+            fixture_app_with_tmux_and_calls(WorkspaceStatus::Idle, Vec::new(), Vec::new());
         app.session.interactive = Some(InteractiveState::new(
             "%0".to_string(),
             "grove-ws-feature-a".to_string(),
@@ -6844,7 +6902,7 @@ mod tests {
             UiCommand::all()
                 .iter()
                 .filter(|command| command.meta().palette.is_some())
-            .count(),
+                .count(),
             47
         );
         assert_eq!(UiCommand::help_hints_for(HelpHintContext::Global).len(), 16);
