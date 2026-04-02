@@ -3218,8 +3218,14 @@ mod tests {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         select_workspace(&mut app, 1);
-        app.polling.output_changing = true;
-        app.polling.agent_output_changing = true;
+        app.record_workspace_status_observation(
+            feature_workspace_path().as_path(),
+            &WorkspaceStatusObservation {
+                status: WorkspaceStatus::Active,
+                recent_activity: true,
+                waiting_excerpt: None,
+            },
+        );
         assert!(app.status_is_visually_working(Some(app.state.workspaces[1].path.as_path()), true));
 
         let layout = app.panes.test_rects(80, 24);
@@ -3299,8 +3305,14 @@ mod tests {
         let (mut app, _commands, _captures, _cursor_captures) =
             fixture_app_with_tmux(WorkspaceStatus::Active, Vec::new());
         select_workspace(&mut app, 1);
-        app.polling.output_changing = true;
-        app.polling.agent_output_changing = true;
+        app.record_workspace_status_observation(
+            feature_workspace_path().as_path(),
+            &WorkspaceStatusObservation {
+                status: WorkspaceStatus::Active,
+                recent_activity: true,
+                waiting_excerpt: None,
+            },
+        );
 
         let layout = app.panes.test_rects(120, 24);
         let x_start = layout.sidebar.x.saturating_add(1);
@@ -6496,12 +6508,12 @@ mod tests {
                 .iter()
                 .filter(|command| command.meta().palette.is_some())
                 .count(),
-            46
+            47
         );
         assert_eq!(UiCommand::help_hints_for(HelpHintContext::Global).len(), 15);
         assert_eq!(
             UiCommand::help_hints_for(HelpHintContext::Workspace).len(),
-            17
+            18
         );
         assert_eq!(UiCommand::help_hints_for(HelpHintContext::List).len(), 2);
         assert_eq!(
