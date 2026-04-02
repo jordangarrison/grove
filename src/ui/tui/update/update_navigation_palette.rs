@@ -74,21 +74,51 @@ impl GroveApp {
             .with_category(category)
     }
 
-    fn workspace_jump_action_title(&self, workspace: &Workspace) -> String {
-        let task = workspace
-            .task_slug
-            .as_deref()
-            .and_then(|task_slug| self.state.tasks.iter().find(|task| task.slug == task_slug));
-        let mut terms = Vec::new();
+    fn workspace_jump_task(&self, workspace: &Workspace) -> Option<&Task> {
+        workspace.task_slug.as_deref().and_then(|task_slug| {
+            self.state.tasks.iter().find(|task| task.slug == task_slug)
+        })
+    }
 
-        // ftui's command palette scorer indexes `title`, so keep every
-        // searchable workspace term in the title, not just the description.
-        for term in [
-            workspace.task_slug.as_deref(),
-            task.map(|task| task.name.as_str()),
+    fn workspace_jump_visible_title(&self, workspace: &Workspace) -> String {
+        let mut parts = vec![workspace.name.clone()];
+        if workspace.branch != workspace.name {
+            parts.push(workspace.branch.clone());
+        }
+
+        if let Some(basename) = workspace
+            .path
+            .file_name()
+            .and_then(|file_name| file_name.to_str())
+            && basename != workspace.name
+            && basename != workspace.branch
+        {
+            parts.push(basename.to_string());
+        }
+
+        parts.join(" · ")
+    }
+
+    fn workspace_jump_visible_description(&self, workspace: &Workspace) -> String {
+        self.workspace_jump_task(workspace)
+            .map(|task| {
+                if task.name == workspace.name {
+                    workspace.path.display().to_string()
+                } else {
+                    task.name.clone()
+                }
+            })
+            .unwrap_or_else(|| workspace.path.display().to_string())
+    }
+
+    fn workspace_jump_search_tags<'a>(&'a self, workspace: &'a Workspace) -> Vec<&'a str> {
+        let task = self.workspace_jump_task(workspace);
+        let mut tags = Vec::new();
+        for tag in [
             Some(workspace.name.as_str()),
             workspace.project_name.as_deref(),
-            Some(workspace.branch.as_str()),
+            workspace.task_slug.as_deref(),
+            task.map(|task| task.name.as_str()),
             workspace
                 .path
                 .file_name()
@@ -97,13 +127,11 @@ impl GroveApp {
         .into_iter()
         .flatten()
         {
-            let term = term.to_string();
-            if !terms.iter().any(|existing| existing == &term) {
-                terms.push(term);
+            if !tags.iter().any(|existing| existing == &tag) {
+                tags.push(tag);
             }
         }
-
-        terms.join(" · ")
+        tags
     }
 
     fn build_workspace_jump_actions(&mut self) -> Vec<PaletteActionItem> {
@@ -122,12 +150,14 @@ impl GroveApp {
             };
             let id = format!("workspace-jump-{next_id}");
             action_targets.insert(id.clone(), workspace.path.clone());
-            let title = self.workspace_jump_action_title(workspace);
+            let title = self.workspace_jump_visible_title(workspace);
+            let description = self.workspace_jump_visible_description(workspace);
+            let tags = self.workspace_jump_search_tags(workspace);
             actions.push(Self::palette_action(
                 id,
                 title,
-                workspace.path.display().to_string(),
-                &["jump", "workspace", "switch", "path", "branch"],
+                description,
+                tags.as_slice(),
                 "Workspace",
             ));
         }

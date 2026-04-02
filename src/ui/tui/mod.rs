@@ -5733,27 +5733,95 @@ mod tests {
     }
 
     #[test]
-    fn workspace_jump_title_keeps_search_terms_searchable() {
-        let mut app = fixture_task_app();
+    fn workspace_jump_repo_prefix_beats_branch_only_match() {
+        let mut app = fixture_app();
+        let core_workspace_path = PathBuf::from("/tmp/.grove/tasks/launch-core/core");
+        let branch_workspace_path = PathBuf::from("/tmp/.grove/tasks/launch-core/alpha");
+
+        app.state = crate::ui::state::AppState::new(vec![task_with_worktrees(
+            "launch-core",
+            &[
+                ("core", &PathBuf::from("/repos/core"), &core_workspace_path, "main"),
+                (
+                    "alpha",
+                    &PathBuf::from("/repos/alpha"),
+                    &branch_workspace_path,
+                    "core-branch",
+                ),
+            ],
+        )]);
+        app.sync_workspace_tab_maps();
+        app.refresh_preview_summary();
+
+        let _ = app.state.select_workspace_path(branch_workspace_path.as_path());
+        app.handle_workspace_selection_changed();
+
         app.open_workspace_jump_palette();
-        app.dialogs.command_palette.set_query("terraform-fastly");
+        app.dialogs.command_palette.set_query("core");
+
         let selected = app
             .dialogs
             .command_palette
             .selected_action()
-            .expect("workspace should match title search");
+            .expect("selected result");
+        let selected_path = app
+            .dialogs
+            .workspace_jump_action_targets
+            .get(selected.id.as_str())
+            .expect("selected path");
 
+        assert_eq!(selected_path, &core_workspace_path);
+    }
+
+    #[test]
+    fn workspace_jump_rows_split_visible_text_from_search_terms() {
+        let mut app = fixture_app();
+        let core_workspace_path = PathBuf::from("/tmp/.grove/tasks/launch-core/core");
+        let branch_workspace_path = PathBuf::from("/tmp/.grove/tasks/launch-core/alpha");
+
+        app.state = crate::ui::state::AppState::new(vec![task_with_worktrees(
+            "launch-core",
+            &[
+                ("core", &PathBuf::from("/repos/core"), &core_workspace_path, "main"),
+                (
+                    "alpha",
+                    &PathBuf::from("/repos/alpha"),
+                    &branch_workspace_path,
+                    "core-branch",
+                ),
+            ],
+        )]);
+        app.sync_workspace_tab_maps();
+        app.refresh_preview_summary();
+
+        let _ = app.state.select_workspace_path(branch_workspace_path.as_path());
+        app.handle_workspace_selection_changed();
+
+        app.open_workspace_jump_palette();
+
+        let selected = app
+            .dialogs
+            .command_palette
+            .selected_action()
+            .expect("selected result");
+
+        assert!(selected.title.contains("alpha"), "row should show repo name");
         assert!(
-            selected.title.contains("terraform-fastly"),
-            "ftui indexes titles only, so the searchable project name must stay in the title: {}",
+            selected.title.contains("core-branch"),
+            "row should show branch text"
+        );
+        assert!(
+            !selected.title.contains("launch-core"),
+            "task slug should move out of the visible title: {}",
             selected.title
         );
         assert!(
-            selected.title.contains("flohome-launch"),
-            "workspace jump title should keep the task label searchable: {}",
-            selected.title
+            selected
+                .description
+                .as_deref()
+                .is_some_and(|description| !description.is_empty()),
+            "task context should stay visible in description"
         );
-        assert_eq!(app.dialogs.command_palette.result_count(), 1);
     }
 
     #[test]
