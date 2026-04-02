@@ -5595,8 +5595,12 @@ mod tests {
     }
 
     #[test]
-    fn slash_is_blocked_in_interactive_mode() {
-        let mut app = fixture_app();
+    fn slash_is_forwarded_in_interactive_mode() {
+        let (mut app, commands, _, _, _) = fixture_app_with_tmux_and_calls(
+            WorkspaceStatus::Idle,
+            Vec::new(),
+            Vec::new(),
+        );
         app.session.interactive = Some(InteractiveState::new(
             "%0".to_string(),
             "grove-ws-feature-a".to_string(),
@@ -5608,6 +5612,17 @@ mod tests {
         let _ = app.handle_key(KeyEvent::new(KeyCode::Char('/')).with_kind(KeyEventKind::Press));
 
         assert!(app.session.interactive.is_some());
+        assert!(commands.borrow().iter().any(|command| {
+            command
+                == &vec![
+                    "tmux".to_string(),
+                    "send-keys".to_string(),
+                    "-l".to_string(),
+                    "-t".to_string(),
+                    "grove-ws-feature-a".to_string(),
+                    "/".to_string(),
+                ]
+        }));
         assert!(!app.dialogs.command_palette.is_visible());
         assert!(app.dialogs.palette_mode.is_none());
     }
@@ -5685,7 +5700,20 @@ mod tests {
         let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
 
         assert!(!app.dialogs.command_palette.is_visible());
+        assert!(app.dialogs.palette_mode.is_none());
         assert!(app.create_dialog().is_some());
+    }
+
+    #[test]
+    fn command_palette_escape_clears_palette_mode() {
+        let mut app = fixture_app();
+        app.open_command_palette();
+        assert_eq!(app.dialogs.palette_mode, Some(PaletteMode::Command));
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Escape).with_kind(KeyEventKind::Press));
+
+        assert!(!app.dialogs.command_palette.is_visible());
+        assert!(app.dialogs.palette_mode.is_none());
     }
 
     #[test]
