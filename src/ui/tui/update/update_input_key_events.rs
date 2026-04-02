@@ -396,7 +396,8 @@ impl GroveApp {
 
         if self.dialogs.command_palette.is_visible() {
             let palette_mode = self.dialogs.palette_mode;
-            let workspace_jump_query_is_empty = self.dialogs.command_palette.query().trim().is_empty();
+            let workspace_jump_query_is_empty =
+                self.dialogs.command_palette.query().trim().is_empty();
             let event = Event::Key(Self::normalize_command_palette_key_event(
                 Self::remap_command_palette_nav_key(key_event),
             ));

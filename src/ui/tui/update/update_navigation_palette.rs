@@ -75,9 +75,10 @@ impl GroveApp {
     }
 
     fn workspace_jump_task(&self, workspace: &Workspace) -> Option<&Task> {
-        workspace.task_slug.as_deref().and_then(|task_slug| {
-            self.state.tasks.iter().find(|task| task.slug == task_slug)
-        })
+        workspace
+            .task_slug
+            .as_deref()
+            .and_then(|task_slug| self.state.tasks.iter().find(|task| task.slug == task_slug))
     }
 
     fn workspace_jump_visible_title(&self, workspace: &Workspace) -> String {
@@ -161,10 +162,16 @@ impl GroveApp {
             ));
         }
 
-        let title_width = actions.iter().map(|action| action.title.len()).max().unwrap_or(0);
+        let title_width = actions
+            .iter()
+            .map(|action| action.title.len())
+            .max()
+            .unwrap_or(0);
         for action in &mut actions {
             if action.title.len() < title_width {
-                action.title.push_str(" ".repeat(title_width - action.title.len()).as_str());
+                action
+                    .title
+                    .push_str(" ".repeat(title_width - action.title.len()).as_str());
             }
         }
 

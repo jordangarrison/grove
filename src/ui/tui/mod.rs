@@ -5741,7 +5741,12 @@ mod tests {
         app.state = crate::ui::state::AppState::new(vec![task_with_worktrees(
             "launch-core",
             &[
-                ("core", &PathBuf::from("/repos/core"), &core_workspace_path, "main"),
+                (
+                    "core",
+                    &PathBuf::from("/repos/core"),
+                    &core_workspace_path,
+                    "main",
+                ),
                 (
                     "alpha",
                     &PathBuf::from("/repos/alpha"),
@@ -5753,7 +5758,9 @@ mod tests {
         app.sync_workspace_tab_maps();
         app.refresh_preview_summary();
 
-        let _ = app.state.select_workspace_path(branch_workspace_path.as_path());
+        let _ = app
+            .state
+            .select_workspace_path(branch_workspace_path.as_path());
         app.handle_workspace_selection_changed();
 
         app.open_workspace_jump_palette();
@@ -5782,7 +5789,12 @@ mod tests {
         app.state = crate::ui::state::AppState::new(vec![task_with_worktrees(
             "launch-core",
             &[
-                ("core", &PathBuf::from("/repos/core"), &core_workspace_path, "main"),
+                (
+                    "core",
+                    &PathBuf::from("/repos/core"),
+                    &core_workspace_path,
+                    "main",
+                ),
                 (
                     "alpha",
                     &PathBuf::from("/repos/alpha"),
@@ -5794,7 +5806,9 @@ mod tests {
         app.sync_workspace_tab_maps();
         app.refresh_preview_summary();
 
-        let _ = app.state.select_workspace_path(branch_workspace_path.as_path());
+        let _ = app
+            .state
+            .select_workspace_path(branch_workspace_path.as_path());
         app.handle_workspace_selection_changed();
 
         app.open_workspace_jump_palette();
@@ -5818,7 +5832,8 @@ mod tests {
     #[test]
     fn workspace_jump_finds_workspace_by_unique_basename() {
         let mut app = fixture_app();
-        let visible_workspace_path = PathBuf::from("/tmp/.grove/tasks/search-suite/unique-basename");
+        let visible_workspace_path =
+            PathBuf::from("/tmp/.grove/tasks/search-suite/unique-basename");
         let other_workspace_path = PathBuf::from("/tmp/.grove/tasks/search-suite/other");
 
         app.state = crate::ui::state::AppState::new(vec![task_with_worktrees(
@@ -6090,16 +6105,45 @@ mod tests {
             discovery_state: DiscoveryState::Ready,
             tasks: vec![task_with_worktrees(
                 "refresh-only",
-                &[(
-                    "refresh-only",
-                    &repo_path,
-                    &workspace_path,
-                    "refresh-only",
-                )],
+                &[("refresh-only", &repo_path, &workspace_path, "refresh-only")],
             )],
         });
 
         assert_eq!(app.workspace_visit_order, vec![workspace_path]);
+    }
+
+    #[test]
+    fn workspace_jump_visit_order_is_pruned_on_sync_refresh() {
+        let mut app = fixture_app();
+        let tasks_root = unique_temp_workspace_dir("workspace-jump-sync-refresh");
+        let workspace_path = PathBuf::from("/tmp/.grove/tasks/refresh-only/refresh-only");
+        let repo_path = PathBuf::from("/repos/refresh-only");
+        let task_dir = tasks_root.join("refresh-only").join(".grove");
+        fs::create_dir_all(&task_dir).expect("task dir should exist");
+        let task = task_with_worktrees(
+            "refresh-only",
+            &[("refresh-only", &repo_path, &workspace_path, "refresh-only")],
+        );
+        let manifest = crate::infrastructure::task_manifest::encode_task_manifest(&task)
+            .expect("task manifest should encode");
+        fs::write(task_dir.join("task.toml"), manifest).expect("task manifest should write");
+
+        app.task_root_override = Some(tasks_root);
+        app.workspace_visit_order = vec![
+            feature_workspace_path(),
+            PathBuf::from("/tmp/.grove/tasks/removed/removed"),
+            main_workspace_path(),
+        ];
+
+        app.refresh_workspaces(Some(workspace_path.clone()));
+
+        assert_eq!(app.workspace_visit_order, vec![workspace_path.clone()]);
+        assert_eq!(
+            app.state
+                .selected_workspace()
+                .map(|workspace| workspace.path.clone()),
+            Some(workspace_path)
+        );
     }
 
     #[test]
