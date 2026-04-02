@@ -317,7 +317,8 @@ impl GroveApp {
     pub(super) fn execute_visible_palette_action(&mut self, id: &str) -> bool {
         match self.dialogs.palette_mode {
             Some(PaletteMode::WorkspaceJump) => self.execute_workspace_jump_action(id),
-            Some(PaletteMode::Command) | None => self.execute_command_palette_action(id),
+            Some(PaletteMode::Command) => self.execute_command_palette_action(id),
+            None => false,
         }
     }
 

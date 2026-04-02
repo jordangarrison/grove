@@ -5783,6 +5783,18 @@ mod tests {
     }
 
     #[test]
+    fn visible_palette_action_none_mode_does_not_execute_fallback_command() {
+        let mut app = fixture_app();
+        app.open_command_palette();
+        app.dialogs.palette_mode = None;
+
+        let handled = app.execute_visible_palette_action("palette:open_performance");
+
+        assert!(!handled);
+        assert!(app.performance_dialog().is_none());
+    }
+
+    #[test]
     fn command_palette_escape_clears_palette_mode() {
         let mut app = fixture_app();
         app.open_command_palette();
