@@ -305,11 +305,21 @@ impl GroveApp {
             return false;
         };
         let workspace_path = PathBuf::from(workspace_path);
+        let already_selected = self.state.selected_workspace().is_some_and(|workspace| {
+            refer_to_same_location(workspace.path.as_path(), workspace_path.as_path())
+        });
+        self.selected_attention_item = None;
+        if already_selected {
+            if !self.preview_focused() {
+                let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
+            }
+            return true;
+        }
+
         if !self.state.select_workspace_path(workspace_path.as_path()) {
             return false;
         }
 
-        self.selected_attention_item = None;
         self.handle_workspace_selection_changed();
         let _ = self.focus_main_pane(FOCUS_ID_PREVIEW);
         true

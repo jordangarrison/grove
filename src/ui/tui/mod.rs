@@ -5722,8 +5722,49 @@ mod tests {
             app.selected_active_tab().map(|tab| tab.kind),
             Some(WorkspaceTabKind::Shell)
         );
+        assert_eq!(app.selected_active_tab().map(|tab| tab.id), Some(shell_tab_id));
         assert!(app.preview_focused());
         assert_eq!(app.state.mode, UiMode::Preview);
+    }
+
+    #[test]
+    fn workspace_jump_to_selected_workspace_preserves_preview_context() {
+        let mut app = fixture_app();
+        select_workspace(&mut app, 1);
+        let shell_tab_id = insert_shell_tab(
+            &mut app,
+            1,
+            feature_shell_session().as_str(),
+            "Feature shell",
+            WorkspaceTabRuntimeState::Running,
+        );
+        if let Some(tabs) = app
+            .workspace_tabs
+            .get_mut(feature_workspace_path().as_path())
+        {
+            tabs.active_tab_id = shell_tab_id;
+        }
+        app.sync_preview_tab_from_active_workspace_tab();
+        app.preview.lines = vec!["alpha".to_string(), "beta".to_string()];
+        app.preview.render_lines = app.preview.lines.clone();
+        app.preview_selection
+            .prepare_drag(TextSelectionPoint { line: 0, col: 0 });
+        app.preview_selection
+            .handle_drag(TextSelectionPoint { line: 0, col: 4 });
+        app.preview_selection.finish_drag();
+        let selection_before = app.selected_preview_text_lines();
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('/')).with_kind(KeyEventKind::Press));
+        app.dialogs.command_palette.set_query("feature");
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Enter).with_kind(KeyEventKind::Press));
+
+        assert_eq!(
+            app.state.selected_workspace().map(|workspace| workspace.path.clone()),
+            Some(feature_workspace_path())
+        );
+        assert_eq!(app.selected_active_tab().map(|tab| tab.id), Some(shell_tab_id));
+        assert_eq!(app.selected_preview_text_lines(), selection_before);
+        assert!(app.preview_focused());
     }
 
     #[test]
