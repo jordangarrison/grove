@@ -1,6 +1,6 @@
 use super::*;
 
-static COMMAND_META: [UiCommandMeta; 50] = [
+static COMMAND_META: [UiCommandMeta; 51] = [
     UiCommandMeta {
         palette: Some(PaletteCommandSpec {
             id: "palette:toggle_focus",
@@ -1385,6 +1385,15 @@ static COMMAND_META: [UiCommandMeta; 50] = [
             modifiers: KeyModifiersMatch::Any,
         }],
     },
+    UiCommandMeta {
+        palette: None,
+        help_hints: &[],
+        keybindings: &[KeybindingSpec {
+            scope: KeybindingScope::NonInteractive,
+            code: KeyCodeMatch::Char('/'),
+            modifiers: KeyModifiersMatch::Any,
+        }],
+    },
 ];
 
 impl UiCommand {
@@ -1440,6 +1449,7 @@ impl UiCommand {
             UiCommand::Quit => &COMMAND_META[47],
             UiCommand::OpenPerformance => &COMMAND_META[48],
             UiCommand::OpenRepository => &COMMAND_META[49],
+            UiCommand::OpenWorkspaceJump => &COMMAND_META[50],
         }
     }
 }

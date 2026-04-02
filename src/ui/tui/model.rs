@@ -261,6 +261,12 @@ enum ActiveDialog {
     Performance(PerformanceDialogState),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PaletteMode {
+    Command,
+    WorkspaceJump,
+}
+
 struct SessionState {
     interactive: Option<InteractiveState>,
     last_tmux_error: Option<String>,
@@ -329,6 +335,7 @@ struct PerformanceState {
 struct DialogState {
     active_dialog: Option<ActiveDialog>,
     keybind_help_open: bool,
+    palette_mode: Option<PaletteMode>,
     command_palette: CommandPalette,
     refresh_in_flight: bool,
     last_manual_refresh_requested_at: Option<Instant>,

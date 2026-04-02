@@ -151,6 +151,7 @@ impl GroveApp {
             dialogs: DialogState {
                 active_dialog: None,
                 keybind_help_open: false,
+                palette_mode: None,
                 command_palette: CommandPalette::new().with_max_visible(12),
                 refresh_in_flight: false,
                 last_manual_refresh_requested_at: None,

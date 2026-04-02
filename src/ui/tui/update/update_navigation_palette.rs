@@ -41,8 +41,10 @@ impl GroveApp {
         self.dialogs.active_dialog.is_some() || self.dialogs.keybind_help_open
     }
 
-    fn can_open_command_palette(&self) -> bool {
-        !self.has_non_palette_modal_open() && self.session.interactive.is_none()
+    pub(super) fn can_open_palette(&self) -> bool {
+        !self.has_non_palette_modal_open()
+            && !self.dialogs.command_palette.is_visible()
+            && self.session.interactive.is_none()
     }
 
     fn palette_action(
@@ -78,12 +80,6 @@ impl GroveApp {
         actions
     }
 
-    fn refresh_command_palette_actions(&mut self) {
-        self.dialogs
-            .command_palette
-            .replace_actions(self.build_command_palette_actions());
-    }
-
     pub(super) fn command_palette_max_visible_for_height(viewport_height: u16) -> usize {
         let top_offset = viewport_height / 6;
         usize::from(
@@ -99,16 +95,29 @@ impl GroveApp {
         Self::command_palette_max_visible_for_height(self.viewport_height)
     }
 
-    pub(super) fn open_command_palette(&mut self) {
-        if !self.can_open_command_palette() {
+    fn open_shared_palette(
+        &mut self,
+        palette_mode: PaletteMode,
+        actions: Vec<PaletteActionItem>,
+    ) {
+        if !self.can_open_palette() {
             return;
         }
 
         self.dialogs.command_palette = CommandPalette::new()
             .with_max_visible(self.command_palette_max_visible())
             .with_style(self.command_palette_style());
-        self.refresh_command_palette_actions();
+        self.dialogs.command_palette.replace_actions(actions);
+        self.dialogs.palette_mode = Some(palette_mode);
         self.dialogs.command_palette.open();
+    }
+
+    pub(super) fn open_command_palette(&mut self) {
+        self.open_shared_palette(PaletteMode::Command, self.build_command_palette_actions());
+    }
+
+    pub(super) fn open_workspace_jump_palette(&mut self) {
+        self.open_shared_palette(PaletteMode::WorkspaceJump, Vec::new());
     }
 
     fn palette_command_enabled(&self, command: UiCommand) -> bool {
@@ -226,7 +235,9 @@ impl GroveApp {
             UiCommand::RefreshWorkspaces => !self.dialogs.refresh_in_flight,
             UiCommand::FocusAttentionInbox => !self.attention_items.is_empty(),
             UiCommand::AcknowledgeAttention => self.selected_attention_item().is_some(),
-            UiCommand::FocusPreview | UiCommand::OpenCommandPalette => false,
+            UiCommand::FocusPreview
+            | UiCommand::OpenCommandPalette
+            | UiCommand::OpenWorkspaceJump => false,
         }
     }
     pub(super) fn execute_command_palette_action(&mut self, id: &str) -> bool {

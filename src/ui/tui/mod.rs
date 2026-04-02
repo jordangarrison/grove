@@ -251,6 +251,7 @@ mod tests {
         WorkspaceStatusCapture, WorkspaceTab, WorkspaceTabKind, WorkspaceTabRuntimeState,
         decode_create_dialog_tab_hit_data, decode_workspace_pr_hit_data, packed,
         parse_cursor_metadata, ui_theme, ui_theme_for, usize_to_u64,
+        PaletteMode,
     };
     use crate::application::agent_runtime::status::WorkspaceStatusObservation;
     use crate::application::agent_runtime::workspace_status_targets_for_polling_with_live_preview;
@@ -5581,6 +5582,47 @@ mod tests {
 
         assert!(app.session.interactive.is_some());
         assert!(!app.dialogs.command_palette.is_visible());
+    }
+
+    #[test]
+    fn slash_opens_workspace_jump_palette() {
+        let mut app = fixture_app();
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('/')).with_kind(KeyEventKind::Press));
+
+        assert!(app.dialogs.command_palette.is_visible());
+        assert_eq!(app.dialogs.palette_mode, Some(PaletteMode::WorkspaceJump));
+    }
+
+    #[test]
+    fn slash_is_blocked_in_interactive_mode() {
+        let mut app = fixture_app();
+        app.session.interactive = Some(InteractiveState::new(
+            "%0".to_string(),
+            "grove-ws-feature-a".to_string(),
+            Instant::now(),
+            24,
+            80,
+        ));
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('/')).with_kind(KeyEventKind::Press));
+
+        assert!(app.session.interactive.is_some());
+        assert!(!app.dialogs.command_palette.is_visible());
+        assert!(app.dialogs.palette_mode.is_none());
+    }
+
+    #[test]
+    fn slash_does_not_open_workspace_jump_while_create_dialog_is_active() {
+        let mut app = fixture_app();
+        app.open_create_dialog();
+        assert!(app.create_dialog().is_some());
+
+        let _ = app.handle_key(KeyEvent::new(KeyCode::Char('/')).with_kind(KeyEventKind::Press));
+
+        assert!(app.create_dialog().is_some());
+        assert!(!app.dialogs.command_palette.is_visible());
+        assert!(app.dialogs.palette_mode.is_none());
     }
 
     #[test]

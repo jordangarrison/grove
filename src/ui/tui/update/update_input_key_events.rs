@@ -281,7 +281,9 @@ impl GroveApp {
             UiCommand::ResizeSidebarNarrower
             | UiCommand::ResizeSidebarWider
             | UiCommand::FocusPreview
-            | UiCommand::DeleteProject => false,
+            | UiCommand::DeleteProject
+            | UiCommand::OpenCommandPalette
+            | UiCommand::OpenWorkspaceJump => false,
             UiCommand::FocusAttentionInbox => !in_preview_focus,
             UiCommand::ReorderTasks => self.workspace_list_focused(),
             _ => true,
@@ -386,9 +388,20 @@ impl GroveApp {
 
         if UiCommand::OpenCommandPalette
             .matches_keybinding(&key_event, KeybindingScope::NonInteractive)
+            && self.can_open_palette()
         {
             return (
                 self.execute_ui_command(UiCommand::OpenCommandPalette),
+                Cmd::None,
+            );
+        }
+
+        if UiCommand::OpenWorkspaceJump
+            .matches_keybinding(&key_event, KeybindingScope::NonInteractive)
+            && self.can_open_palette()
+        {
+            return (
+                self.execute_ui_command(UiCommand::OpenWorkspaceJump),
                 Cmd::None,
             );
         }
@@ -399,9 +412,14 @@ impl GroveApp {
             ));
             if let Some(action) = self.dialogs.command_palette.handle_event(&event) {
                 return match action {
-                    PaletteAction::Dismiss => (false, Cmd::None),
+                    PaletteAction::Dismiss => {
+                        self.dialogs.palette_mode = None;
+                        (false, Cmd::None)
+                    }
                     PaletteAction::Execute(id) => {
-                        (self.execute_command_palette_action(id.as_str()), Cmd::None)
+                        let handled = self.execute_command_palette_action(id.as_str());
+                        self.dialogs.palette_mode = None;
+                        (handled, Cmd::None)
                     }
                 };
             }

@@ -303,6 +303,9 @@ impl GroveApp {
             UiCommand::OpenCommandPalette => {
                 self.open_command_palette();
             }
+            UiCommand::OpenWorkspaceJump => {
+                self.open_workspace_jump_palette();
+            }
             UiCommand::Quit => {
                 self.open_quit_dialog();
             }
